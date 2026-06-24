@@ -406,7 +406,7 @@ Included:
 ✔ Users
 ✔ Departments
 ✔ Customers
-✔ Industries
+X Industries (for now we remove this)
 ✔ Services
 ✔ Packages
 ✔ Proposal Builder
@@ -465,11 +465,11 @@ Excluded:
 
 ### Checklist
 
-* [ ] Auth
-* [ ] Roles
-* [ ] Users
-* [ ] Departments
-* [ ] Industries
+* [X] Auth
+* [X] Roles
+* [X] Users
+* [X] Departments
+* [] Industries (for now we remove this)
 
 ---
 

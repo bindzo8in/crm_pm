@@ -154,8 +154,6 @@ model Customer {
   createdById  String?
   assignedTo   User?   @relation("AssignedCustomers", fields: [assignedToId], references: [id], onDelete: SetNull)
   createdBy    User?   @relation("CreatedCustomers", fields: [createdById], references: [id], onDelete: SetNull)
-  // industryId   String?
-  // industry     Industry? @relation(fields: [industryId], references: [id], onDelete: SetNull)
 
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
@@ -165,7 +163,6 @@ model Customer {
 
   @@index([assignedToId])
   @@index([createdById])
-  // @@index([industryId])
   @@index([deletedAt])
 }
 
@@ -187,10 +184,3 @@ model CustomerContact {
 
   @@index([customerId])
 }
-
-// model Industry {
-//   id   String @id @default(cuid())
-//   name String @unique
-
-//   customers Customer[]
-// }
