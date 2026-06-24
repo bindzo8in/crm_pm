@@ -31,22 +31,22 @@ enum Department {
 }
 
 model User {
-  id                String     @id
+  id                String      @id
   name              String
   email             String
-  emailVerified     Boolean    @default(false)
+  emailVerified     Boolean     @default(false)
   image             String?
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
-  role              UserRole   @default(STAFF)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  role              UserRole    @default(STAFF)
   department        Department?
-  banned            Boolean?   @default(false)
+  banned            Boolean?    @default(false)
   banReason         String?
   banExpires        DateTime?
   sessions          Session[]
   accounts          Account[]
-  assignedCustomers Customer[] @relation("AssignedCustomers")
-  createdCustomers  Customer[] @relation("CreatedCustomers")
+  assignedCustomers Customer[]  @relation("AssignedCustomers")
+  createdCustomers  Customer[]  @relation("CreatedCustomers")
 
   @@unique([email])
   @@map("user")
@@ -122,7 +122,7 @@ enum CustomerType {
 model Customer {
   id String @id @default(cuid())
 
-  customerNumber      String? @unique
+  customerNumber      Int     @unique @default(autoincrement())
   displayName         String
   companyName         String?
   primaryContactName  String?
@@ -152,8 +152,8 @@ model Customer {
 
   assignedToId String?
   createdById  String?
-  assignedTo   User?     @relation("AssignedCustomers", fields: [assignedToId], references: [id], onDelete: SetNull)
-  createdBy    User?     @relation("CreatedCustomers", fields: [createdById], references: [id], onDelete: SetNull)
+  assignedTo   User?   @relation("AssignedCustomers", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdBy    User?   @relation("CreatedCustomers", fields: [createdById], references: [id], onDelete: SetNull)
   // industryId   String?
   // industry     Industry? @relation(fields: [industryId], references: [id], onDelete: SetNull)
 

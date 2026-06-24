@@ -6,10 +6,9 @@ import { getUsers } from "@/actions/user";
 import { DataTable } from "./DataTable";
 import { columns } from "./columns";
 import { useState } from "react";
-import { useSession } from "@/lib/auth-client";
 
 export default function UsersTable() {
-  
+
   const [pagination, setPagination] = useState({
     pageIndex: 0,
     pageSize: 10,
@@ -17,7 +16,7 @@ export default function UsersTable() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["users"],
-    queryFn: () => getUsers({ page: pagination.pageIndex, pageSize: pagination.pageSize }),
+    queryFn: () => getUsers({ page: pagination.pageIndex, pageSize: pagination.pageSize, search: "" }),
   });
 
   if (isLoading) {
@@ -34,7 +33,7 @@ export default function UsersTable() {
         onPaginationChange={setPagination}
         total={data?.total ?? 0}
       />
-      
+
     </div>
   );
 }
