@@ -41,9 +41,28 @@ export async function CreateService(data: ServiceSchema): Promise<ActionResponse
                 slug
             }
         })
-        if (existingService) {
+        if (existingService && !existingService.deletedAt) {
             return errorResponse("Service already exists");
         }
+        if (existingService && existingService.deletedAt) {
+            await prisma.service.update({
+                where: {
+                    id: existingService.id
+                },
+                data: {
+                    deletedAt: null,
+                    name: validatedData.data.name,
+                    slug,
+                    description: validatedData.data.description,
+                    isActive: validatedData.data.isActive
+                }
+            })
+
+            return successResponse(
+                "Previously deleted service restored"
+            );
+        }
+
         await prisma.service.create({
             data: {
                 name: validatedData.data.name,
@@ -101,6 +120,7 @@ export async function EditService(data: ServiceSchema) {
         const duplicateSlug = await prisma.service.findFirst({
             where: {
                 slug,
+                deletedAt: null,
                 NOT: {
                     id,
                 },
