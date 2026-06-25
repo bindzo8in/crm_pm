@@ -5,6 +5,7 @@ import { ActionResponse, errorResponse, successResponse } from "@/lib/action-res
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { getErrorMessage } from "@/lib/schemas/prisma-utils";
+import { servicePackageSchema, ServicePackageSchema } from "@/lib/schemas/service-package";
 import { ServiceQuerySchema, serviceSchema, ServiceSchema } from "@/lib/schemas/service-schema";
 import { headers } from "next/headers";
 import slugify from "slugify";
@@ -180,6 +181,31 @@ export async function GetService(id: string) {
     }
 }
 
+export async function GetServiceNameById(id: string) {
+    try {
+
+        const service = await prisma.service.findUnique({
+            where: { id },
+            select: { id: true, name: true },
+        });
+
+        if (!service) {
+            return errorResponse("Service not found");
+        }
+
+        return successResponse("Service found", service);
+    } catch (error) {
+        if (process.env.NODE_ENV === "development") {
+            console.error(error);
+        }
+
+        return errorResponse(
+            "Failed to get service",
+            getErrorMessage(error)
+        );
+    }
+}
+
 export async function GetServices(query: ServiceQuerySchema) {
     try {
 
@@ -274,6 +300,406 @@ export async function DeleteService(id: string) {
 
         return errorResponse(
             "An error occurred while deleting the service",
+            getErrorMessage(error)
+        );
+    }
+}
+
+export async function createServicePackage(data: ServicePackageSchema) {
+    try {
+
+        const hasPermission = await auth.api.userHasPermission({
+            headers: await headers(),
+            body: {
+                permissions: {
+                    services: ['create']
+                }
+            }
+        })
+
+        if (!hasPermission.success) {
+            return errorResponse("You don't have permission to create a service package");
+        }
+
+        const validatedData = servicePackageSchema.safeParse(data)
+
+        if (!validatedData.success) {
+            return errorResponse(
+                "Invalid data provided",
+                validatedData.error?.issues
+            );
+        }
+
+        const { name, description, serviceId, items, features } = validatedData.data
+
+        await prisma.servicePackage.create({
+            data: {
+                name,
+                description,
+                serviceId,
+                items: {
+                    create: items.map((item, index) => ({
+                        name: item.name,
+                        description: item.description,
+                        quantity: item.quantity,
+                        unitPrice: item.unitPrice,
+                        unit: item.unit,
+                        billingCycle: item.billingCycle,
+                        sortOrder: index,
+                    })),
+                },
+                features: {
+                    create: features.map((feature) => ({
+                        content: feature.name,
+                        sortOrder: feature.sortOrder
+                    })),
+                },
+            },
+        });
+        return successResponse("Service package created successfully");
+    } catch (error) {
+        if (process.env.NODE_ENV === 'development') console.log(error)
+
+        return errorResponse(
+            "An error occurred while creating the service package",
+            getErrorMessage(error)
+        );
+    }
+}
+
+export async function editServicePackage(
+    id: string,
+    data: ServicePackageSchema
+) {
+    try {
+        const hasPermission =
+            await auth.api.userHasPermission({
+                headers: await headers(),
+                body: {
+                    permissions: {
+                        services: ["update"],
+                    },
+                },
+            });
+
+        if (!hasPermission.success) {
+            return errorResponse(
+                "You don't have permission to update service packages"
+            );
+        }
+
+        const validatedData =
+            servicePackageSchema.safeParse(data);
+
+        if (!validatedData.success) {
+            return errorResponse(
+                "Invalid data provided",
+                validatedData.error.issues
+            );
+        }
+
+        const {
+            name,
+            description,
+            serviceId,
+            items,
+            features,
+            isActive,
+            isPopular
+        } = validatedData.data;
+
+        const debug =
+            process.env.NODE_ENV === "development";
+
+        await prisma.$transaction(async (tx) => {
+            if (debug) {
+                console.log(
+                    "\n========== EDIT SERVICE PACKAGE =========="
+                );
+                console.log("Package ID:", id);
+            }
+
+            const packageExists =
+                await tx.servicePackage.findUnique({
+                    where: { id },
+                    select: {
+                        id: true,
+                    },
+                });
+
+            if (!packageExists) {
+                throw new Error(
+                    "Service package not found"
+                );
+            }
+
+            await tx.servicePackage.update({
+                where: { id },
+                data: {
+                    name,
+                    description,
+                    serviceId,
+                    isActive,
+                    isPopular,
+                },
+            });
+
+            if (debug) {
+                console.log("✓ Package updated");
+            }
+
+            const itemIdsFromForm = items
+                .filter((item) => item.id)
+                .map((item) => item.id!);
+
+            const featureIdsFromForm = features
+                .filter((feature) => feature.id)
+                .map((feature) => feature.id!);
+
+            if (debug) {
+                console.log(
+                    "Item IDs From Form:",
+                    itemIdsFromForm
+                );
+                console.log(
+                    "Feature IDs From Form:",
+                    featureIdsFromForm
+                );
+            }
+
+            // Delete removed items
+            const deletedItems =
+                await tx.servicePackageItem.deleteMany({
+                    where: {
+                        packageId: id,
+                        id: {
+                            notIn: itemIdsFromForm,
+                        },
+                    },
+                });
+
+            // Delete removed features
+            const deletedFeatures =
+                await tx.packageFeature.deleteMany({
+                    where: {
+                        packageId: id,
+                        id: {
+                            notIn: featureIdsFromForm,
+                        },
+                    },
+                });
+
+            if (debug) {
+                console.log(
+                    `✓ Deleted ${deletedItems.count} items`
+                );
+                console.log(
+                    `✓ Deleted ${deletedFeatures.count} features`
+                );
+            }
+
+            const updateItemPromises = items
+                .map((item, index) => {
+                    if (!item.id) return null;
+
+                    return tx.servicePackageItem.update({
+                        where: {
+                            id: item.id,
+                        },
+                        data: {
+                            name: item.name,
+                            description:
+                                item.description,
+                            quantity: item.quantity,
+                            unitPrice:
+                                item.unitPrice,
+                            unit: item.unit,
+                            billingCycle:
+                                item.billingCycle,
+                            sortOrder: index,
+                        },
+                    });
+                })
+                .filter(Boolean);
+
+            if (updateItemPromises.length) {
+                await Promise.all(
+                    updateItemPromises
+                );
+
+                if (debug) {
+                    console.log(
+                        `✓ Updated ${updateItemPromises.length} items`
+                    );
+                }
+            }
+
+            const newItems = items
+                .map((item, index) => ({
+                    ...item,
+                    sortOrder: index,
+                }))
+                .filter((item) => !item.id);
+
+            if (newItems.length) {
+                const created =
+                    await tx.servicePackageItem.createMany(
+                        {
+                            data: newItems.map(
+                                (item) => ({
+                                    packageId: id,
+                                    name: item.name,
+                                    description:
+                                        item.description,
+                                    quantity:
+                                        item.quantity,
+                                    unitPrice:
+                                        item.unitPrice,
+                                    unit: item.unit,
+                                    billingCycle:
+                                        item.billingCycle,
+                                    sortOrder:
+                                        item.sortOrder,
+                                })
+                            ),
+                        }
+                    );
+
+                if (debug) {
+                    console.log(
+                        `✓ Created ${created.count} items`
+                    );
+                }
+            }
+
+            const updateFeaturePromises =
+                features
+                    .map((feature, index) => {
+                        if (!feature.id) return null;
+
+                        return tx.packageFeature.update(
+                            {
+                                where: {
+                                    id: feature.id,
+                                },
+                                data: {
+                                    content:
+                                        feature.name,
+                                    sortOrder:
+                                        index,
+                                },
+                            }
+                        );
+                    })
+                    .filter(Boolean);
+
+            if (
+                updateFeaturePromises.length
+            ) {
+                await Promise.all(
+                    updateFeaturePromises
+                );
+
+                if (debug) {
+                    console.log(
+                        `✓ Updated ${updateFeaturePromises.length} features`
+                    );
+                }
+            }
+
+            const newFeatures = features
+                .map((feature, index) => ({
+                    ...feature,
+                    sortOrder: index,
+                }))
+                .filter(
+                    (feature) => !feature.id
+                );
+
+            if (newFeatures.length) {
+                const created =
+                    await tx.packageFeature.createMany(
+                        {
+                            data: newFeatures.map(
+                                (feature) => ({
+                                    packageId: id,
+                                    content:
+                                        feature.name,
+                                    sortOrder:
+                                        feature.sortOrder,
+                                })
+                            ),
+                        }
+                    );
+
+                if (debug) {
+                    console.log(
+                        `✓ Created ${created.count} features`
+                    );
+                }
+            }
+
+            if (debug) {
+                console.log(
+                    "========== PACKAGE UPDATED ==========\n"
+                );
+            }
+        });
+
+        return successResponse(
+            "Service package updated successfully"
+        );
+    } catch (error) {
+        if (
+            process.env.NODE_ENV ===
+            "development"
+        ) {
+            console.error(error);
+        }
+
+        return errorResponse(
+            "An error occurred while updating the service package",
+            getErrorMessage(error)
+        );
+    }
+}
+
+export async function getServicePackage(id: string) {
+    try {
+        const servicePackage = await prisma.servicePackage.findUnique({
+            where: {
+                id,
+            },
+            include: {
+                items: true,
+                features: true,
+            },
+        });
+
+        const serializedPackage = servicePackage
+    ? {
+          ...servicePackage,
+          items: servicePackage.items.map((item) => ({
+              ...item,
+              unitPrice: item.unitPrice.toNumber(),
+          })),
+      }
+    : null;
+
+        return successResponse(
+            "Service package fetched successfully",
+            serializedPackage
+        );
+    } catch (error) {
+        if (
+            process.env.NODE_ENV ===
+            "development"
+        ) {
+            console.error(error);
+        }
+
+        return errorResponse(
+            "An error occurred while fetching the service package",
             getErrorMessage(error)
         );
     }
