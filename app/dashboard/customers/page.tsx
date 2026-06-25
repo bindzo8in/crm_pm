@@ -6,6 +6,7 @@ import {
   dehydrate,
   HydrationBoundary,
 } from "@tanstack/react-query";
+import { User } from "lucide-react";
 
 export default async function CustomersPage() {
   const queryClient = getQueryClient();
@@ -23,7 +24,7 @@ export default async function CustomersPage() {
   });
 
   return (
-    <DashboardContainer title="Customers">
+    <DashboardContainer title="Customers" action={{ href: "/dashboard/customers/create", icon: <User />, label: "Create Customer" }}>
       <HydrationBoundary state={dehydrate(queryClient)}>
         <CustomersTable />
       </HydrationBoundary>

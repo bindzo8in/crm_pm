@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -14,30 +15,31 @@ import {
   MoreHorizontal,
   Eye,
   Pencil,
-  FileText,
-  Receipt,
-  FolderKanban,
+  Package,
+  Plus,
   Copy,
   CopyCheck,
   Trash2,
 } from "lucide-react";
-import { DeleteCustomer } from "@/actions/customer";
-import { toast } from "sonner";
 
-interface CustomerActionsProps {
-  customer: {
+import { DeleteService } from "@/actions/services";
+import { useQueryClient } from "@tanstack/react-query";
+
+interface ServiceActionsProps {
+  service: {
     id: string;
-    displayName: string;
+    name: string;
   };
 }
 
-export function CustomerActions({
-  customer,
-}: CustomerActionsProps) {
+export function ServiceActions({
+  service,
+}: ServiceActionsProps) {
+  const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(customer.id);
+    await navigator.clipboard.writeText(service.id);
 
     setCopied(true);
 
@@ -48,15 +50,19 @@ export function CustomerActions({
 
   const handleDelete = async () => {
     try {
-      const response = await DeleteCustomer(customer.id);
+      const response = await DeleteService(service.id);
+
       if (response.success) {
         toast.success(response.message);
+        queryClient.invalidateQueries({
+          queryKey: ["services"],
+        });
       } else {
         toast.error(response.message);
       }
     } catch (error) {
       toast.error("Something went wrong");
-      console.log(error);
+      console.error(error);
     }
   };
 
@@ -74,7 +80,7 @@ export function CustomerActions({
 
       <DropdownMenuContent align="end">
         <DropdownMenuItem asChild>
-          <Link href={`/dashboard/customers/${customer.id}`}>
+          <Link href={`/dashboard/services/${service.id}`}>
             <Eye />
             View
           </Link>
@@ -82,7 +88,7 @@ export function CustomerActions({
 
         <DropdownMenuItem asChild>
           <Link
-            href={`/dashboard/customers/${customer.id}/edit`}
+            href={`/dashboard/services/${service.id}/edit`}
           >
             <Pencil />
             Edit
@@ -93,28 +99,19 @@ export function CustomerActions({
 
         <DropdownMenuItem asChild>
           <Link
-            href={`/dashboard/proposals/new?customerId=${customer.id}`}
+            href={`/dashboard/services/${service.id}/packages`}
           >
-            <FileText />
-            Create Proposal
+            <Package />
+            Manage Packages
           </Link>
         </DropdownMenuItem>
 
         <DropdownMenuItem asChild>
           <Link
-            href={`/dashboard/invoices/new?customerId=${customer.id}`}
+            href={`/dashboard/packages/new?serviceId=${service.id}`}
           >
-            <Receipt />
-            Create Invoice
-          </Link>
-        </DropdownMenuItem>
-
-        <DropdownMenuItem asChild>
-          <Link
-            href={`/dashboard/projects/new?customerId=${customer.id}`}
-          >
-            <FolderKanban />
-            Create Project
+            <Plus />
+            Add Package
           </Link>
         </DropdownMenuItem>
 

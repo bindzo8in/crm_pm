@@ -497,9 +497,9 @@ Excluded:
 
 ### Checklist
 
-* [ ] Customer CRUD
+* [X] Customer CRUD
 * [ ] Customer Contacts
-* [ ] Search
+* [X] Search
 * [ ] Filters
 
 ---

@@ -185,3 +185,34 @@ export async function GetCustomers(
     throw error;
   }
 }
+
+export async function DeleteCustomer (id: string) {
+  try {
+    const hasPermission = await auth.api.userHasPermission({
+      headers: await headers(),
+      body: {
+        permissions: {
+          customers: ["delete"]
+        }
+      }
+    })
+
+    if (!hasPermission.success) {
+      return { error: "Unauthorized", message: "You do not have permission to delete a customer" }
+    }
+
+    await prisma.customer.update({
+      where: {
+        id
+      },
+      data: {
+        deletedAt: new Date()
+      }
+    })
+
+    return { success: true, message: "Customer deleted successfully" }
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') console.log(error)
+    return { error: "Internal Server Error", message: "An error occurred while deleting the customer" }
+  }
+}
