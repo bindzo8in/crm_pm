@@ -941,3 +941,30 @@ export async function DuplicateServicePackage(
         );
     }
 }
+
+export async function GetAllActiveServices() {
+    try {
+        const services = await prisma.service.findMany({
+            where: {
+                deletedAt: null,
+                isActive: true,
+            },
+            select: {
+                id: true,
+                name: true,
+            },
+            orderBy: {
+                name: "asc",
+            },
+        });
+        return successResponse("Active services found", services);
+    } catch (error) {
+        if (process.env.NODE_ENV === "development") {
+            console.error(error);
+        }
+        return errorResponse(
+            "Failed to get active services",
+            getErrorMessage(error)
+        );
+    }
+}

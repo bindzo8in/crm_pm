@@ -205,9 +205,10 @@ model Service {
 
   packages ServicePackage[]
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  deletedAt            DateTime?
+  proposalTermServices ProposalTermService[]
 
   @@index([isActive])
 }
@@ -272,4 +273,35 @@ model PackageFeature {
   content String
 
   sortOrder Int @default(0)
+}
+
+model ProposalTerm {
+  id String @id @default(cuid())
+
+  title String
+
+  content Json
+
+  isDefault Boolean @default(false)
+
+  isActive Boolean @default(true)
+
+
+  services ProposalTermService[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ProposalTermService {
+  termId    String
+  serviceId String
+  sortOrder Int @default(0)
+  isRequired Boolean @default(true)
+
+  term ProposalTerm @relation(fields: [termId], references: [id], onDelete: Cascade)
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@id([termId, serviceId])
 }

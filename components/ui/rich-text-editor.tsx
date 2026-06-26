@@ -55,8 +55,8 @@ import { cn } from "@/lib/utils"
 import "@/components/tiptap-templates/simple/simple-editor.scss"
 
 export interface RichTextEditorProps {
-  value?: string | Record<string, any>
-  onChange?: (value: string) => void
+  value?: Record<string, any>
+  onChange?: (value: Record<string, any>) => void
   disabled?: boolean
   className?: string
   placeholder?: string
@@ -107,17 +107,15 @@ export function RichTextEditor({ value, onChange, disabled, className, placehold
     ],
     content: value,
     onUpdate: ({ editor }) => {
-      onChange?.(editor.getHTML())
+      onChange?.(editor.getJSON())
     },
   })
 
   useEffect(() => {
     if (!editor || value === undefined) return
-    if (typeof value === "string") {
-      const currentHTML = editor.getHTML()
-      if (value !== currentHTML) {
-        editor.commands.setContent(value)
-      }
+    const currentJSON = editor.getJSON()
+    if (JSON.stringify(value) !== JSON.stringify(currentJSON)) {
+      editor.commands.setContent(value)
     }
   }, [editor, value])
 
