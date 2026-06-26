@@ -9,5 +9,6 @@ import * as z from "zod"
       inputs?: T
   }
   export const otpSchema = z.object({
-"otp-d8c": z.string().min(6, 'Please enter a valid OTP').optional()
+"otp-d8c": z.string().min(6, 'Please enter a valid OTP').optional(),
+test: z.any()
 });
