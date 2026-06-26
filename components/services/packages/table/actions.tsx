@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
+
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -11,36 +12,44 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
 import {
   MoreHorizontal,
   Eye,
   Pencil,
-  Package,
-  Plus,
   Copy,
   CopyCheck,
+  Files,
   Trash2,
 } from "lucide-react";
 
-import { DeleteService } from "@/actions/services";
 import { useQueryClient } from "@tanstack/react-query";
-import { serviceKeys, servicePackageKeys } from "../util";
+import {
+  DeleteServicePackage,
+  DuplicateServicePackage,
+} from "@/actions/services";
+import { servicePackageKeys } from "../../util";
 
-interface ServiceActionsProps {
-  service: {
+interface ServicePackageActionsProps {
+  servicePackage: {
     id: string;
     name: string;
+    service: {
+        id: string,
+        name: string
+    }
   };
 }
 
-export function ServiceActions({
-  service,
-}: ServiceActionsProps) {
+export function ServicePackageActions({
+  servicePackage,
+}: ServicePackageActionsProps) {
   const queryClient = useQueryClient();
+
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(service.id);
+    await navigator.clipboard.writeText(servicePackage.id);
 
     setCopied(true);
 
@@ -49,21 +58,45 @@ export function ServiceActions({
     }, 2000);
   };
 
-  const handleDelete = async () => {
+  const handleDuplicate = async () => {
     try {
-      const response = await DeleteService(service.id);
+      const response = await DuplicateServicePackage(
+        servicePackage.id
+      );
 
       if (response.success) {
         toast.success(response.message);
+
         queryClient.invalidateQueries({
-          queryKey: serviceKeys.all,
+          queryKey: servicePackageKeys.all,
         });
       } else {
         toast.error(response.message);
       }
     } catch (error) {
-      toast.error("Something went wrong");
       console.error(error);
+      toast.error("Something went wrong");
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      const response = await DeleteServicePackage(
+        servicePackage.id
+      );
+
+      if (response.success) {
+        toast.success(response.message);
+
+        queryClient.invalidateQueries({
+          queryKey: servicePackageKeys.all,
+        });
+      } else {
+        toast.error(response.message);
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Something went wrong");
     }
   };
 
@@ -81,7 +114,9 @@ export function ServiceActions({
 
       <DropdownMenuContent align="end">
         <DropdownMenuItem asChild>
-          <Link href={`/dashboard/services/${service.id}`}>
+          <Link
+            href={`/dashboard/packages/${servicePackage.id}`}
+          >
             <Eye />
             View
           </Link>
@@ -89,7 +124,7 @@ export function ServiceActions({
 
         <DropdownMenuItem asChild>
           <Link
-            href={`/dashboard/services/${service.id}/edit`}
+            href={`/dashboard/services/${servicePackage.service.id}/edit-package?packageId=${servicePackage.id}`}
           >
             <Pencil />
             Edit
@@ -98,25 +133,10 @@ export function ServiceActions({
 
         <DropdownMenuSeparator />
 
-        <DropdownMenuItem asChild>
-          <Link
-            href={`/dashboard/services/packages?serviceId=${service.id}`}
-          >
-            <Package />
-            Manage Packages
-          </Link>
+        <DropdownMenuItem onClick={handleDuplicate}>
+          <Files />
+          Duplicate
         </DropdownMenuItem>
-
-        <DropdownMenuItem asChild>
-          <Link
-            href={`/dashboard/services/${service.id}/create-package`}
-          >
-            <Plus />
-            Add Package
-          </Link>
-        </DropdownMenuItem>
-
-        <DropdownMenuSeparator />
 
         <DropdownMenuItem onClick={handleCopy}>
           {copied ? <CopyCheck /> : <Copy />}
@@ -126,8 +146,8 @@ export function ServiceActions({
         <DropdownMenuSeparator />
 
         <DropdownMenuItem
-          className="text-destructive focus:text-destructive"
           onClick={handleDelete}
+          className="text-destructive focus:text-destructive"
         >
           <Trash2 />
           Delete

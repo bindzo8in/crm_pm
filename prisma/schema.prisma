@@ -225,6 +225,8 @@ model ServicePackage {
   isPopular Boolean @default(false)
   isActive  Boolean @default(true)
 
+  totalPrice Decimal @default(0) @db.Decimal(12, 2)
+
   items    ServicePackageItem[]
   features PackageFeature[]
 

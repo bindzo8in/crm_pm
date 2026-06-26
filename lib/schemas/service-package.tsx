@@ -27,7 +27,7 @@ export const packageItemSchema = z.object({
 
 export const packageFeatureSchema = z.object({
   id: z.string().optional(),
-  
+
   name: z
     .string()
     .min(1, "Feature name is required"),
@@ -60,3 +60,23 @@ export const servicePackageSchema = z.object({
 export type ServicePackageSchema = z.infer<
   typeof servicePackageSchema
 >;
+
+export const servicePackageQuerySchema = z.object({
+  page: z.number().min(0).default(0),
+  pageSize: z.number().min(1).max(100).default(10),
+
+  search: z.string().optional(),
+
+  sortDirection: z.enum([
+    "asc",
+    "desc",
+  ]).default("desc"),
+
+  isActive: z.boolean().optional(),
+  isPopular: z.boolean().optional(),
+
+  serviceId: z.string().optional()
+
+})
+
+export type ServicePackageQuerySchema = z.infer<typeof servicePackageQuerySchema>;

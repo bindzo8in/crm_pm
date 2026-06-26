@@ -4,40 +4,52 @@ import { getQueryClient } from "@/lib/query-client";
 import DashboardContainer from "../dashboard-container";
 import { PlusIcon } from "lucide-react";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
-const serviceKeys = {
-  list: (
-    page: number,
-    pageSize: number,
-    search?: string,
-    isActive?: boolean
-  ) =>
-    [
-      "services",
-      page,
-      pageSize,
-      search,
-      isActive,
-    ] as const,
-};
-export default async function ServicesPage() {
+import { serviceKeys } from "@/components/services/util";
+
+export default async function ServicesPage({
+    searchParams,
+}: PageProps<"/dashboard/services">) {
+    const params = await searchParams;
+
+    const initialQuery = {
+        page: Number(params.page ?? 0),
+        pageSize: Number(params.pageSize ?? 10),
+
+        search:
+            typeof params.search === "string"
+                ? params.search
+                : undefined,
+
+        isActive:
+            params.isActive === "true"
+                ? true
+                : undefined,
+
+        sortDirection:
+            params.sortDirection === "asc"
+                ? "asc"
+                : "desc",
+    } as const;
+
     const queryClient = getQueryClient();
-    const search = undefined;
-    const isActive = undefined;
+
     await queryClient.prefetchQuery({
-        queryKey: serviceKeys.list(0, 10, search, isActive),
-        queryFn: () => GetServices({
-            page: 0,
-            pageSize: 10,
-            search: "",
-            sortDirection: "desc",
-        }),
-    })
+        queryKey: serviceKeys.list(initialQuery),
+        queryFn: () => GetServices(initialQuery),
+    });
 
     return (
-        <DashboardContainer title="Services" action={{ href: "/dashboard/services/create", icon: <PlusIcon />, label: "Create Service" }}>
+        <DashboardContainer
+            title="Services"
+            action={{
+                href: "/dashboard/services/create",
+                icon: <PlusIcon />,
+                label: "Create Service",
+            }}
+        >
             <HydrationBoundary state={dehydrate(queryClient)}>
-                <ServicesTable />
+                <ServicesTable initialQuery={initialQuery} />
             </HydrationBoundary>
         </DashboardContainer>
-    )
+    );
 }

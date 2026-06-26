@@ -10,46 +10,35 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { DataTable } from "@/components/data-table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { serviceKeys } from "../util";
 
-const serviceKeys = {
-  list: (
-    page: number,
-    pageSize: number,
-    search?: string,
-    isActive?: boolean
-  ) =>
-    [
-      "services",
-      page,
-      pageSize,
-      search,
-      isActive,
-    ] as const,
-};
-export function ServicesTable() {
-    const [search, setSearch] = useState("");
-    const [isActive, setIsActive] = useState(false);
-    const debouncedSearch = useDebounce(search, 500);
+export function ServicesTable({ initialQuery }: { initialQuery: { page: number, pageSize: number, search?: string, isActive?: boolean, sortDirection: "asc" | "desc" } }) {
+    const [search, setSearch] = useState(initialQuery.search ?? "");
+
+    const [isActive, setIsActive] = useState(
+        initialQuery.isActive ?? false
+    );
+
     const [pagination, setPagination] = useState({
-        pageIndex: 0,
-        pageSize: 10,
+        pageIndex: initialQuery.page,
+        pageSize: initialQuery.pageSize,
     });
+    const debouncedSearch = useDebounce(search, 500);
 
     const normalizedSearch =
         debouncedSearch.trim() || undefined;
 
-    const activeFilter =
-        isActive ? true : undefined;
+    const query = {
+        page: pagination.pageIndex,
+        pageSize: pagination.pageSize,
+        search: normalizedSearch,
+        isActive: isActive ? true : undefined,
+        sortDirection: initialQuery.sortDirection,
+    } as const;
 
-    const { data, isLoading } = useQuery({
-        queryKey: serviceKeys.list(pagination.pageIndex, pagination.pageSize, normalizedSearch, activeFilter),
-        queryFn: () => GetServices({
-            page: pagination.pageIndex,
-            pageSize: pagination.pageSize,
-            search: debouncedSearch.trim() || undefined,
-            sortDirection: "desc",
-            ...(isActive && { isActive })
-        }),
+    const { data } = useQuery({
+        queryKey: serviceKeys.list(query),
+        queryFn: () => GetServices(query),
     });
 
     return (
@@ -69,7 +58,7 @@ export function ServicesTable() {
                 <FieldGroup>
                     <Field orientation={"horizontal"}>
                         <Checkbox id="isActive" name="isActive" checked={isActive} onCheckedChange={(value) => {
-                            setIsActive(value as boolean);
+                            setIsActive(value === true);
                             setPagination((prev) => ({
                                 ...prev,
                                 pageIndex: 0,

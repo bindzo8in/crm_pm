@@ -528,9 +528,9 @@ Excluded:
 
 ### Checklist
 
-* [ ] Services
-* [ ] Packages
-* [ ] Billing Cycles
+* [X] Services
+* [X] Packages
+* [X] Billing Cycles
 
 ---
 

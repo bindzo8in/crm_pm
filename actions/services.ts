@@ -5,7 +5,7 @@ import { ActionResponse, errorResponse, successResponse } from "@/lib/action-res
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { getErrorMessage } from "@/lib/schemas/prisma-utils";
-import { servicePackageSchema, ServicePackageSchema } from "@/lib/schemas/service-package";
+import { ServicePackageQuerySchema, servicePackageSchema, ServicePackageSchema } from "@/lib/schemas/service-package";
 import { ServiceQuerySchema, serviceSchema, ServiceSchema } from "@/lib/schemas/service-schema";
 import { headers } from "next/headers";
 import slugify from "slugify";
@@ -332,11 +332,16 @@ export async function createServicePackage(data: ServicePackageSchema) {
 
         const { name, description, serviceId, items, features } = validatedData.data
 
+        const totalPrice = items.reduce(
+            (sum, item) => sum + item.unitPrice * item.quantity,
+            0
+        );
         await prisma.servicePackage.create({
             data: {
                 name,
                 description,
                 serviceId,
+                totalPrice,
                 items: {
                     create: items.map((item, index) => ({
                         name: item.name,
@@ -398,6 +403,8 @@ export async function editServicePackage(
             );
         }
 
+
+
         const {
             name,
             description,
@@ -407,6 +414,11 @@ export async function editServicePackage(
             isActive,
             isPopular
         } = validatedData.data;
+
+        const totalPrice = items.reduce(
+            (sum, item) => sum + item.unitPrice * item.quantity,
+            0
+        );
 
         const debug =
             process.env.NODE_ENV === "development";
@@ -441,6 +453,7 @@ export async function editServicePackage(
                     serviceId,
                     isActive,
                     isPopular,
+                    totalPrice
                 },
             });
 
@@ -677,14 +690,15 @@ export async function getServicePackage(id: string) {
         });
 
         const serializedPackage = servicePackage
-    ? {
-          ...servicePackage,
-          items: servicePackage.items.map((item) => ({
-              ...item,
-              unitPrice: item.unitPrice.toNumber(),
-          })),
-      }
-    : null;
+            ? {
+                ...servicePackage,
+                totalPrice: servicePackage.totalPrice.toNumber(),
+                items: servicePackage.items.map((item) => ({
+                    ...item,
+                    unitPrice: item.unitPrice.toNumber(),
+                })),
+            }
+            : null;
 
         return successResponse(
             "Service package fetched successfully",
@@ -700,6 +714,229 @@ export async function getServicePackage(id: string) {
 
         return errorResponse(
             "An error occurred while fetching the service package",
+            getErrorMessage(error)
+        );
+    }
+}
+
+export async function GetServicesPackages(query: ServicePackageQuerySchema) {
+    try {
+        const { page, pageSize, sortDirection, search, serviceId, isPopular, isActive } = query;
+        const where: Prisma.ServicePackageWhereInput = {
+            ...(serviceId && { serviceId }),
+            ...(isPopular != undefined && { isPopular }),
+            ...(isActive != undefined && { isActive }),
+            ...(search && {
+                name: {
+                    contains: search,
+                    mode: 'insensitive'
+                }
+            })
+        }
+
+        const [packages, total] = await prisma.$transaction([
+            prisma.servicePackage.findMany({
+                skip: page * pageSize,
+                take: pageSize,
+                select: {
+                    id: true,
+                    name: true,
+                    isPopular: true,
+                    isActive: true,
+                    items: {
+                        select: {
+                            id: true,
+                            billingCycle: true,
+                            name: true,
+                            quantity: true,
+                            unit: true,
+                            unitPrice: true,
+                        }
+                    },
+                    totalPrice: true,
+                    service: {
+                        select: {
+                            id: true,
+                            name: true,
+                        }
+                    }
+                },
+                where,
+                orderBy: [
+                    {
+                        createdAt: sortDirection,
+                    },
+                    {
+                        id: "desc"
+                    }
+                ]
+            }),
+
+            prisma.servicePackage.count({
+                where
+            })
+        ]);
+
+        return successResponse("Service Packages fetched successfully", {
+            data: packages.map((pkg) => ({
+                ...pkg,
+                items: pkg.items.map((item) => ({
+                    ...item,
+                    unitPrice: item.unitPrice.toNumber(),
+                })),
+                totalPrice: pkg.totalPrice.toNumber(),
+            })),
+            pagination: {
+                page,
+                pageSize,
+                total,
+                pageCount: Math.ceil(total / pageSize)
+            }
+        })
+
+    } catch (error) {
+        if (process.env.NODE_ENV === "development") {
+            console.error(error);
+        }
+        return errorResponse("An error occurred while fetching the service packages", getErrorMessage(error))
+    }
+}
+
+export async function updatePackageTotal(packageId: string) {
+    const items = await prisma.servicePackageItem.findMany({
+        where: { packageId },
+        select: {
+            quantity: true,
+            unitPrice: true,
+        },
+    });
+
+    const total = items.reduce(
+        (sum, item) => sum + item.unitPrice.toNumber() * item.quantity,
+        0
+    );
+
+    await prisma.servicePackage.update({
+        where: { id: packageId },
+        data: {
+            totalPrice: total,
+        },
+    });
+}
+
+export async function DeleteServicePackage(id: string) {
+    try {
+        await prisma.servicePackage.delete({
+            where: { id },
+        });
+
+        return successResponse("Service package deleted successfully");
+    } catch (error) {
+        if (process.env.NODE_ENV === "development") {
+            console.error(error);
+        }
+        return errorResponse("An error occurred while deleting the service package", getErrorMessage(error))
+    }
+}
+
+export async function DuplicateServicePackage(
+    id: string
+): Promise<ActionResponse> {
+    try {
+        const hasPermission =
+            await auth.api.userHasPermission({
+                headers: await headers(),
+                body: {
+                    permissions: {
+                        services: ["create"],
+                    },
+                },
+            });
+
+        if (!hasPermission.success) {
+            return errorResponse(
+                "You don't have permission to duplicate service packages"
+            );
+        }
+
+        const servicePackage =
+            await prisma.servicePackage.findUnique({
+                where: { id },
+                include: {
+                    items: true,
+                    features: true,
+                },
+            });
+
+        if (!servicePackage) {
+            return errorResponse(
+                "Service package not found"
+            );
+        }
+
+        await prisma.servicePackage.create({
+            data: {
+                serviceId: servicePackage.serviceId,
+
+                name: `${servicePackage.name} (Copy)`,
+
+                description:
+                    servicePackage.description,
+
+                isActive: servicePackage.isActive,
+
+                isPopular: false,
+
+                totalPrice:
+                    servicePackage.totalPrice,
+
+                items: {
+                    create:
+                        servicePackage.items.map(
+                            (item) => ({
+                                name: item.name,
+                                description:
+                                    item.description,
+                                quantity:
+                                    item.quantity,
+                                unitPrice:
+                                    item.unitPrice,
+                                unit: item.unit,
+                                billingCycle:
+                                    item.billingCycle,
+                                sortOrder:
+                                    item.sortOrder,
+                            })
+                        ),
+                },
+
+                features: {
+                    create:
+                        servicePackage.features.map(
+                            (feature) => ({
+                                content:
+                                    feature.content,
+                                sortOrder:
+                                    feature.sortOrder,
+                            })
+                        ),
+                },
+            },
+        });
+
+        return successResponse(
+            "Service package duplicated successfully"
+        );
+    } catch (error) {
+        if (
+            process.env.NODE_ENV ===
+            "development"
+        ) {
+            console.error(error);
+        }
+
+        return errorResponse(
+            "Failed to duplicate service package",
             getErrorMessage(error)
         );
     }

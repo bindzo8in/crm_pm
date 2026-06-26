@@ -48,6 +48,13 @@ const data = {
       )
     },
     {
+      title: "Services",
+      url: "/dashboard/services",
+      icon: (
+        <FileTextIcon />
+      )
+    },
+    {
       title: "Lifecycle",
       url: "#",
       icon: (
