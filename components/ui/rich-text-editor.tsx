@@ -107,7 +107,8 @@ export function RichTextEditor({ value, onChange, disabled, className, placehold
     ],
     content: value,
     onUpdate: ({ editor }) => {
-      onChange?.(editor.getJSON())
+      const json = JSON.parse(JSON.stringify(editor.getJSON()))
+      onChange?.(json)
     },
   })
 
@@ -123,7 +124,7 @@ export function RichTextEditor({ value, onChange, disabled, className, placehold
     <div className={cn("flex flex-col border border-input rounded-md overflow-hidden focus-within:ring-1 focus-within:ring-ring focus-within:border-primary bg-background w-full", className)}>
       <EditorContext.Provider value={{ editor }}>
         <ScrollArea className="border-b border-border bg-muted/40 w-full" type="auto">
-          <Toolbar className="flex w-max items-center gap-1 p-1 !static !border-none !bg-transparent min-h-10">
+          <Toolbar className="flex w-max items-center gap-1 p-1 static! border-none! bg-transparent! min-h-10">
             <ToolbarGroup>
               <UndoRedoButton action="undo" />
               <UndoRedoButton action="redo" />

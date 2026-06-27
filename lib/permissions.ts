@@ -44,6 +44,13 @@ const statement = {
         "delete",
     ],
 
+    terms: [
+        "create",
+        "read",
+        "update",
+        "delete",
+    ],
+
     projects: [
         "create",
         "read",
@@ -90,6 +97,8 @@ export const superAdminRole = ac.newRole({
 
     services: ["create", "read", "update", "delete"],
 
+    terms: ["create", "read", "update", "delete"],
+
     projects: ["create", "read", "update", "delete"],
 
     tasks: ["create", "read", "update", "delete", "assign"],
@@ -107,6 +116,8 @@ export const adminRole = ac.newRole({
     invoices: ["create", "read", "update", "delete", "mark-paid"],
 
     services: ["create", "read", "update", "delete"],
+
+    terms: ["create", "read", "update", "delete"],
 
     projects: ["create", "read", "update", "delete"],
 

@@ -15,7 +15,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, ListIcon, ChartBarIcon, FolderIcon, UsersIcon, CameraIcon, FileTextIcon, Settings2Icon, CircleHelpIcon, SearchIcon, DatabaseIcon, FileChartColumnIcon, FileIcon, CommandIcon, BookUser } from "lucide-react"
+import { LayoutDashboardIcon, ChartBarIcon, FolderIcon, UsersIcon, CameraIcon, FileTextIcon, Settings2Icon, CircleHelpIcon, SearchIcon, DatabaseIcon, FileChartColumnIcon, FileIcon, CommandIcon, BookUser, BoxIcon, HandshakeIcon } from "lucide-react"
 
 const data = {
   user: {
@@ -55,10 +55,18 @@ const data = {
       )
     },
     {
-      title: "Lifecycle",
+      title: "Packages",
+      url: "/dashboard/services/packages",
+      icon: (
+        <BoxIcon
+        />
+      ),
+    },
+    {
+      title: "Terms",
       url: "#",
       icon: (
-        <ListIcon
+        <HandshakeIcon
         />
       ),
     },
@@ -180,14 +188,6 @@ const data = {
         />
       ),
     },
-    {
-      name: "Word Assistant",
-      url: "#",
-      icon: (
-        <FileIcon
-        />
-      ),
-    },
   ],
 }
 
@@ -203,7 +203,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             >
               <a href="#">
                 <CommandIcon className="size-5!" />
-                <span className="text-base font-semibold">Acme Inc.</span>
+                <span className="text-base font-semibold">Design Hub CRM.</span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>
