@@ -36,7 +36,7 @@ export const columns: ColumnDef<ServicePackageRow>[] = [
                             {item.quantity > 1 && (
                                 <span>
                                     {" "}
-                                    × {item.quantity}
+                                    × {item.quantity} {item.unit}
                                 </span>
                             )}
                         </span>
@@ -45,7 +45,7 @@ export const columns: ColumnDef<ServicePackageRow>[] = [
                             ₹
                             {(
                                 item.unitPrice * item.quantity
-                            ).toLocaleString("en-IN")} {item.unit}
+                            ).toLocaleString("en-IN")}
                         </span>
                     </div>
                 ))}

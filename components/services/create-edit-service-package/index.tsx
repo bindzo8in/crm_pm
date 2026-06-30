@@ -50,6 +50,7 @@ import {
 import { createServicePackage, editServicePackage, getServicePackage } from "@/actions/services";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 
 const SortableItem = dynamic(
     () => import("@/components/sortable-items"),
@@ -185,6 +186,7 @@ function LivePreviewSidebar() {
 /* Main Form                                                          */
 /* ------------------------------------------------------------------ */
 export function CreateEditServicePackageForm({ serviceId, defaultValues }: { serviceId: string, defaultValues?: Awaited<ReturnType<typeof getServicePackage>>['data'] }) {
+    const router = useRouter();
     const form = useForm<ServicePackageSchema>({
         resolver: zodResolver(servicePackageSchema),
         defaultValues: {
@@ -222,16 +224,13 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
         },
     });
 
-    console.log(form.formState.errors)
-    const values = form.watch()
-    console.log("df", values)
     const {
         control,
         handleSubmit,
         setValue,
         getValues,
         reset,
-        formState: { isSubmitting, isSubmitSuccessful },
+        formState: { isSubmitting },
     } = form;
 
     const {
@@ -275,7 +274,6 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
     };
 
     const onSubmit = async (data: ServicePackageSchema) => {
-        console.log({ isA: data.isActive, isP: data.isPopular})
         try {
             const { success, message, error } = data.id ? await editServicePackage(data.id, data) : await createServicePackage(data)
 
@@ -294,6 +292,7 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
             }
 
             !data.id && reset();
+            router.push(`/dashboard/services/packages?serviceId=${serviceId}`)
         } catch (error) {
             // handle error
             if (error instanceof z.ZodError) {

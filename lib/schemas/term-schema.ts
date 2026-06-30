@@ -30,6 +30,7 @@ export const termQuerySchema = z.object({
   ]).default("desc"),
 
   isActive: z.boolean().optional(),
+  isDefault: z.boolean().optional(),
 });
 
 export type TermSchema = z.infer<typeof termSchema>;

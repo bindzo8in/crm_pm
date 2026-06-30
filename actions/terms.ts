@@ -187,7 +187,7 @@ export async function GetTerm(id: string) {
 
 export async function GetTerms(query: TermQuerySchema) {
     try {
-        const { page, pageSize, search, sortDirection, isActive } = query;
+        const { page, pageSize, search, sortDirection, isActive, isDefault } = query;
 
         const where: Prisma.ProposalTermWhereInput = {
             ...(search && {
@@ -197,6 +197,7 @@ export async function GetTerms(query: TermQuerySchema) {
                 },
             }),
             ...(isActive !== undefined && { isActive }),
+            ...(isDefault !== undefined && { isDefault })
         };
 
         const [terms, total] = await prisma.$transaction([
@@ -204,6 +205,17 @@ export async function GetTerms(query: TermQuerySchema) {
                 skip: page * pageSize,
                 take: pageSize,
                 where,
+                include: {
+                    services: {
+                        include: {
+                            service: {
+                                select: {
+                                    name: true,
+                                }
+                            }
+                        }
+                    }
+                },
                 orderBy: [
                     {
                         createdAt: sortDirection,
@@ -218,8 +230,18 @@ export async function GetTerms(query: TermQuerySchema) {
             }),
         ]);
 
+        const formattedTerms = terms.map(term => ({
+            ...term,
+            services: term.services.map(s => ({
+                serviceId: s.serviceId,
+                serviceName: s.service.name,
+                isRequired: s.isRequired,
+                sortOrder: s.sortOrder,
+            })),
+        }));
+
         return successResponse("Terms found", {
-            data: terms,
+            data: formattedTerms,
             pagination: { page, pageSize, total, pageCount: Math.ceil(total / pageSize) },
         });
     } catch (error) {

@@ -7,7 +7,6 @@ import { Field, FieldGroup, FieldContent, FieldLabel, FieldError, FieldSeparator
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Switch } from "@/components/ui/switch"
 import { CreateService, EditService, type GetService } from '@/actions/services'
 import { Checkbox } from '../../ui/checkbox'
 import { useRouter } from 'next/navigation'
@@ -22,7 +21,7 @@ export function ServiceForm({ service }: { service?: Awaited<ReturnType<typeof G
       id: service?.id || "",
       name: service?.name || "",
       description: service?.description || "",
-      isActive: service?.isActive || false
+      isActive: service?.isActive || true
     }
   })
   const { formState: { isSubmitting } } = form;

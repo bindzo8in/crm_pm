@@ -9,7 +9,6 @@ export default async function EditServicePackagePage({ params, searchParams }: P
 
     const service = await GetServiceNameById(id)
     const servicePackage = await getServicePackage(packageId as string)
-    console.log(servicePackage)
     return (
         <DashboardContainer
             title={service.success && service.data ? `Edit Service Package for ${service.data.name}` : "Edit Service Package"}

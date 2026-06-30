@@ -188,7 +188,6 @@ export function ProposalTermForm({
             const res = initialData?.id ?
                 await EditTerm(data) :
                 await CreateTerm(data);
-            console.log(res)
             if (!res.success) {
                 if (Array.isArray(res.error)) {
                     res.error.forEach((issue) => {

@@ -3,7 +3,8 @@ import DashboardContainer from "../../dashboard-container";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { GetServicesPackages } from "@/actions/services";
 import { ServicesPackagesTable } from "@/components/services/packages/table";
-import { getServicePackagesQueryKey } from "@/components/services/util";
+import { servicePackageKeys } from "@/components/services/util";
+import { PlusIcon } from "lucide-react";
 
 export default async function ServicePackagePage({
     searchParams,
@@ -50,12 +51,23 @@ export default async function ServicePackagePage({
     const queryClient = getQueryClient();
 
     await queryClient.prefetchQuery({
-        queryKey: getServicePackagesQueryKey(initialQuery),
+        queryKey: servicePackageKeys.list(initialQuery),
         queryFn: () => GetServicesPackages(initialQuery),
     });
 
+    const canCreate = Boolean(params.serviceId);
+
     return (
-        <DashboardContainer title="Service Packages">
+        <DashboardContainer
+            title="Service Packages"
+            action={
+                canCreate ? {
+                    href: `/dashboard/services/${params.serviceId}/create-package`,
+                    icon: <PlusIcon />,
+                    label: "Create Service Package",
+                } : undefined
+            }
+        >
             <HydrationBoundary state={dehydrate(queryClient)}>
                 <ServicesPackagesTable initialQuery={initialQuery} />
             </HydrationBoundary>

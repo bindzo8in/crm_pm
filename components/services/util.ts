@@ -70,3 +70,24 @@ export const servicePackageKeys = {
             query.sortDirection,
         ] as const,
 };
+
+export const termsKeys = {
+    all: ["terms"] as const,
+    list: (query: {
+        page: number;
+        pageSize: number;
+        search?: string;
+        isActive?: boolean;
+        isDefault?: boolean;
+        sortDirection: "asc" | "desc";
+    }) =>
+        [
+            ...termsKeys.all,
+            query.page,
+            query.pageSize,
+            query.search,
+            query.isActive,
+            query.isDefault,
+            query.sortDirection,
+        ] as const,
+}

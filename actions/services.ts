@@ -967,4 +967,118 @@ export async function GetAllActiveServices() {
             getErrorMessage(error)
         );
     }
-}
+}
+
+export async function GetServiceOptions(search?: string) {
+    try {
+        const services = await prisma.service.findMany({
+            where: {
+                deletedAt: null,
+                isActive: true,
+
+                ...(search
+                    ? {
+                        OR: [
+                            {
+                                name: {
+                                    contains: search,
+                                    mode: "insensitive",
+                                },
+                            },
+                            {
+                                description: {
+                                    contains: search,
+                                    mode: "insensitive",
+                                },
+                            },
+                        ],
+                    }
+                    : {}),
+            },
+
+            select: {
+                id: true,
+                name: true,
+                description: true,
+            },
+
+            orderBy: {
+                name: "asc",
+            },
+
+            take: 20,
+        });
+
+        return {
+            success: true,
+            data: services,
+        };
+    } catch (error) {
+        if (process.env.NODE_ENV === "development") {
+            console.error(error);
+        }
+
+        throw error;
+    }
+}
+
+export async function GetServicePackages(
+    serviceId: string,
+    search?: string,
+) {
+    try {
+        const packages = await prisma.servicePackage.findMany({
+            where: {
+                serviceId,
+                isActive: true,
+
+                ...(search
+                    ? {
+                        OR: [
+                            {
+                                name: {
+                                    contains: search,
+                                    mode: "insensitive",
+                                },
+                            },
+                            {
+                                description: {
+                                    contains: search,
+                                    mode: "insensitive",
+                                },
+                            },
+                        ],
+                    }
+                    : {}),
+            },
+
+            select: {
+                id: true,
+                name: true,
+                description: true,
+                totalPrice: true,
+                isPopular: true,
+            },
+
+            orderBy: [
+                {
+                    isPopular: "desc",
+                },
+                {
+                    name: "asc",
+                },
+            ],
+        });
+
+        return {
+            success: true,
+            data: packages,
+        };
+    } catch (error) {
+        if (process.env.NODE_ENV === "development") {
+            console.error(error);
+        }
+
+        throw error;
+    }
+}
