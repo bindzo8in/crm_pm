@@ -4,7 +4,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import { ServicePackageActions } from "./actions";
 
 type ServicePackageRow = NonNullable<
-    Awaited<ReturnType<typeof GetServicesPackages>>["data"]
+    Extract<Awaited<ReturnType<typeof GetServicesPackages>>, { success: true }>["data"]
 >["data"][number];
 
 export const columns: ColumnDef<ServicePackageRow>[] = [
@@ -26,7 +26,7 @@ export const columns: ColumnDef<ServicePackageRow>[] = [
         size: 350,
         cell: ({ row }) => (
             <div className="space-y-1">
-                {row.original.items.map((item) => (
+                {row.original.items.map((item: any) => (
                     <div
                         key={item.id}
                         className="flex items-center justify-between gap-4 text-sm"

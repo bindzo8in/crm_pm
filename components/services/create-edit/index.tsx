@@ -13,7 +13,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
 
-export function ServiceForm({ service }: { service?: Awaited<ReturnType<typeof GetService>>['data'] }) {
+export function ServiceForm({ service }: { service?: Extract<Awaited<ReturnType<typeof GetService>>, { success: true }>['data'] }) {
 
   const form = useForm<ServiceSchema>({
     resolver: zodResolver(serviceSchema),

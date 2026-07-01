@@ -3,7 +3,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import { ServiceActions } from "./actions";
 
 type ServiceRow = NonNullable<
-    Awaited<ReturnType<typeof GetServices>>["data"]
+    Extract<Awaited<ReturnType<typeof GetServices>>, { success: true }>["data"]
 >["data"][number];
 
 export const columns: ColumnDef<ServiceRow>[] = [

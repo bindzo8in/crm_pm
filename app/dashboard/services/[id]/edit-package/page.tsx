@@ -17,7 +17,7 @@ export default async function EditServicePackagePage({ params, searchParams }: P
                 label: "Back",
                 icon: <ArrowLeft />
             }}>
-            <CreateEditServicePackageForm serviceId={id} defaultValues={servicePackage.data}/>
+            <CreateEditServicePackageForm serviceId={id} defaultValues={servicePackage.success ? servicePackage.data : undefined}/>
         </DashboardContainer>
     )
 }

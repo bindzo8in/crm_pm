@@ -21,11 +21,13 @@ import {
     useSensor,
     useSensors,
     DragEndEvent,
+    KeyboardSensor,
 } from "@dnd-kit/core";
 import {
     SortableContext,
     verticalListSortingStrategy,
     useSortable,
+    sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -185,7 +187,7 @@ function LivePreviewSidebar() {
 /* ------------------------------------------------------------------ */
 /* Main Form                                                          */
 /* ------------------------------------------------------------------ */
-export function CreateEditServicePackageForm({ serviceId, defaultValues }: { serviceId: string, defaultValues?: Awaited<ReturnType<typeof getServicePackage>>['data'] }) {
+export function CreateEditServicePackageForm({ serviceId, defaultValues }: { serviceId: string, defaultValues?: Extract<Awaited<ReturnType<typeof getServicePackage>>, { success: true }>['data'] }) {
     const router = useRouter();
     const form = useForm<ServicePackageSchema>({
         resolver: zodResolver(servicePackageSchema),
@@ -201,8 +203,8 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
 
             items:
                 defaultValues?.items
-                    ?.sort((a, b) => a.sortOrder - b.sortOrder)
-                    .map((item) => ({
+                    ?.sort((a: any, b: any) => a.sortOrder - b.sortOrder)
+                    .map((item: any) => ({
                         id: item.id,
                         name: item.name,
                         description: item.description ?? "",
@@ -215,8 +217,8 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
 
             features:
                 defaultValues?.features
-                    ?.sort((a, b) => a.sortOrder - b.sortOrder)
-                    .map((feature) => ({
+                    ?.sort((a: any, b: any) => a.sortOrder - b.sortOrder)
+                    .map((feature: any) => ({
                         id: feature.id,
                         name: feature.content,
                         sortOrder: feature.sortOrder,
@@ -225,12 +227,14 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
     });
 
     const {
-        control,
+        register,
         handleSubmit,
+        formState: { errors, isSubmitting },
+        control,
         setValue,
         getValues,
-        reset,
-        formState: { isSubmitting },
+        watch,
+        reset
     } = form;
 
     const {
@@ -238,35 +242,44 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
         append: appendItem,
         remove: removeItem,
         move: moveItem,
-    } = useFieldArray({ control, name: "items" });
+    } = useFieldArray({
+        control,
+        name: "items",
+    });
 
     const {
         fields: featureFields,
         append: appendFeature,
         remove: removeFeature,
         move: moveFeature,
-    } = useFieldArray({ control, name: "features" });
+    } = useFieldArray({
+        control,
+        name: "features",
+    });
 
     const sensors = useSensors(
-        useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+        useSensor(PointerSensor),
+        useSensor(KeyboardSensor, {
+            coordinateGetter: sortableKeyboardCoordinates,
+        })
     );
 
-    const handleDragEnd = (event: DragEndEvent) => {
+    const handleDragEndItems = (event: DragEndEvent) => {
         const { active, over } = event;
-        if (!over || active.id === over.id) return;
-
-        const activeItemIndex = itemFields.findIndex((f) => f.id === active.id);
-        const overItemIndex = itemFields.findIndex((f) => f.id === over.id);
-        if (activeItemIndex !== -1 && overItemIndex !== -1) {
-            moveItem(activeItemIndex, overItemIndex);
+        if (over && active.id !== over.id) {
+            const activeIndex = itemFields.findIndex((item) => item.id === active.id);
+            const overIndex = itemFields.findIndex((item) => item.id === over.id);
+            moveItem(activeIndex, overIndex);
             const updatedItems = getValues("items");
             updatedItems.forEach((_, idx) => setValue(`items.${idx}.sortOrder`, idx));
-            return;
         }
+    };
 
-        const activeFeatureIndex = featureFields.findIndex((f) => f.id === active.id);
-        const overFeatureIndex = featureFields.findIndex((f) => f.id === over.id);
-        if (activeFeatureIndex !== -1 && overFeatureIndex !== -1) {
+    const handleDragEndFeatures = (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (over && active.id !== over.id) {
+            const activeFeatureIndex = featureFields.findIndex((feature) => feature.id === active.id);
+            const overFeatureIndex = featureFields.findIndex((feature) => feature.id === over.id);
             moveFeature(activeFeatureIndex, overFeatureIndex);
             const updatedFeatures = getValues("features");
             updatedFeatures.forEach((_, idx) => setValue(`features.${idx}.sortOrder`, idx));
@@ -275,18 +288,18 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
 
     const onSubmit = async (data: ServicePackageSchema) => {
         try {
-            const { success, message, error } = data.id ? await editServicePackage(data.id, data) : await createServicePackage(data)
+            const res = data.id ? await editServicePackage(data.id, data) : await createServicePackage(data)
 
-            if (!success) {
-                if (error) {
-                    throw error
+            if (!res.success) {
+                if ('error' in res && res.error) {
+                    throw res.error
                 } else {
-                    toast.error(message || "Something went wrong", {
+                    toast.error(res.message || "Something went wrong", {
                         id: "submit-error",
                     });
                 }
             } else {
-                toast.success(message || "Package created successfully", {
+                toast.success(res.message || "Package created successfully", {
                     id: "submit-success",
                 });
             }
@@ -434,7 +447,7 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                             </div>
                             <FieldSeparator />
 
-                            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndItems}>
                                 <SortableContext items={itemFields.map((f) => f.id)} strategy={verticalListSortingStrategy}>
                                     <div className="space-y-4">
                                         {itemFields.length === 0 && (
@@ -607,7 +620,7 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                             </div>
                             <FieldSeparator />
 
-                            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndFeatures}>
                                 <SortableContext items={featureFields.map((f) => f.id)} strategy={verticalListSortingStrategy}>
                                     <div className="space-y-3">
                                         {featureFields.length === 0 && (

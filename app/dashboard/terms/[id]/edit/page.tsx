@@ -13,7 +13,7 @@ export default async function EditTerms({ params }: PageProps<'/dashboard/terms/
     const { id } = await params;
     const termResponse = await GetTerm(id);
 
-    const term = termResponse.success && termResponse.data ? termResponse.data : null;
+    const term = termResponse.success && termResponse.data ? termResponse.data : undefined;
 
     const servicesResponse = await GetAllActiveServices();
     const activeServices = servicesResponse.success && servicesResponse.data ? servicesResponse.data : [];

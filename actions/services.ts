@@ -1070,9 +1070,14 @@ export async function GetServicePackages(
             ],
         });
 
+        const serializedPackages = packages.map((pkg) => ({
+            ...pkg,
+            totalPrice: pkg.totalPrice.toNumber(),
+        }));
+
         return {
             success: true,
-            data: packages,
+            data: serializedPackages,
         };
     } catch (error) {
         if (process.env.NODE_ENV === "development") {

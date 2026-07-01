@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { TermsActions } from "./actions";
 
 type TermRow = NonNullable<
-    Awaited<ReturnType<typeof GetTerms>>["data"]
+    Extract<Awaited<ReturnType<typeof GetTerms>>, { success: true }>["data"]
 >["data"][number];
 
 export const columns: ColumnDef<TermRow>[] = [
@@ -32,7 +32,7 @@ export const columns: ColumnDef<TermRow>[] = [
 
             return (
                 <div className="flex flex-wrap gap-1">
-                    {services.slice(0, 3).map((service) => (
+                    {services.slice(0, 3).map((service: any) => (
                         <Badge
                             key={service.serviceId}
                             variant="secondary"

@@ -64,7 +64,7 @@ export function ProposalCreateEditForm() {
 
         toast.success(response.message);
 
-        router.push(`/dashboard/proposals/${response.data!.id}/edit`);
+        router.push(`/dashboard/proposals/${response.data!.id}/builder`);
     });
 
     return (

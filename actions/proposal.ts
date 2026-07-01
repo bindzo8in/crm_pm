@@ -80,5 +80,37 @@ export async function createProposal(proposal: ProposalSchema) {
             getErrorMessage(error)
         );
     }
+}
 
+export async function updateProposalStatus(proposalId: string, status: "DRAFT" | "SENT" | "ACCEPTED" | "REJECTED" | "EXPIRED") {
+    try {
+        const session = await auth.api.getSession({
+            headers: await headers()
+        })
+        if (!session?.user) {
+            return errorResponse("You don't have permission to update this proposal");
+        }
+
+        const hasPermission = await auth.api.userHasPermission({
+            headers: await headers(),
+            body: {
+                permissions: {
+                    proposals: ["update"]
+                }
+            }
+        })
+        if (!hasPermission.success) {
+            return errorResponse<string>("You don't have permission to update this proposal");
+        }
+
+        await prisma.proposal.update({
+            where: { id: proposalId },
+            data: { status }
+        });
+
+        return successResponse("Proposal status updated successfully");
+    } catch (error) {
+        console.error("Failed to update proposal status:", error);
+        return errorResponse("Failed to update proposal status", getErrorMessage(error));
+    }
 }

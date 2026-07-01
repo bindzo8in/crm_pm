@@ -96,7 +96,7 @@ function SortableTableRow({ id, children }: SortableTableRowProps) {
 // 2. Main Form Component
 // =============================================================================
 interface ProposalTermFormProps {
-    initialData?: Awaited<ReturnType<typeof GetTerm>>['data'];
+    initialData?: Extract<Awaited<ReturnType<typeof GetTerm>>, { success: true }>['data'];
     activeServices?: { id: string; name: string }[];
     onSuccess?: () => void;
     onCancel?: () => void;

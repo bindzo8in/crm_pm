@@ -89,8 +89,8 @@ export function TermsTable({ initialQuery }: { initialQuery: TermQuerySchema }) 
             </div>
             <DataTable
                 columns={columns}
-                data={data?.data?.data ?? []}
-                total={data?.data?.pagination.total ?? 0}
+                data={(data?.success ? data.data?.data : undefined) ?? []}
+                total={(data?.success ? data.data?.pagination.total : undefined) ?? 0}
                 pagination={pagination}
                 onPaginationChange={setPagination}
             />

@@ -212,6 +212,7 @@ model Service {
   updatedAt            DateTime              @updatedAt
   deletedAt            DateTime?
   proposalTermServices ProposalTermService[]
+  proposalServices     ProposalService[]
 
   @@index([isActive])
 }
@@ -234,8 +235,9 @@ model ServicePackage {
   items    ServicePackageItem[]
   features PackageFeature[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  proposalServices ProposalService[]
 
   @@index([serviceId])
   @@index([isActive])
@@ -260,6 +262,8 @@ model ServicePackageItem {
   billingCycle BillingCycle
 
   sortOrder Int @default(0)
+
+  isOptional Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -346,12 +350,27 @@ model Proposal {
 
   proposalBlocks     ProposalBlock[]
   proposalActivities ProposalActivity[]
+  proposalServices   ProposalService[]
+
+  subtotal   Decimal @default(0) @db.Decimal(12, 2)
+  discount   Decimal @default(0) @db.Decimal(12, 2)
+  tax        Decimal @default(0) @db.Decimal(12, 2)
+  roundOff   Decimal @default(0) @db.Decimal(12, 2)
+  grandTotal Decimal @default(0) @db.Decimal(12, 2)
 
   @@index([customerId])
   @@index([status])
 }
 
 enum ProposalBlockType {
+  COVER
+  PRICING
+  FEATURES
+  TERMS
+  TIMELINE
+  SIGNATURE
+  CUSTOM
+  PAGE_BREAK
   SECTION
   SERVICE
   PRICING_SUMMARY
@@ -365,15 +384,18 @@ model ProposalBlock {
 
   type ProposalBlockType
 
-  sortOrder Int
+  sortOrder Int @default(0)
 
   title String?
 
+  isVisible         Boolean @default(true)
+  isLocked          Boolean @default(false)
+  isSystemGenerated Boolean @default(false)
+
   content Json?
 
-  service ProposalService?
-
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([proposalId])
 }
@@ -381,11 +403,20 @@ model ProposalBlock {
 model ProposalService {
   id String @id @default(cuid())
 
-  blockId String @unique
+  proposalId String
+  proposal   Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
 
-  block ProposalBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  // blockId String @unique
+
+  // block ProposalBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  serviceId String?
+  service   Service? @relation(fields: [serviceId], references: [id])
 
   serviceName String
+
+  packageId String?
+  package   ServicePackage? @relation(fields: [packageId], references: [id])
 
   packageName String?
 
@@ -393,9 +424,18 @@ model ProposalService {
 
   notes String?
 
+  sortOrder Int @default(0)
+
   items ProposalLineItem[]
 
   features ProposalFeature[]
+
+  @@index([proposalId])
+}
+
+enum DiscountType {
+  FIXED
+  PERCENTAGE
 }
 
 model ProposalLineItem {
@@ -404,6 +444,8 @@ model ProposalLineItem {
   proposalServiceId String
 
   proposalService ProposalService @relation(fields: [proposalServiceId], references: [id], onDelete: Cascade)
+
+  packageItemId String?
 
   name String
 
@@ -415,11 +457,21 @@ model ProposalLineItem {
 
   unitPrice Decimal @db.Decimal(12, 2)
 
+  total Decimal @db.Decimal(12, 2)
+
   billingCycle BillingCycle
 
   sortOrder Int
 
+  isCustom Boolean @default(false)
+
   createdAt DateTime @default(now())
+
+  discountType DiscountType?
+
+  discountValue Decimal? @db.Decimal(12, 2)
+
+  taxRate Int @default(0)
 
   @@index([proposalServiceId])
 }
@@ -434,6 +486,9 @@ model ProposalFeature {
   content String
 
   sortOrder Int
+
+  serviceId String?
+  packageId String?
 
   @@index([proposalServiceId])
 }

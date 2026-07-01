@@ -12,7 +12,7 @@ export const proposalSchema = z.object({
 
     validUntil: z.enum(["07_Days", "15_Days", "30_Days"]),
 
-    notes: z.string().nonempty().optional(),
+    notes: z.string().optional(),
 
 }).superRefine((data, ctx) => {
     if (data.notes && data.notes.length > 200) {

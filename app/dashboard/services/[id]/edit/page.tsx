@@ -12,7 +12,7 @@ export default async function EditServicePage({ params }: PageProps<'/dashboard/
             label: "Back",
             icon: <ArrowLeft className="size-4" />
         }}>
-            <ServiceForm service={service.data} />
+            <ServiceForm service={service.success ? service.data : undefined} />
         </DashboardContainer>
     )
 }
