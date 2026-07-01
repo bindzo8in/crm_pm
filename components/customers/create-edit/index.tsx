@@ -39,7 +39,7 @@ export function CustomerForm({ defaultValues, error }: { defaultValues?: Custome
     const form = useForm<CustomerSchema>({
         resolver: zodResolver(customerSchema),
         defaultValues: {
-            id: defaultValues?.id || "",
+            id: defaultValues?.id,
 
             displayName: defaultValues?.displayName || "",
             companyName: defaultValues?.companyName || "",

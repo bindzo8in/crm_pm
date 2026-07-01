@@ -1,26 +1,27 @@
-import { BillingCycle, ProposalBlockType, ProposalStatus } from "@/app/generated/prisma/enums";
+import { BillingCycle, ProposalBlockType } from "@/app/generated/prisma/enums";
 import z from "zod";
 
 export const proposalSchema = z.object({
-    id: z.string().optional(),
-    proposalNumber: z.number().optional(),
 
     customerId: z.string().nonempty("customerId is required"),
     customerDisplayName: z.string().nonempty("customerDisplayName is required"),
     customerCompanyName: z.string().optional(),
 
-    preparedById: z.string().nonempty("preparedById is required").optional(),
-
     title: z.string().nonempty("title is required"),
 
-    status: z.enum(ProposalStatus),
 
     validUntil: z.enum(["07_Days", "15_Days", "30_Days"]),
-    statusChangeReason: z.string().optional(),
-
-    currency: z.literal("INR"),
 
     notes: z.string().nonempty().optional(),
+
+}).superRefine((data, ctx) => {
+    if (data.notes && data.notes.length > 200) {
+        ctx.addIssue({
+            code: "custom",
+            message: "Notes cannot be longer than 200 characters",
+            path: ["notes"],
+        })
+    }
 })
 
 export const proposalBlockSchema = z.object({

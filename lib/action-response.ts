@@ -1,14 +1,23 @@
-export type ActionResponse<T = null> = {
-  success: boolean;
+export type SuccessResponse<T = null> = {
+  success: true;
   message: string;
   data?: T;
-  error?: unknown;
 };
 
-export function successResponse<T = null>(
+export type ErrorResponse<E = unknown> = {
+  success: false;
+  message: string;
+  error?: E;
+};
+
+export type ActionResponse<T = null, E = unknown> =
+  | SuccessResponse<T>
+  | ErrorResponse<E>;
+
+  export function successResponse<T = null>(
   message: string,
   data?: T
-): ActionResponse<T> {
+): SuccessResponse<T> {
   return {
     success: true,
     message,
@@ -16,10 +25,10 @@ export function successResponse<T = null>(
   };
 }
 
-export function errorResponse(
+export function errorResponse<E = unknown>(
   message: string,
-  error?: unknown
-): ActionResponse {
+  error?: E
+): ErrorResponse<E> {
   return {
     success: false,
     message,

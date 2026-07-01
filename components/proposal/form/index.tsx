@@ -21,32 +21,22 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { CustomerCombobox } from "@/components/customers/customer-combobox";
-import { PlusIcon } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { useState } from "react";
-import { ServiceCombobox, ServiceOption } from "./service-combobox";
-import { ServicePackageCombobox, ServicePackageOption } from "./service-package-combobox";
+import { Textarea } from "@/components/ui/textarea";
+import { createProposal } from "@/actions/proposal";
+import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 export function ProposalCreateEditForm() {
-
-    const [selectedService, setSelectedService] =
-        useState<ServiceOption | null>(null);
-
-    const [selectedPackage, setSelectedPackage] =
-        useState<ServicePackageOption | null>(null);
-
+    const router = useRouter();
     const form = useForm<ProposalSchema>({
         resolver: zodResolver(proposalSchema),
         defaultValues: {
-            currency: "INR",
             customerId: "",
             title: "",
             customerCompanyName: "",
             customerDisplayName: "",
             notes: "",
-            status: "DRAFT",
             validUntil: "07_Days",
-
         }
     });
     const {
@@ -54,14 +44,27 @@ export function ProposalCreateEditForm() {
     } = form;
     console.log(form.getValues())
 
-    const handleSubmit = form.handleSubmit(async (data: ProposalSchema) => {
-        try {
-            // TODO: implement form submission
-            console.log(data);
-            form.reset();
-        } catch (error) {
-            // TODO: handle error
+    const handleSubmit = form.handleSubmit(async (data) => {
+        const response = await createProposal(data);
+
+        if (!response.success) {
+            if (Array.isArray(response.error)) {
+                response.error.forEach((issue) => {
+                    form.setError(issue.path[0] as keyof ProposalSchema, {
+                        message: issue.message,
+                    });
+                });
+
+                return;
+            }
+
+            toast.error(response.message);
+            return;
         }
+
+        toast.success(response.message);
+
+        router.push(`/dashboard/proposals/${response.data!.id}/edit`);
     });
 
     return (
@@ -171,85 +174,34 @@ export function ProposalCreateEditForm() {
                     )}
                 />
 
+                <Controller
+                    name="notes"
+                    control={form.control}
+                    render={({ field, fieldState }) => (
+                        <Field
+                            data-invalid={fieldState.invalid}
+                            className="gap-1 col-span-full"
+                        >
+                            <FieldLabel htmlFor="notes">Notes</FieldLabel>
+                            <Textarea
+                                {...field}
+                                id="notes"
+                                onChange={(e) => {
+                                    field.onChange(e.target.value);
+                                }}
+                                aria-invalid={fieldState.invalid}
+                                placeholder="Enter notes for this proposal"
+                            />
+
+                            {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                        </Field>
+                    )}
+                />
 
             </FieldGroup>
 
             <FieldSeparator />
 
-            <Dialog>
-                <div className="my-2 flex justify-end items-center">
-                    <DialogTrigger asChild>
-                        <Button><PlusIcon /> Add Service</Button>
-                    </DialogTrigger>
-                </div>
-
-                <DialogContent className="sm:max-w-sm">
-                    <DialogHeader>
-                        <DialogTitle>Select Service & packages</DialogTitle>
-                    </DialogHeader>
-                    <DialogDescription>
-                        Select Service & packages
-                    </DialogDescription>
-                    <Controller
-                        control={form.control}
-                        name="serviceId"
-                        render={({ field, fieldState }) => (
-                            <Field>
-                                <FieldLabel>Service</FieldLabel>
-
-                                <FieldContent>
-                                    <ServiceCombobox
-                                        value={selectedService}
-                                        onValueChange={(service) => {
-                                            setSelectedService(service);
-
-                                            field.onChange(service?.id ?? "");
-
-                                            // reset package
-                                            setSelectedPackage(null);
-                                            form.setValue("packageId", "");
-                                        }}
-                                    />
-
-                                    {fieldState.error && (
-                                        <FieldError>
-                                            {fieldState.error.message}
-                                        </FieldError>
-                                    )}
-                                </FieldContent>
-                            </Field>
-                        )}
-                    />
-
-                    <Controller
-                        control={form.control}
-                        name="packageId"
-                        render={({ field, fieldState }) => (
-                            <Field>
-                                <FieldLabel>Package</FieldLabel>
-
-                                <FieldContent>
-                                    <ServicePackageCombobox
-                                        serviceId={selectedService?.id}
-                                        value={selectedPackage}
-                                        onValueChange={(pkg) => {
-                                            setSelectedPackage(pkg);
-
-                                            field.onChange(pkg?.id ?? "");
-                                        }}
-                                    />
-
-                                    {fieldState.error && (
-                                        <FieldError>
-                                            {fieldState.error.message}
-                                        </FieldError>
-                                    )}
-                                </FieldContent>
-                            </Field>
-                        )}
-                    />
-                </DialogContent>
-            </Dialog>
             <FieldGroup className="grid md:grid-cols-6 gap-4 mb-6">
             </FieldGroup>
 
