@@ -138,8 +138,10 @@ export async function getProposalPricing(proposalId: string) {
             displayName: true,
             companyName: true,
             primaryContactEmail: true,
+            city: true,
           },
         },
+        template: true,
         proposalServices: {
           orderBy: { sortOrder: "asc" },
           include: {
@@ -154,6 +156,14 @@ export async function getProposalPricing(proposalId: string) {
     if (!proposal) {
       return errorResponse("Proposal not found");
     }
+
+    // Fetch active service names for the cover footer fallback
+    const activeServices = await prisma.service.findMany({
+      where: { isActive: true, deletedAt: null },
+      select: { name: true },
+      orderBy: { name: 'asc' }
+    });
+    const activeServiceNames = activeServices.map(s => s.name);
 
     const serialized = {
       ...proposal,
@@ -172,6 +182,7 @@ export async function getProposalPricing(proposalId: string) {
           taxRate: item.taxRate ?? 0,
         })),
       })),
+      activeServiceNames,
     };
 
     return successResponse("Fetched proposal pricing", serialized);

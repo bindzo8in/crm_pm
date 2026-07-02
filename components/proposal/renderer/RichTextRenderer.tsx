@@ -68,7 +68,7 @@ export function RichTextRenderer({ block }: RichTextRendererProps) {
   }
 
   return (
-    <div className="proposal-page-content proposal-page-break-always">
+    <div className="mb-16">
       {block.title && (
         <h2 className="text-2xl font-bold text-gray-900 mb-8 border-b pb-4">{block.title}</h2>
       )}

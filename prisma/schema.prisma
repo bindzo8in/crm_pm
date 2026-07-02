@@ -320,6 +320,35 @@ enum ProposalStatus {
   EXPIRED
 }
 
+model ProposalTemplate {
+  id String @id @default(cuid())
+
+  name String
+  
+  coverEnabled       Boolean @default(true)
+  coverBackground    Json?   // { url: string, publicId: string }
+  coverLogo          Json?   // { url: string, publicId: string }
+  coverWatermark     Json?   // { url: string, publicId: string }
+  coverFooterEnabled Boolean @default(true)
+  
+  primaryColor   String?
+  secondaryColor String?
+  accentColor    String?
+  
+  showServices    Boolean @default(true)
+  showContacts    Boolean @default(true)
+  showAddress     Boolean @default(true)
+  showSocialLinks Boolean @default(false)
+  
+  services   Json? // Array of service names
+  footerText String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  proposals Proposal[]
+}
+
 model Proposal {
   id String @id @default(cuid())
 
@@ -330,6 +359,9 @@ model Proposal {
 
   preparedById String
   preparedBy   User   @relation(fields: [preparedById], references: [id])
+
+  templateId String?
+  template   ProposalTemplate? @relation(fields: [templateId], references: [id])
 
   customerDisplayName String
   customerCompanyName String?
@@ -357,6 +389,9 @@ model Proposal {
   tax        Decimal @default(0) @db.Decimal(12, 2)
   roundOff   Decimal @default(0) @db.Decimal(12, 2)
   grandTotal Decimal @default(0) @db.Decimal(12, 2)
+
+  bankAccountId String?
+  bankAccount   CompanyBankAccount? @relation(fields: [bankAccountId], references: [id])
 
   @@index([customerId])
   @@index([status])
@@ -518,4 +553,70 @@ model ProposalActivity {
   createdAt DateTime @default(now())
 
   @@index([proposalId])
+}
+
+// ------------------- Business Settings Models -------------------
+
+model Company {
+  id String @id @default(cuid())
+
+  displayName String
+  legalName   String
+  tagline     String?
+  about       String?
+
+  website      String?
+  email        String
+  supportEmail String?
+  salesEmail   String?
+  phone        String
+
+  gstNumber String?
+  panNumber String?
+  cinNumber String?
+
+  address    String
+  city       String
+  state      String
+  country    String
+  postalCode String?
+  googleMapUrl String?
+
+  logo           Json? // { url: string, publicId: string }
+  darkLogo       Json?
+  favicon        Json?
+  signatureImage Json?
+
+  bankAccounts CompanyBankAccount[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CompanyBankAccount {
+  id String @id @default(cuid())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  accountName   String
+  bankName      String
+  branch        String?
+  accountNumber String
+  ifscCode      String
+  swiftCode     String?
+  accountType   String?
+  upiId         String?
+  qrCodeImage   Json? // { url: string, publicId: string }
+
+  isDefault    Boolean @default(false)
+  isActive     Boolean @default(true)
+  displayOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  proposals Proposal[]
+
+  @@index([companyId])
 }

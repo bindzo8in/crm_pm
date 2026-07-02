@@ -15,7 +15,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, ChartBarIcon, FolderIcon, UsersIcon, CameraIcon, FileTextIcon, Settings2Icon, CircleHelpIcon, SearchIcon, DatabaseIcon, FileChartColumnIcon, FileIcon, CommandIcon, BookUser, BoxIcon, HandshakeIcon } from "lucide-react"
+import { LayoutDashboardIcon, ChartBarIcon, FolderIcon, UsersIcon, CameraIcon, FileTextIcon, Settings2Icon, CircleHelpIcon, SearchIcon, DatabaseIcon, FileChartColumnIcon, FileIcon, CommandIcon, BookUser, BoxIcon, HandshakeIcon, ScrollText } from "lucide-react"
 
 const data = {
   user: {
@@ -34,7 +34,7 @@ const data = {
     },
     {
       title: "Users",
-      url: "#",
+      url: "/dashboard/users",
       icon: (
         <UsersIcon
         />
@@ -42,7 +42,7 @@ const data = {
     },
     {
       title: "Customers",
-      url: "#",
+      url: "/dashboard/customers",
       icon: (
         <BookUser />
       )
@@ -64,9 +64,17 @@ const data = {
     },
     {
       title: "Terms",
-      url: "#",
+      url: "/dashboard/terms",
       icon: (
         <HandshakeIcon
+        />
+      ),
+    },
+    {
+      title: "Proposals",
+      url: "/dashboard/proposals",
+      icon: (
+        <ScrollText
         />
       ),
     },
@@ -75,14 +83,6 @@ const data = {
       url: "#",
       icon: (
         <ChartBarIcon
-        />
-      ),
-    },
-    {
-      title: "Projects",
-      url: "#",
-      icon: (
-        <FolderIcon
         />
       ),
     },
@@ -147,10 +147,18 @@ const data = {
   ],
   navSecondary: [
     {
-      title: "Settings",
-      url: "#",
+      title: "Company Profile",
+      url: "/dashboard/settings/business/company",
       icon: (
         <Settings2Icon
+        />
+      ),
+    },
+    {
+      title: "Bank Accounts",
+      url: "/dashboard/settings/business/banks",
+      icon: (
+        <BoxIcon
         />
       ),
     },

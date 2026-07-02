@@ -24,7 +24,7 @@ export function AcceptProposalButton({ proposalId, currentStatus }: AcceptPropos
       toast.success("Proposal marked as Accepted!");
       router.refresh();
     } else {
-      toast.error(result.error || "Failed to update proposal status");
+      toast.error(typeof result.error === 'string' ? result.error : "Failed to update proposal status");
     }
     
     setIsUpdating(false);

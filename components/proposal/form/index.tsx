@@ -22,15 +22,27 @@ import {
 } from "@/components/ui/select";
 import { CustomerCombobox } from "@/components/customers/customer-combobox";
 import { Textarea } from "@/components/ui/textarea";
-import { createProposal } from "@/actions/proposal";
+import { createProposal, updateProposal } from "@/actions/proposal";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
-export function ProposalCreateEditForm() {
+interface ProposalCreateEditFormProps {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    initialData?: any;
+}
+
+export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormProps) {
     const router = useRouter();
     const form = useForm<ProposalSchema>({
         resolver: zodResolver(proposalSchema),
-        defaultValues: {
+        defaultValues: initialData ? {
+            customerId: initialData.customerId,
+            title: initialData.title,
+            customerCompanyName: initialData.customerCompanyName || "",
+            customerDisplayName: initialData.customerDisplayName || "",
+            notes: initialData.notes || "",
+            validUntil: initialData.validUntil as "07_Days" | "15_Days" | "30_Days",
+        } : {
             customerId: "",
             title: "",
             customerCompanyName: "",
@@ -45,7 +57,12 @@ export function ProposalCreateEditForm() {
     console.log(form.getValues())
 
     const handleSubmit = form.handleSubmit(async (data) => {
-        const response = await createProposal(data);
+        let response;
+        if (initialData) {
+            response = await updateProposal(initialData.id, data);
+        } else {
+            response = await createProposal(data);
+        }
 
         if (!response.success) {
             if (Array.isArray(response.error)) {
@@ -64,7 +81,11 @@ export function ProposalCreateEditForm() {
 
         toast.success(response.message);
 
-        router.push(`/dashboard/proposals/${response.data!.id}/builder`);
+        if (initialData) {
+            router.push(`/dashboard/proposals/${initialData.id}/builder`);
+        } else {
+            router.push(`/dashboard/proposals/${response.data!.id}/builder`);
+        }
     });
 
     return (
@@ -207,7 +228,7 @@ export function ProposalCreateEditForm() {
 
             <div className="flex justify-end items-center w-full">
                 <Button disabled={isSubmitting}>
-                    {isSubmitting ? "Submitting..." : "Submit"}
+                    {isSubmitting ? (initialData ? "Updating..." : "Submitting...") : (initialData ? "Update" : "Submit")}
                 </Button>
             </div>
         </form>

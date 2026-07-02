@@ -30,9 +30,11 @@ interface PricingRendererProps {
       }>;
     }>;
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  bankAccount?: any;
 }
 
-export function PricingRenderer({ block, proposal }: PricingRendererProps) {
+export function PricingRenderer({ block, proposal, bankAccount }: PricingRendererProps) {
   const services = proposal.proposalServices || [];
 
   const formatCurrency = (val: number) => {
@@ -53,7 +55,7 @@ export function PricingRenderer({ block, proposal }: PricingRendererProps) {
   };
 
   return (
-    <div className="proposal-page-content proposal-page-break-always">
+    <div className="mb-16">
       <h2 className="text-2xl font-bold text-gray-900 mb-8 border-b pb-4">{block.title || "Pricing & Financial Summary"}</h2>
 
       {services.length === 0 ? (
@@ -112,9 +114,49 @@ export function PricingRenderer({ block, proposal }: PricingRendererProps) {
             </div>
           ))}
 
-          {/* Financial Summary */}
-          <div className="flex justify-end pt-6 break-inside-avoid">
-            <div className="w-full max-w-sm rounded-lg border bg-gray-50/50 p-6">
+          {/* Financial Summary and Bank Account */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6 break-inside-avoid">
+            <div>
+              {bankAccount && (
+                <div className="w-full rounded-lg border bg-gray-50/50 p-6 h-full">
+                  <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 border-b pb-3">
+                    Bank Details
+                  </h4>
+                  <div className="space-y-2 text-sm text-gray-700">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Bank Name</span>
+                      <span className="font-medium">{bankAccount.bankName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Account Name</span>
+                      <span className="font-medium">{bankAccount.accountName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Account Number</span>
+                      <span className="font-medium font-mono">{bankAccount.accountNumber}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">IFSC Code</span>
+                      <span className="font-medium">{bankAccount.ifscCode}</span>
+                    </div>
+                    {bankAccount.swiftCode && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">SWIFT Code</span>
+                        <span className="font-medium">{bankAccount.swiftCode}</span>
+                      </div>
+                    )}
+                    {bankAccount.upiId && (
+                      <div className="flex justify-between mt-4 border-t pt-2">
+                        <span className="text-gray-500">UPI ID</span>
+                        <span className="font-medium">{bankAccount.upiId}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="w-full rounded-lg border bg-gray-50/50 p-6">
               <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 border-b pb-3">
                 Financial Summary
               </h4>

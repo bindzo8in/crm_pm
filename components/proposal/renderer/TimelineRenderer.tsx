@@ -26,7 +26,7 @@ export function TimelineRenderer({ block }: TimelineRendererProps) {
   if (milestones.length === 0) return null;
 
   return (
-    <div className="proposal-page-content proposal-page-break-always">
+    <div className="mb-16">
       <h2 className="text-2xl font-bold text-gray-900 mb-12 border-b pb-4">{block.title || "Project Timeline & Milestones"}</h2>
       
       <div className="relative border-l-2 border-blue-200 ml-4 space-y-10">

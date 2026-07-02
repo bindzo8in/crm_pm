@@ -9,7 +9,6 @@ export const proposalSchema = z.object({
 
     title: z.string().nonempty("title is required"),
 
-
     validUntil: z.enum(["07_Days", "15_Days", "30_Days"]),
 
     notes: z.string().optional(),
@@ -23,6 +22,20 @@ export const proposalSchema = z.object({
         })
     }
 })
+
+export const proposalQuerySchema = z.object({
+    page: z.number().min(0).default(0),
+    pageSize: z.number().min(1).max(100).default(10),
+    search: z.string().optional(),
+    status: z.enum(["DRAFT", "SENT", "ACCEPTED", "REJECTED", "EXPIRED"]).optional(),
+    sortDirection: z.enum([
+        "asc",
+        "desc",
+    ]).default("desc"),
+    customerId: z.string().optional(),
+})
+
+export type ProposalQuerySchema = z.infer<typeof proposalQuerySchema>
 
 export const proposalBlockSchema = z.object({
     id: z.string().optional(),
@@ -46,8 +59,6 @@ export const proposalService = z.object({
     description: z.string().optional(),
 
     notes: z.string().optional(),
-
-
 })
 
 export const proposalLineItemSchema = z.object({

@@ -25,7 +25,7 @@ export function SignatureRenderer({ block }: SignatureRendererProps) {
   } = content;
 
   return (
-    <div className="proposal-page-content proposal-page-break-always break-inside-avoid">
+    <div className="mb-16 break-inside-avoid">
       <h2 className="text-2xl font-bold text-gray-900 mb-12 border-b pb-4">{block.title || "Acceptance & Sign-off"}</h2>
       
       <p className="text-sm text-gray-600 mb-16">
