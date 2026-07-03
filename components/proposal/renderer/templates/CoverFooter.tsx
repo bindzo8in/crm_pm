@@ -43,8 +43,7 @@ export function CoverFooter({ proposal, company, config }: { proposal?: any; com
       {/* Contact Strip Section */}
       {(config.showContacts || config.showAddress) && (
         <div 
-          className="w-full py-6 px-12 text-white flex justify-between items-start text-xs font-medium"
-          style={{ backgroundColor: config.primaryColor || "#1a1a1a" }}
+          className="w-full py-6 px-12 text-white flex justify-between items-start text-xs font-medium bg-[#222222]"
         >
           {/* Left: Phone & Website */}
           <div className="flex flex-col gap-2 w-1/3">

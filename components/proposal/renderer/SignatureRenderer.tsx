@@ -29,7 +29,7 @@ export function SignatureRenderer({ block }: SignatureRendererProps) {
       <h2 className="text-2xl font-bold text-gray-900 mb-12 border-b pb-4">{block.title || "Acceptance & Sign-off"}</h2>
       
       <p className="text-sm text-gray-600 mb-16">
-        By signing below, both parties agree to the terms, conditions, and pricing outlined in this proposal.
+        By signing below, both parties agree to the terms, conditions, and pricing outlined in this quotation.
       </p>
 
       <div className="grid grid-cols-2 gap-16 mt-8">

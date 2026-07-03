@@ -15,35 +15,35 @@ export const columns: ColumnDef<TermRow>[] = [
         size: 250,
     },
     {
-        id: "services",
-        accessorKey: "services",
-        header: "Services",
+        id: "packages",
+        accessorKey: "packages",
+        header: "Packages",
         size: 300,
         cell: ({ row }) => {
-            const services = row.original.services;
+            const packages = row.original.packages;
 
-            if (!services.length) {
+            if (!packages.length) {
                 return (
                     <span className="text-muted-foreground">
-                        All Services
+                        All Packages
                     </span>
                 );
             }
 
             return (
                 <div className="flex flex-wrap gap-1">
-                    {services.slice(0, 3).map((service: any) => (
+                    {packages.slice(0, 3).map((pkg: any) => (
                         <Badge
-                            key={service.serviceId}
+                            key={pkg.packageId}
                             variant="secondary"
                         >
-                            {service.serviceName}
+                            {pkg.packageName}
                         </Badge>
                     ))}
 
-                    {services.length > 3 && (
+                    {packages.length > 3 && (
                         <Badge variant="outline">
-                            +{services.length - 3}
+                            +{packages.length - 3}
                         </Badge>
                     )}
                 </div>

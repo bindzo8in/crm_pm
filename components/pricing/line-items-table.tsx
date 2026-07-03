@@ -1,5 +1,6 @@
 "use client";
 
+import { PricingApi } from "./types";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,7 +59,7 @@ import { CSS } from "@dnd-kit/utilities";
 
 export interface LineItem {
   id: string;
-  proposalServiceId: string;
+  serviceId: string;
   packageItemId?: string | null;
   name: string;
   description?: string | null;
@@ -75,8 +76,9 @@ export interface LineItem {
 }
 
 interface LineItemsTableProps {
-  proposalId: string;
-  proposalServiceId: string;
+  pricingApi: PricingApi;
+  entityId: string;
+  serviceId: string;
   items: LineItem[];
   onRefresh: () => void;
 }
@@ -402,9 +404,9 @@ function SortableRow({
   );
 }
 
-export function LineItemsTable({
-  proposalId,
-  proposalServiceId,
+export function LineItemsTable({ pricingApi,
+  entityId,
+  serviceId,
   items,
   onRefresh,
 }: LineItemsTableProps) {
@@ -460,9 +462,9 @@ export function LineItemsTable({
       const discType = editForm.discountType === "NONE" || !editForm.discountType ? null : editForm.discountType;
       const discVal = discType ? Number(editForm.discountValue || 0) : null;
 
-      const res = await updateProposalLineItem({
+      const res = await pricingApi.updateLineItem(item.id, {
         id: itemId,
-        proposalId,
+        entityId,
         name: editForm.name,
         description: editForm.description || null,
         quantity: Number(editForm.quantity) || 1,
@@ -491,7 +493,7 @@ export function LineItemsTable({
   const handleDeleteItem = async (item: LineItem) => {
     setLoadingActionId(item.id);
     try {
-      const res = await deleteProposalLineItem(item.id, proposalId);
+      const res = await pricingApi.deleteLineItem(item.id);
       if (res.success) {
         toast.success(`Removed "${item.name}" from proposal`);
         onRefresh();
@@ -518,7 +520,7 @@ export function LineItemsTable({
     ];
 
     try {
-      const res = await reorderProposalLineItems(proposalId, newItemsOrder);
+      const res = await reorderProposalLineItems(entityId, newItemsOrder);
       if (res.success) {
         onRefresh();
       } else {
@@ -541,7 +543,7 @@ export function LineItemsTable({
           sortOrder: idx,
         }));
         try {
-          const res = await reorderProposalLineItems(proposalId, reorderedPayload);
+          const res = await reorderProposalLineItems(entityId, reorderedPayload);
           if (res.success) {
             onRefresh();
           } else {
@@ -564,9 +566,9 @@ export function LineItemsTable({
       const discType = customDiscountType === "NONE" ? null : customDiscountType;
       const discVal = discType ? Number(customDiscountVal || 0) : null;
 
-      const res = await addCustomLineItem({
-        proposalServiceId,
-        proposalId,
+      const res = await pricingApi.createCustomItem(entityId, {
+        serviceId,
+        entityId,
         name: customName.trim(),
         description: customDescription.trim() || null,
         quantity: Number(customQty) || 1,

@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 
 import { ProposalTermForm } from "@/components/services/terms/form";
-import { GetAllActiveServices } from "@/actions/services";
+import { GetAllActivePackages } from "@/actions/services";
 import DashboardContainer from "@/app/dashboard/dashboard-container";
 import { GetTerm } from "@/actions/terms";
 
@@ -15,12 +15,12 @@ export default async function EditTerms({ params }: PageProps<'/dashboard/terms/
 
     const term = termResponse.success && termResponse.data ? termResponse.data : undefined;
 
-    const servicesResponse = await GetAllActiveServices();
-    const activeServices = servicesResponse.success && servicesResponse.data ? servicesResponse.data : [];
+    const packagesResponse = await GetAllActivePackages();
+    const activePackages = packagesResponse.success && packagesResponse.data ? packagesResponse.data : [];
 
     return (
         <DashboardContainer title="Edit Terms">
-            <ProposalTermForm initialData={term} activeServices={activeServices} />
+            <ProposalTermForm initialData={term} activePackages={activePackages} />
         </DashboardContainer>
     )
 }

@@ -47,6 +47,11 @@
   page-break-before: always;
 }
 
+.proposal-page-break-after {
+  break-after: page;
+  page-break-after: always;
+}
+
 /* A4 Page structure within the document */
 .proposal-page-content {
   padding: 20mm; /* Standard A4 padding */
@@ -119,11 +124,43 @@
   color: #6b7280;
 }
 
+/* Rich Text Tables (TipTap) */
+.proposal-rich-text table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1.5em;
+  font-size: 11pt;
+}
+
+.proposal-rich-text table th,
+.proposal-rich-text table td {
+  border: 1px solid #d1d5db; /* Tailwind gray-300 */
+  padding: 8px 12px;
+}
+
+.proposal-rich-text table th {
+  background-color: #f3f4f6; /* Tailwind gray-100 */
+  font-weight: 600;
+  text-align: left;
+  color: #374151;
+}
+
+.proposal-rich-text table td {
+  vertical-align: top;
+  color: #4b5563;
+}
+
+.proposal-rich-text table th p,
+.proposal-rich-text table td p {
+  margin: 0;
+  line-height: 1.4;
+}
+
 /* Print Media Query */
 @media print {
   @page {
     size: A4;
-    margin: 8mm 0; /* Add a small top and bottom margin so content isn't completely flush with edges */
+    margin: 0; /* No margin to allow full bleed cover backgrounds */
   }
   
   body {

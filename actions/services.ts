@@ -942,6 +942,44 @@ export async function DuplicateServicePackage(
     }
 }
 
+export async function GetAllActivePackages() {
+    try {
+        const packages = await prisma.servicePackage.findMany({
+            where: {
+                isActive: true,
+            },
+            select: {
+                id: true,
+                name: true,
+                service: {
+                    select: {
+                        name: true,
+                    },
+                },
+            },
+            orderBy: [
+                { service: { name: "asc" } },
+                { name: "asc" },
+            ],
+        });
+        
+        const formattedPackages = packages.map(pkg => ({
+            id: pkg.id,
+            name: `${pkg.service.name} - ${pkg.name}`,
+        }));
+
+        return successResponse("Active packages found", formattedPackages);
+    } catch (error) {
+        if (process.env.NODE_ENV === "development") {
+            console.error(error);
+        }
+        return errorResponse(
+            "Failed to get active packages",
+            getErrorMessage(error)
+        );
+    }
+}
+
 export async function GetAllActiveServices() {
     try {
         const services = await prisma.service.findMany({

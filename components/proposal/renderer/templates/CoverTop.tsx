@@ -5,22 +5,16 @@ export function CoverTop({ company, config }: { company: any; config: any }) {
   const logo = config.coverLogo?.url || company?.logo?.url;
 
   return (
-    <div className="relative w-full h-48 flex justify-between items-start pt-12 px-12 z-10">
+    <div className="relative w-full h-48 flex justify-between items-start px-20 pt-16 z-10">
       {/* Decorative top-left graphics (simulating the gray circles from the mockup) */}
-      <div className="absolute top-0 left-0 w-64 h-64 overflow-hidden z-0 pointer-events-none opacity-20">
-        {config.coverBackground?.url ? (
-          <img 
-            src={config.coverBackground.url} 
-            alt="" 
-            className="w-full h-full object-cover"
-          />
-        ) : (
+      {!config.coverBackground?.url && (
+        <div className="absolute top-0 left-0 w-64 h-64 overflow-hidden z-0 pointer-events-none">
           <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" className="w-full h-full -ml-8 -mt-8">
-            <circle cx="100" cy="100" r="80" fill="none" stroke="#9ca3af" strokeWidth="40" />
-            <circle cx="40" cy="40" r="60" fill="none" stroke="#9ca3af" strokeWidth="20" />
+            <circle cx="100" cy="100" r="80" fill="none" stroke="#c1c1c1" strokeWidth="40" />
+            <circle cx="40" cy="40" r="60" fill="none" stroke="#c1c1c1" strokeWidth="20" />
           </svg>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="flex-1"></div>
 

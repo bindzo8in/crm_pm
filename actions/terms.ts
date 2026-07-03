@@ -31,7 +31,7 @@ export async function CreateTerm(data: TermSchema) {
             );
         }
 
-        const { title, content, isActive, isDefault, services } = validatedData.data;
+        const { title, content, isActive, isDefault, packages } = validatedData.data;
         const plainContent = JSON.parse(JSON.stringify(content));
 
         await prisma.proposalTerm.create({
@@ -40,14 +40,14 @@ export async function CreateTerm(data: TermSchema) {
                 content: plainContent,
                 isActive,
                 isDefault,
-                services:
-                    services && services.length > 0
+                packages:
+                    packages && packages.length > 0
                         ? {
-                            create: services
-                                .filter((s) => s.include !== false)
-                                .map((s, index) => ({
-                                    serviceId: s.serviceId,
-                                    isRequired: s.isRequired ?? true,
+                            create: packages
+                                .filter((p) => p.include !== false)
+                                .map((p, index) => ({
+                                    packageId: p.packageId,
+                                    isRequired: p.isRequired ?? true,
                                     sortOrder: index,
                                 })),
                         }
@@ -85,8 +85,7 @@ export async function EditTerm(data: TermSchema) {
                 validatedData.error?.issues
             );
         }
-
-        const { id, title, content, isActive, isDefault, services } = validatedData.data;
+        const { id, title, content, isActive, isDefault, packages } = validatedData.data;
 
         if (!id) {
             return errorResponse("Term ID is required for updating");
@@ -112,18 +111,18 @@ export async function EditTerm(data: TermSchema) {
                 },
             });
 
-            if (services) {
-                await tx.proposalTermService.deleteMany({
+            if (packages) {
+                await tx.proposalTermPackage.deleteMany({
                     where: { termId: id },
                 });
 
-                const includedServices = services.filter((s) => s.include !== false);
-                if (includedServices.length > 0) {
-                    await tx.proposalTermService.createMany({
-                        data: includedServices.map((s, index) => ({
+                const includedPackages = packages.filter((p) => p.include !== false);
+                if (includedPackages.length > 0) {
+                    await tx.proposalTermPackage.createMany({
+                        data: includedPackages.map((p, index) => ({
                             termId: id,
-                            serviceId: s.serviceId,
-                            isRequired: s.isRequired ?? true,
+                            packageId: p.packageId,
+                            isRequired: p.isRequired ?? true,
                             sortOrder: index,
                         })),
                     });
@@ -145,11 +144,16 @@ export async function GetTerm(id: string) {
         const term = await prisma.proposalTerm.findUnique({
             where: { id },
             include: {
-                services: {
+                packages: {
                     include: {
-                        service: {
+                        package: {
                             select: {
                                 name: true,
+                                service: {
+                                    select: {
+                                        name: true
+                                    }
+                                }
                             },
                         },
                     },
@@ -166,13 +170,13 @@ export async function GetTerm(id: string) {
 
         const formattedTerm = {
             ...term,
-            services: term.services.map((s) => ({
-                serviceId: s.serviceId,
-                serviceName: s.service.name,
+            packages: term.packages.map((p) => ({
+                packageId: p.packageId,
+                packageName: `${p.package.service.name} - ${p.package.name}`,
                 include: true,
-                isRequired: s.isRequired,
+                isRequired: p.isRequired,
                 disabled: false,
-                sortOrder: s.sortOrder,
+                sortOrder: p.sortOrder,
             })),
         };
 
@@ -206,11 +210,16 @@ export async function GetTerms(query: TermQuerySchema) {
                 take: pageSize,
                 where,
                 include: {
-                    services: {
+                    packages: {
                         include: {
-                            service: {
+                            package: {
                                 select: {
                                     name: true,
+                                    service: {
+                                        select: {
+                                            name: true
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -232,11 +241,11 @@ export async function GetTerms(query: TermQuerySchema) {
 
         const formattedTerms = terms.map(term => ({
             ...term,
-            services: term.services.map(s => ({
-                serviceId: s.serviceId,
-                serviceName: s.service.name,
-                isRequired: s.isRequired,
-                sortOrder: s.sortOrder,
+            packages: term.packages.map(p => ({
+                packageId: p.packageId,
+                packageName: `${p.package.service.name} - ${p.package.name}`,
+                isRequired: p.isRequired,
+                sortOrder: p.sortOrder,
             })),
         }));
 

@@ -12,12 +12,20 @@ export const customerSchema = z.object({
     primaryContactName: optionalText,
 
     primaryContactEmail: z
-        .email("Please enter a valid email").optional(),
+        .string()
+        .trim()
+        .optional()
+        .refine(
+            (v) => !v || z.string().email().safeParse(v).success,
+            "Please enter a valid email"
+        ),
 
     primaryContactPhone: z
         .string()
-        .regex(
-            /^\+?[1-9]\d{9,14}$/,
+        .trim()
+        .optional()
+        .refine(
+            (v) => !v || /^\+?[1-9]\d{9,14}$/.test(v),
             "Please enter a valid phone number"
         ),
 

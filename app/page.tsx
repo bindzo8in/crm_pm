@@ -1,10 +1,5 @@
-import prisma from "@/lib/prisma";
+import { redirect } from "next/navigation";
 
 export default async function Home() {
-  const users = await prisma.user.findMany()
-  return (
-    <main>
-      <div>Hello world!</div>
-    </main>
-  );
+  redirect("/dashboard")
 }

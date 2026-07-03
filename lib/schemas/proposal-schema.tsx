@@ -35,7 +35,6 @@ export const proposalQuerySchema = z.object({
     customerId: z.string().optional(),
 })
 
-export type ProposalQuerySchema = z.infer<typeof proposalQuerySchema>
 
 export const proposalBlockSchema = z.object({
     id: z.string().optional(),
@@ -86,5 +85,5 @@ export const proposalFeatureSchema = z.object({
 })
 
 export type ProposalBlockSchema = z.infer<typeof proposalBlockSchema>
-
 export type ProposalSchema = z.infer<typeof proposalSchema>
+export type ProposalQuerySchema = z.infer<typeof proposalQuerySchema>

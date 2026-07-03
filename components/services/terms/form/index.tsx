@@ -97,14 +97,14 @@ function SortableTableRow({ id, children }: SortableTableRowProps) {
 // =============================================================================
 interface ProposalTermFormProps {
     initialData?: Extract<Awaited<ReturnType<typeof GetTerm>>, { success: true }>['data'];
-    activeServices?: { id: string; name: string }[];
+    activePackages?: { id: string; name: string }[];
     onSuccess?: () => void;
     onCancel?: () => void;
 }
 
 export function ProposalTermForm({
     initialData,
-    activeServices = [],
+    activePackages = [],
     onSuccess,
     onCancel,
 }: ProposalTermFormProps) {
@@ -114,9 +114,9 @@ export function ProposalTermForm({
         defaultValues: {
             id: initialData?.id || undefined,
             title: initialData?.title || "",
-            services: initialData?.services || activeServices.map((svc, idx) => ({
-                serviceId: svc.id,
-                serviceName: svc.name,
+            packages: initialData?.packages || activePackages.map((pkg, idx) => ({
+                packageId: pkg.id,
+                packageName: pkg.name,
                 include: false,
                 isRequired: false,
                 disabled: false,
@@ -146,7 +146,7 @@ export function ProposalTermForm({
     console.log(errors)
     const { fields, move } = useFieldArray({
         control,
-        name: "services",
+        name: "packages",
     });
 
     const sensors = useSensors(
@@ -165,21 +165,21 @@ export function ProposalTermForm({
             move(oldIndex, newIndex);
 
             setTimeout(() => {
-                const currentServices = getValues("services");
-                currentServices.forEach((_, idx) => {
-                    setValue(`services.${idx}.sortOrder`, idx);
+                const currentPackages = getValues("packages");
+                currentPackages.forEach((_, idx) => {
+                    setValue(`packages.${idx}.sortOrder`, idx);
                 });
             }, 0);
         }
     };
 
-    const watchedServices = watch("services");
+    const watchedPackages = watch("packages");
 
     // Handle include checkbox change: disable required if include is false
     const handleIncludeChange = (index: number, checked: boolean) => {
-        setValue(`services.${index}.include`, checked);
+        setValue(`packages.${index}.include`, checked);
         if (!checked) {
-            setValue(`services.${index}.isRequired`, false);
+            setValue(`packages.${index}.isRequired`, false);
         }
     };
 
@@ -257,9 +257,9 @@ export function ProposalTermForm({
                         )}
                     />
 
-                    {/* Services Table */}
+                    {/* Packages Table */}
                     <div>
-                        <FieldLabel className="mb-2 block">Applicable Services</FieldLabel>
+                        <FieldLabel className="mb-2 block">Applicable Packages</FieldLabel>
                         <div className="border rounded-md overflow-x-auto">
                             <DndContext
                                 sensors={sensors}
@@ -270,7 +270,7 @@ export function ProposalTermForm({
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead className="w-[40px]"></TableHead>
-                                            <TableHead className="min-w-[180px]">Service</TableHead>
+                                            <TableHead className="min-w-[180px]">Package</TableHead>
                                             <TableHead className="text-center">Include</TableHead>
                                             <TableHead className="text-center">Required</TableHead>
                                         </TableRow>
@@ -281,14 +281,14 @@ export function ProposalTermForm({
                                             strategy={verticalListSortingStrategy}
                                         >
                                             {fields.map((field, index) => {
-                                                const service = watchedServices[index];
-                                                const isDisabled = service?.disabled || false;
-                                                const isIncluded = service?.include || false;
+                                                const pkg = watchedPackages[index];
+                                                const isDisabled = pkg?.disabled || false;
+                                                const isIncluded = pkg?.include || false;
 
                                                 return (
                                                     <SortableTableRow key={field.id} id={field.id}>
                                                         <TableCell className="font-medium">
-                                                            {service?.serviceName}
+                                                            {pkg?.packageName}
                                                             {isDisabled && (
                                                                 <span className="ml-2 text-xs text-muted-foreground">
                                                                     (disabled)
@@ -297,7 +297,7 @@ export function ProposalTermForm({
                                                         </TableCell>
                                                         <TableCell className="text-center">
                                                             <Controller
-                                                                name={`services.${index}.include`}
+                                                                name={`packages.${index}.include`}
                                                                 control={control}
                                                                 render={({ field: checkboxField }) => (
                                                                     <Checkbox
@@ -307,21 +307,21 @@ export function ProposalTermForm({
                                                                             handleIncludeChange(index, !!checked);
                                                                         }}
                                                                         disabled={isDisabled}
-                                                                        aria-label={`Include ${service?.serviceName}`}
+                                                                        aria-label={`Include ${pkg?.packageName}`}
                                                                     />
                                                                 )}
                                                             />
                                                         </TableCell>
                                                         <TableCell className="text-center">
                                                             <Controller
-                                                                name={`services.${index}.isRequired`}
+                                                                name={`packages.${index}.isRequired`}
                                                                 control={control}
                                                                 render={({ field: checkboxField }) => (
                                                                     <Checkbox
                                                                         checked={checkboxField.value}
                                                                         onCheckedChange={checkboxField.onChange}
                                                                         disabled={!isIncluded || isDisabled}
-                                                                        aria-label={`Required for ${service?.serviceName}`}
+                                                                        aria-label={`Required for ${pkg?.packageName}`}
                                                                     />
                                                                 )}
                                                             />
@@ -335,7 +335,7 @@ export function ProposalTermForm({
                             </DndContext>
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                            Select which services this term applies to. Required is only available when Include is checked.
+                            Select which packages this term applies to. Required is only available when Include is checked.
                         </p>
                     </div>
                 </CardContent>
@@ -412,7 +412,7 @@ export function ProposalTermForm({
                                             Default Term
                                         </FieldLabel>
                                         <p className="text-sm text-muted-foreground">
-                                            Automatically include this term in every proposal regardless of the selected services.
+                                            Automatically include this term in every proposal regardless of the selected packages.
                                         </p>
                                     </div>
                                 </FieldContent>

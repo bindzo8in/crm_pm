@@ -19,6 +19,7 @@ export function ProposalCover({ proposal, company, template }: ProposalCoverProp
     showAddress: true,
     primaryColor: "#0B1B3D",
     secondaryColor: "#D4AF37",
+    coverBackground: { url: "/cover_bg.webp"}
   };
 
   const config = template || defaultTemplate;
@@ -26,10 +27,21 @@ export function ProposalCover({ proposal, company, template }: ProposalCoverProp
   if (!config.coverEnabled) return null;
 
   return (
-    <div className="proposal-page-content p-0 relative flex flex-col w-full min-h-[297mm] h-full bg-white overflow-hidden proposal-page-break-always font-sans border-b border-gray-100">
-      <CoverTop company={company} config={config} />
-      <CoverCenter proposal={proposal} company={company} config={config} />
-      <CoverFooter proposal={proposal} company={company} config={config} />
+    <div className="relative flex flex-col w-full h-[297mm] max-h-[297mm] bg-white overflow-hidden proposal-page-break-after font-sans">
+      {config.coverBackground?.url && (
+        <div className="absolute inset-0 w-full h-full z-0 pointer-events-none">
+          <img 
+            src={config.coverBackground.url} 
+            alt="Cover Background" 
+            className="w-full h-full object-fill"
+          />
+        </div>
+      )}
+      <div className="relative z-10 flex flex-col flex-1 w-full h-full">
+        <CoverTop company={company} config={config} />
+        <CoverCenter proposal={proposal} company={company} config={config} />
+        <CoverFooter proposal={proposal} company={company} config={config} />
+      </div>
     </div>
   );
 }

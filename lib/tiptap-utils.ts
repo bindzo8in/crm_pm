@@ -373,17 +373,60 @@ export const handleImageUpload = async (
     )
   }
 
-  // For demo/testing: Simulate upload progress. In production, replace the following code
-  // with your own upload implementation.
-  for (let progress = 0; progress <= 100; progress += 10) {
-    if (abortSignal?.aborted) {
-      throw new Error("Upload cancelled")
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500))
-    onProgress?.({ progress })
+  const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+  if (!cloudName) {
+    throw new Error("Cloudinary cloud name is not configured");
   }
 
-  return "/images/tiptap-ui-placeholder-image.jpg"
+  const url = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    
+    xhr.open("POST", url, true);
+    
+    // Setup abort handler
+    if (abortSignal) {
+      abortSignal.addEventListener("abort", () => {
+        xhr.abort();
+        reject(new Error("Upload cancelled"));
+      });
+    }
+
+    // Progress tracking
+    if (onProgress && xhr.upload) {
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const progress = Math.round((event.loaded / event.total) * 100);
+          onProgress({ progress });
+        }
+      };
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const response = JSON.parse(xhr.responseText);
+          resolve(response.secure_url);
+        } catch (error) {
+          reject(new Error("Failed to parse Cloudinary response"));
+        }
+      } else {
+        reject(new Error(`Upload failed with status: ${xhr.status}`));
+      }
+    };
+
+    xhr.onerror = () => {
+      reject(new Error("Network error during upload"));
+    };
+
+    const formData = new FormData();
+    formData.append("file", file);
+    // Using the same upload preset as used elsewhere in the CRM
+    formData.append("upload_preset", "crm_upload_preset");
+
+    xhr.send(formData);
+  });
 }
 
 type ProtocolOptions = {

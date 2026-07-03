@@ -1,8 +1,8 @@
 import * as z from "zod";
 
-export const termServiceSchema = z.object({
-  serviceId: z.string(),
-  serviceName: z.string().optional(), // Used in UI
+export const termPackageSchema = z.object({
+  packageId: z.string(),
+  packageName: z.string().optional(), // Used in UI
   include: z.boolean(),
   isRequired: z.boolean(),
   disabled: z.boolean(),
@@ -12,7 +12,7 @@ export const termServiceSchema = z.object({
 export const termSchema = z.object({
   id: z.string().optional(),
   title: z.string().min(1, "Proposal term title is required"),
-  services: z.array(termServiceSchema),
+  packages: z.array(termPackageSchema),
   content: z.any().optional(),
   isActive: z.boolean(),
   isDefault: z.boolean(),

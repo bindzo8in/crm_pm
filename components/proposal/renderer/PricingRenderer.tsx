@@ -60,7 +60,7 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
 
       {services.length === 0 ? (
         <div className="py-8 text-center text-gray-500 italic border rounded-lg bg-gray-50">
-          No services included in this proposal.
+          No services included in this quotation.
         </div>
       ) : (
         <div className="space-y-10">

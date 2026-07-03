@@ -7,27 +7,20 @@ export function CoverCenter({ proposal, company, config }: { proposal: any; comp
   const subtitle = proposal?.notes || "Prepared exclusively for your business";
   
   const dateStr = proposal?.createdAt ? format(new Date(proposal.createdAt), "dd MMM, yyyy") : format(new Date(), "dd MMM, yyyy");
-  const validUntilStr = proposal?.validUntil ? format(new Date(proposal.validUntil), "dd MMM, yyyy") : null;
+  let validUntilStr = null;
+  if (proposal?.validUntil) {
+    const start = new Date(proposal?.createdAt || new Date());
+    const end = new Date(proposal.validUntil);
+    const diffDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    validUntilStr = `${diffDays} Days`;
+  }
 
   const accentColor = config.accentColor || "#000000";
 
   return (
     <div className="flex-1 flex flex-col justify-center px-16 relative z-10">
       
-      {/* Title block */}
-      <div className="mb-12">
-        <h1 
-          className="text-6xl font-black uppercase tracking-tighter leading-none mb-4"
-          style={{ color: config.primaryColor || "#1f2937" }}
-        >
-          {proposal?.title || "PROPOSAL"}
-        </h1>
-        <p className="text-xl font-light text-gray-500 max-w-lg leading-relaxed">
-          {subtitle}
-        </p>
-      </div>
-
-      <div className="flex justify-between items-end border-l-4 pl-6" style={{ borderColor: accentColor }}>
+      <div className="flex justify-between items-end border-l-4 pl-6 mb-16" style={{ borderColor: accentColor }}>
         
         {/* Client details */}
         <div className="flex flex-col gap-1">
@@ -39,7 +32,7 @@ export function CoverCenter({ proposal, company, config }: { proposal: any; comp
         {/* Meta details */}
         <div className="flex flex-col gap-4 text-right">
           <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">Proposal No</span>
+            <span className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">Quotation No</span>
             <span className="text-lg font-bold text-gray-800">#{proposal?.proposalNumber}</span>
           </div>
           
@@ -57,6 +50,19 @@ export function CoverCenter({ proposal, company, config }: { proposal: any; comp
           </div>
         </div>
 
+      </div>
+
+      {/* Title block */}
+      <div className="mb-12">
+        <h1 
+          className="text-6xl font-black uppercase tracking-tighter leading-none mb-4"
+          style={{ color: config.primaryColor || "#1f2937" }}
+        >
+          {proposal?.title || "QUOTATION"}
+        </h1>
+        <p className="text-xl font-light text-gray-500 max-w-lg leading-relaxed">
+          {subtitle}
+        </p>
       </div>
 
       {/* Prepared By - Moved slightly away from the block above for whitespace breathing room */}

@@ -48,7 +48,7 @@ function calculateItemFinancials(
   unitPrice: number,
   discountType?: string | null,
   discountValue?: number | null,
-  taxRate: number = 0
+  taxRate: number = 18
 ) {
   const base = quantity * unitPrice;
   let discount = 0;
@@ -81,7 +81,7 @@ async function recalculateAndSaveTotals(proposalId: string, tx: Prisma.Transacti
         item.unitPrice.toNumber(),
         item.discountType,
         item.discountValue ? item.discountValue.toNumber() : 0,
-        item.taxRate || 0
+        item.taxRate || 18
       );
       subtotal += fin.base;
       totalDiscount += fin.discount;
@@ -179,7 +179,7 @@ export async function getProposalPricing(proposalId: string) {
           unitPrice: item.unitPrice.toNumber(),
           total: item.total.toNumber(),
           discountValue: item.discountValue ? item.discountValue.toNumber() : null,
-          taxRate: item.taxRate ?? 0,
+          taxRate: item.taxRate ?? 18,
         })),
       })),
       activeServiceNames,
@@ -254,7 +254,7 @@ export async function importServicePackageToProposal(data: ImportServicePackageS
             billingCycle: item.billingCycle,
             sortOrder: item.sortOrder || idx,
             isCustom: false,
-            taxRate: 0,
+            taxRate: 18,
             discountType: null,
             discountValue: null,
           };
@@ -318,7 +318,7 @@ export async function updateProposalLineItem(data: ProposalLineItemEditSchema) {
           ...(sortOrder !== undefined ? { sortOrder } : {}),
           discountType: discountType || null,
           discountValue: discountValue !== undefined && discountValue !== null ? new Prisma.Decimal(discountValue) : null,
-          taxRate: taxRate ?? 0,
+          taxRate: taxRate ?? 18,
         },
       });
 
@@ -380,7 +380,7 @@ export async function addCustomLineItem(data: CustomLineItemCreateSchema) {
           isCustom: true,
           discountType: discountType || null,
           discountValue: discountValue !== undefined && discountValue !== null ? new Prisma.Decimal(discountValue) : null,
-          taxRate: taxRate ?? 0,
+          taxRate: taxRate ?? 18,
         },
       });
 

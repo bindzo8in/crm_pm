@@ -244,7 +244,7 @@ export async function getProposalComposerData(proposalId: string) {
         isActive: true,
         OR: [
           { isDefault: true },
-          { services: { some: { serviceId: { in: serviceIds } } } },
+          { packages: { some: { packageId: { in: packageIds } } } },
         ],
       },
       orderBy: { createdAt: "asc" },
