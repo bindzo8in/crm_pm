@@ -11,8 +11,70 @@ export function PublicPreviewToolbar() {
     window.print();
   };
 
-  const handleDownloadPdf = () => {
-    window.print();
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    try {
+      setIsDownloading(true);
+      
+      const { toPng } = await import("html-to-image");
+      const { jsPDF } = await import("jspdf");
+      
+      const wrapper = document.getElementById("proposal-preview-wrapper");
+      const element = document.querySelector(".proposal-renderer-document") as HTMLElement;
+      
+      if (!wrapper || !element) return;
+      
+      // We temporarily reset zoom on the wrapper for correct PDF scaling
+      const originalZoom = wrapper.style.getPropertyValue("zoom");
+      wrapper.style.setProperty("zoom", "100%");
+
+      // Let DOM repaint
+      await new Promise(resolve => setTimeout(resolve, 150));
+
+      const dataUrl = await toPng(element, { 
+        pixelRatio: 3,
+        backgroundColor: '#ffffff',
+        style: { 
+          boxShadow: 'none',
+          margin: '0',
+          transform: 'none'
+        }
+      });
+      
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pdfWidth;
+      const imgHeight = (element.offsetHeight * pdfWidth) / element.offsetWidth;
+      
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(dataUrl, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+      heightLeft -= pdfHeight;
+
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(dataUrl, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+        heightLeft -= pdfHeight;
+      }
+      
+      pdf.save('proposal.pdf');
+      
+      // Restore original zoom on wrapper
+      if (originalZoom) {
+        wrapper.style.setProperty("zoom", originalZoom);
+      } else {
+        wrapper.style.removeProperty("zoom");
+      }
+    } catch (error) {
+      console.error("Failed to generate PDF:", error);
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const fitToScreen = () => {
@@ -36,7 +98,7 @@ export function PublicPreviewToolbar() {
     const doc = document.getElementById("proposal-preview-wrapper");
     if (doc) {
       // Using CSS zoom works perfectly for shrinking the layout flow footprint
-      (doc.style as any).zoom = `${zoom}%`;
+      doc.style.setProperty("zoom", `${zoom}%`);
     }
   }, [zoom]);
 

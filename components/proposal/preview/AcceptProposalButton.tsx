@@ -31,8 +31,13 @@ export function AcceptProposalButton({ proposalId, currentStatus, isPublic = fal
       toast.success("Proposal marked as Accepted!");
       router.refresh();
     } else {
-      const errRes = result as any;
-      toast.error(typeof errRes.error === 'string' ? errRes.error : errRes.message || "Failed to update proposal status");
+      if ('error' in result && typeof result.error === 'string') {
+        toast.error(result.error);
+      } else if ('message' in result && typeof result.message === 'string') {
+        toast.error(result.message);
+      } else {
+        toast.error("Failed to update proposal status");
+      }
     }
     
     setIsUpdating(false);
