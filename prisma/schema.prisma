@@ -570,6 +570,7 @@ model Company {
   supportEmail String?
   salesEmail   String?
   phone        String
+  secondaryPhone String?
 
   gstNumber String?
   panNumber String?

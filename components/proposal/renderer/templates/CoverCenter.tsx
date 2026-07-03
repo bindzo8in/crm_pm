@@ -33,7 +33,7 @@ export function CoverCenter({ proposal, company, config }: { proposal: any; comp
         <div className="flex flex-col gap-4 text-right">
           <div className="flex flex-col gap-1">
             <span className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">Quotation No</span>
-            <span className="text-lg font-bold text-gray-800">#{proposal?.proposalNumber}</span>
+            <span className="text-lg font-bold text-gray-800">QUOT-{proposal?.proposalNumber}</span>
           </div>
           
           <div className="flex gap-8 justify-end">

@@ -4,27 +4,35 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2 } from "lucide-react";
 import { updateProposalStatus } from "@/actions/proposal";
+import { publicAcceptProposal } from "@/actions/public-proposal";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
 interface AcceptProposalButtonProps {
   proposalId: string;
   currentStatus: string;
+  isPublic?: boolean;
 }
 
-export function AcceptProposalButton({ proposalId, currentStatus }: AcceptProposalButtonProps) {
+export function AcceptProposalButton({ proposalId, currentStatus, isPublic = false }: AcceptProposalButtonProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const router = useRouter();
 
   const handleAccept = async () => {
     setIsUpdating(true);
-    const result = await updateProposalStatus(proposalId, "ACCEPTED");
+    let result;
+    if (isPublic) {
+      result = await publicAcceptProposal(proposalId);
+    } else {
+      result = await updateProposalStatus(proposalId, "ACCEPTED");
+    }
     
     if (result.success) {
       toast.success("Proposal marked as Accepted!");
       router.refresh();
     } else {
-      toast.error(typeof result.error === 'string' ? result.error : "Failed to update proposal status");
+      const errRes = result as any;
+      toast.error(typeof errRes.error === 'string' ? errRes.error : errRes.message || "Failed to update proposal status");
     }
     
     setIsUpdating(false);

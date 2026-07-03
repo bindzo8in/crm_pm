@@ -11,6 +11,7 @@ export const companySchema = z.object({
   supportEmail: z.union([z.email("Invalid email"), z.literal("")]).optional().nullable(),
   salesEmail: z.union([z.email("Invalid email"), z.literal("")]).optional().nullable(),
   phone: z.string().min(1, "Phone is required"),
+  secondaryPhone: z.string().optional().nullable(),
 
   gstNumber: z.string().optional().nullable(),
   panNumber: z.string().optional().nullable(),

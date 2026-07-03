@@ -14,7 +14,7 @@ export const columns: ColumnDef<ProposalRow>[] = [
   {
     accessorKey: "proposalNumber",
     header: "Proposal #",
-    cell: ({ row }) => `#${row.original.proposalNumber}`,
+    cell: ({ row }) => `QUOT-${row.original.proposalNumber}`,
   },
   {
     accessorKey: "title",

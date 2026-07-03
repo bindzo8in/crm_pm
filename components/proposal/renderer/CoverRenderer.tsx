@@ -32,7 +32,7 @@ export function CoverRenderer({ block, proposal, company }: CoverRendererProps) 
 
   const validUntilDate = proposal.validUntil ? new Date(proposal.validUntil).toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "2-digit" }) : null;
 
-  const proposalNumber = `PR-${new Date(proposal.createdAt || Date.now()).getFullYear()}-${String(proposal.proposalNumber || '001').padStart(3, '0')}`;
+  const proposalNumber = `QUOT-${proposal.proposalNumber || '1'}`;
 
   // Render different layouts based on layoutStyle
   if (layoutStyle === "MINIMAL") {

@@ -50,7 +50,10 @@ export function CoverFooter({ proposal, company, config }: { proposal?: any; com
             {config.showContacts && company?.phone && (
               <div className="flex items-center gap-3">
                 <Phone className="w-3.5 h-3.5 opacity-70" />
-                <span>{company.phone}</span>
+                <span>
+                  {company.phone}
+                  {company.secondaryPhone && ` / ${company.secondaryPhone}`}
+                </span>
               </div>
             )}
             {config.showContacts && company?.website && (
@@ -72,12 +75,15 @@ export function CoverFooter({ proposal, company, config }: { proposal?: any; com
           </div>
 
           {/* Right: Address */}
-          <div className="flex flex-col gap-2 w-1/3 items-end text-right">
+          <div className="flex flex-col gap-2 w-1/3 items-end">
             {config.showAddress && company?.address && (
-              <div className="flex items-start gap-3 justify-end max-w-[250px]">
+              <div className="flex items-start gap-2 text-left max-w-[280px]">
                 <MapPin className="w-3.5 h-3.5 opacity-70 shrink-0 mt-0.5" />
                 <span className="leading-tight">
-                  {[company.address, company.city, company.postalCode, company.country].filter(Boolean).join(", ")}
+                  <span className="font-semibold text-white/90 block mb-0.5">{company.displayName}</span>
+                  <span className="text-white/70">
+                    {[company.address, company.city, company.postalCode, company.country].filter(Boolean).join(", ")}
+                  </span>
                 </span>
               </div>
             )}

@@ -1,43 +1,18 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Printer, FileDown, ZoomIn, ZoomOut, Maximize, MessageCircle } from "lucide-react";
-import { updateProposalStatus } from "@/actions/proposal";
+import { Printer, FileDown, ZoomIn, ZoomOut, Maximize } from "lucide-react";
 
-interface PreviewToolbarProps {
-  proposalId: string;
-}
-
-export function PreviewToolbar({ proposalId }: PreviewToolbarProps) {
+export function PublicPreviewToolbar() {
   const [zoom, setZoom] = useState(100);
 
   const handlePrint = () => {
     window.print();
   };
 
-  const [isDownloading, setIsDownloading] = useState(false);
-
-  const handleDownloadPdf = async () => {
-    // The native browser print engine handles modern CSS properly.
-    // The @page { margin: 0 } CSS rule removes browser headers/footers.
+  const handleDownloadPdf = () => {
     window.print();
-  };
-
-  const handleWhatsAppShare = async () => {
-    const url = `${window.location.origin}/p/${proposalId}`;
-    const text = encodeURIComponent(`Here is your proposal: ${url}`);
-    
-    // Open in a new window immediately to prevent popup blockers
-    window.open(`https://wa.me/?text=${text}`, '_blank');
-
-    // Update status in the background
-    try {
-      await updateProposalStatus(proposalId, "SENT");
-    } catch (error) {
-      console.error("Failed to update proposal status", error);
-    }
   };
 
   const fitToScreen = () => {
@@ -66,19 +41,9 @@ export function PreviewToolbar({ proposalId }: PreviewToolbarProps) {
   }, [zoom]);
 
   return (
-    <div className="proposal-preview-toolbar sticky top-0 z-50 w-full bg-white border-b shadow-sm py-2 sm:py-3 px-2 sm:px-6 flex flex-wrap items-center justify-between gap-y-2">
-      <div className="flex items-center">
-        <Button asChild variant="outline" size="sm" className="gap-2 hidden sm:flex">
-          <Link href={`/dashboard/proposals/${proposalId}/composer`}>
-            <ArrowLeft className="h-4 w-4" />
-            Back to Composer
-          </Link>
-        </Button>
-        <Button asChild variant="outline" size="sm" className="sm:hidden h-8 px-2">
-          <Link href={`/dashboard/proposals/${proposalId}/composer`}>
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
+    <div className="proposal-preview-toolbar sticky top-0 z-50 w-full bg-white border-b shadow-sm py-2 sm:py-3 px-2 sm:px-6 flex flex-wrap items-center justify-between gap-y-2 print:hidden">
+      <div className="font-semibold text-lg text-slate-800 hidden sm:block">
+        Proposal View
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2 border-x px-2 sm:px-4 mx-2">
@@ -124,21 +89,12 @@ export function PreviewToolbar({ proposalId }: PreviewToolbarProps) {
           <Printer className="h-4 w-4 text-gray-600" />
         </Button>
 
-        <Button onClick={handleWhatsAppShare} size="sm" variant="outline" className="gap-2 text-green-600 border-green-200 hover:bg-green-50 hidden sm:flex">
-          <MessageCircle className="h-4 w-4" />
-          WhatsApp
-        </Button>
-        <Button onClick={handleWhatsAppShare} size="sm" variant="outline" className="gap-1 text-green-600 border-green-200 hover:bg-green-50 sm:hidden px-2">
-          <MessageCircle className="h-4 w-4" />
-        </Button>
-
         <Button onClick={handleDownloadPdf} size="sm" className="gap-2 bg-blue-600 hover:bg-blue-700 hidden sm:flex">
           <FileDown className="h-4 w-4" />
           Download PDF
         </Button>
         <Button onClick={handleDownloadPdf} size="sm" className="gap-1 bg-blue-600 hover:bg-blue-700 sm:hidden px-2">
           <FileDown className="h-4 w-4" />
-          <span>PDF</span>
         </Button>
       </div>
     </div>

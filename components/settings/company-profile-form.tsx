@@ -36,6 +36,7 @@ export function CompanyProfileForm({ defaultValues }: { defaultValues?: any }) {
             supportEmail: defaultValues?.supportEmail || "",
             salesEmail: defaultValues?.salesEmail || "",
             phone: defaultValues?.phone || "",
+            secondaryPhone: defaultValues?.secondaryPhone || "",
 
             gstNumber: defaultValues?.gstNumber || "",
             panNumber: defaultValues?.panNumber || "",
@@ -168,6 +169,18 @@ export function CompanyProfileForm({ defaultValues }: { defaultValues?: any }) {
                         <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full md:col-span-3">
                             <FieldLabel htmlFor="phone">Phone</FieldLabel>
                             <PhoneInput {...field} defaultCountry="IN" placeholder="Primary Phone" aria-invalid={fieldState.invalid} />
+                            {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                        </Field>
+                    )}
+                />
+
+                <Controller
+                    name="secondaryPhone"
+                    control={form.control}
+                    render={({ field, fieldState }) => (
+                        <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full md:col-span-3">
+                            <FieldLabel htmlFor="secondaryPhone">Secondary Phone</FieldLabel>
+                            <PhoneInput {...field} value={field.value || undefined} defaultCountry="IN" placeholder="Secondary Phone" aria-invalid={fieldState.invalid} />
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                         </Field>
                     )}
