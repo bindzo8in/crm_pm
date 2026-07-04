@@ -1,3 +1,7 @@
+export const metadata = {
+  title: "Edit Proposals"
+};
+
 import { ProposalCreateEditForm } from "@/components/proposal/form";
 import { differenceInDays } from "date-fns";
 import { getQueryClient } from "@/lib/query-client";

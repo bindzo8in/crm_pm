@@ -1,3 +1,7 @@
+export const metadata = {
+  title: "Proposals"
+};
+
 import { PlusIcon } from "lucide-react";
 import DashboardContainer from "../dashboard-container";
 import { ProposalQuerySchema } from "@/lib/schemas/proposal-schema";

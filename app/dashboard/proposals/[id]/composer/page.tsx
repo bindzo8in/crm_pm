@@ -1,3 +1,7 @@
+export const metadata = {
+  title: "Edit Composer"
+};
+
 import DashboardContainer from "@/app/dashboard/dashboard-container";
 import { ProposalComposer as ComposerComponent } from "@/components/proposal/builder/composer";
 

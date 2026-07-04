@@ -1,3 +1,7 @@
+export const metadata = {
+  title: "Customers"
+};
+
 import { getQueryClient } from "@/lib/query-client";
 import DashboardContainer from "../dashboard-container";
 import { CustomersTable } from "./CustomersTable";

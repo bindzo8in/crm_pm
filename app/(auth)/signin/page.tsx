@@ -1,3 +1,7 @@
+export const metadata = {
+  title: "Signin"
+};
+
 import { SigninForm } from "@/components/auth/signin/signin-form";
 
 export default async function SigninPage({ searchParams }: PageProps<'/signin'>) {

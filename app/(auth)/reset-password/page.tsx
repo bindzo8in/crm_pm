@@ -1,3 +1,7 @@
+export const metadata = {
+  title: "Reset Password"
+};
+
 import { ResetPasswordForm } from "@/components/auth/reset-password/reset-password";
 import { redirect } from "next/navigation";
 

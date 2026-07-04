@@ -1,3 +1,7 @@
+export const metadata = {
+  title: "Users"
+};
+
 import { getUsers } from "@/actions/user";
 import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query"
 import UsersTable from "./UsersTable";

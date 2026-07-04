@@ -1,3 +1,7 @@
+export const metadata = {
+  title: "Edit Customers"
+};
+
 import { GetCustomer } from "@/actions/customer";
 import DashboardContainer from "@/app/dashboard/dashboard-container";
 import { CustomerForm } from "@/components/customers/create-edit";

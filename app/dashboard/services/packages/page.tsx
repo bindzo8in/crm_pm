@@ -1,3 +1,7 @@
+export const metadata = {
+  title: "Packages"
+};
+
 import { getQueryClient } from "@/lib/query-client";
 import DashboardContainer from "../../dashboard-container";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";

@@ -1,3 +1,7 @@
+export const metadata = {
+  title: "Terms"
+};
+
 import { PlusIcon } from "lucide-react";
 import DashboardContainer from "../dashboard-container";
 import { TermQuerySchema } from "@/lib/schemas/term-schema";

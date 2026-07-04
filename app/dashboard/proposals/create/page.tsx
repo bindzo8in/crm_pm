@@ -1,3 +1,7 @@
+export const metadata = {
+  title: "Create Proposals"
+};
+
 import { ProposalCreateEditForm } from "@/components/proposal/form";
 import DashboardContainer from "../../dashboard-container";
 import { getQueryClient } from "@/lib/query-client";

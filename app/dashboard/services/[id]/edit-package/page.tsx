@@ -1,3 +1,7 @@
+export const metadata = {
+  title: "Edit Package"
+};
+
 import DashboardContainer from "@/app/dashboard/dashboard-container";
 import { CreateEditServicePackageForm } from "@/components/services/create-edit-service-package";
 import { GetServiceNameById, getServicePackage } from "@/actions/services";

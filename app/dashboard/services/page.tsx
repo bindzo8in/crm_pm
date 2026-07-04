@@ -1,3 +1,7 @@
+export const metadata = {
+  title: "Services"
+};
+
 import { GetServices } from "@/actions/services";
 import { ServicesTable } from "@/components/services/table";
 import { getQueryClient } from "@/lib/query-client";

@@ -1,3 +1,7 @@
+export const metadata = {
+  title: "Edit Services"
+};
+
 import DashboardContainer from "@/app/dashboard/dashboard-container";
 import { ServiceForm } from "@/components/services/create-edit";
 import { ArrowLeft } from "lucide-react";
