@@ -4,6 +4,7 @@ import { CldUploadWidget, type CloudinaryUploadWidgetResults } from "next-cloudi
 import { ImagePlus, Trash } from "lucide-react"
 import { Button } from "./button"
 import { useEffect, useState } from "react"
+import { env } from "@/lib/env"
 
 interface ImageUploadProps {
   value: { url: string; publicId: string } | null
@@ -49,7 +50,7 @@ export function ImageUpload({ disabled, onChange, value }: ImageUploadProps) {
 
       {!value?.url && (
         <CldUploadWidget
-          uploadPreset="crm_upload_preset"
+          uploadPreset={env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET}
           options={{
             singleUploadAutoClose: true,
             multiple: false,

@@ -424,7 +424,7 @@ export const handleImageUpload = async (
     const formData = new FormData();
     formData.append("file", file);
     // Using the same upload preset as used elsewhere in the CRM
-    formData.append("upload_preset", "crm_upload_preset");
+    formData.append("upload_preset", env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET);
 
     xhr.send(formData);
   });

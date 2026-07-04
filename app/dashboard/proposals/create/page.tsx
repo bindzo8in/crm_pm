@@ -16,7 +16,6 @@ export default async function ProposalCreatePage() {
         queryKey: customerKeys.combobox(""),
         queryFn: () => GetCustomerOptions("")
     })
-    console.log(customerKeys.combobox(""))
     return (
         <DashboardContainer title="Create Proposal">
             <HydrationBoundary state={dehydrate(queryClient)}>

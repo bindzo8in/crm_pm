@@ -179,7 +179,7 @@ export async function GetCustomers(
     };
   } catch (error) {
     if (process.env.NODE_ENV === "development") {
-      console.log(error);
+      console.error(error);
     }
 
     throw error;
