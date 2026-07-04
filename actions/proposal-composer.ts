@@ -270,22 +270,22 @@ export async function getProposalComposerData(proposalId: string) {
     });
 
     // Group and merge duplicate features by service package title and ID
-    const featureGroupsMap = new Map<string, Set<string>>();
+    const featureGroupsMap = new Map<string, { content: string, isHeading: boolean }[]>();
     const processedFeatureIds = new Set<string>();
 
     for (const ps of proposalServices) {
       const title = ps.packageName || ps.serviceName || "Service Package";
       if (!featureGroupsMap.has(title)) {
-        featureGroupsMap.set(title, new Set<string>());
+        featureGroupsMap.set(title, []);
       }
-      const groupSet = featureGroupsMap.get(title)!;
+      const groupList = featureGroupsMap.get(title)!;
 
       if (ps.packageId) {
         const pFeats = packageFeatures.filter((pf) => pf.packageId === ps.packageId);
         for (const pf of pFeats) {
           if (!processedFeatureIds.has(pf.id)) {
             processedFeatureIds.add(pf.id);
-            groupSet.add(pf.content);
+            groupList.push({ content: pf.content, isHeading: pf.isHeading });
           }
         }
       }
@@ -294,38 +294,38 @@ export async function getProposalComposerData(proposalId: string) {
       for (const prf of prFeats) {
         if (!processedFeatureIds.has(prf.id)) {
           processedFeatureIds.add(prf.id);
-          groupSet.add(prf.content);
+          groupList.push({ content: prf.content, isHeading: prf.isHeading });
         }
       }
     }
 
     // In case there are any leftover features that didn't match a specific proposal service
-    const leftoverFeatures: string[] = [];
+    const leftoverFeatures: { content: string, isHeading: boolean }[] = [];
     for (const pf of packageFeatures) {
       if (!processedFeatureIds.has(pf.id)) {
         processedFeatureIds.add(pf.id);
-        leftoverFeatures.push(pf.content);
+        leftoverFeatures.push({ content: pf.content, isHeading: pf.isHeading });
       }
     }
     for (const prf of proposalFeatures) {
       if (!processedFeatureIds.has(prf.id)) {
         processedFeatureIds.add(prf.id);
-        leftoverFeatures.push(prf.content);
+        leftoverFeatures.push({ content: prf.content, isHeading: prf.isHeading });
       }
     }
     if (leftoverFeatures.length > 0) {
       const defaultTitle = "Additional Features & Capabilities";
       if (!featureGroupsMap.has(defaultTitle)) {
-        featureGroupsMap.set(defaultTitle, new Set<string>());
+        featureGroupsMap.set(defaultTitle, []);
       }
-      const groupSet = featureGroupsMap.get(defaultTitle)!;
+      const groupList = featureGroupsMap.get(defaultTitle)!;
       for (const feat of leftoverFeatures) {
-        groupSet.add(feat);
+        groupList.push(feat);
       }
     }
 
     const featureGroups = Array.from(featureGroupsMap.entries())
-      .map(([title, set]) => ({ title, features: Array.from(set) }))
+      .map(([title, features]) => ({ title, features }))
       .filter((g) => g.features.length > 0);
 
     const totalMergedFeaturesCount = featureGroups.reduce((acc, g) => acc + g.features.length, 0);
@@ -355,17 +355,39 @@ export async function getProposalComposerData(proposalId: string) {
             attrs: { level: 3 },
             content: [{ type: "text", text: group.title }],
           });
-          newNodes.push({
-            type: "bulletList",
-            content: group.features.map((text) => ({
-              type: "listItem",
-              content: [{ type: "paragraph", content: [{ type: "text", text }] }],
-            })),
-          });
+          
+          let currentList: any[] = [];
+          for (const feature of group.features) {
+            if (feature.isHeading) {
+              if (currentList.length > 0) {
+                newNodes.push({
+                  type: "bulletList",
+                  content: currentList
+                });
+                currentList = [];
+              }
+              newNodes.push({
+                type: "heading",
+                attrs: { level: 4 },
+                content: [{ type: "text", text: feature.content }],
+              });
+            } else {
+              currentList.push({
+                type: "listItem",
+                content: [{ type: "paragraph", content: [{ type: "text", text: feature.content }] }],
+              });
+            }
+          }
+          if (currentList.length > 0) {
+            newNodes.push({
+              type: "bulletList",
+              content: currentList
+            });
+          }
         }
       } else {
         for (const group of featureGroups) {
-          const missingInGroup = group.features.filter((text) => !contentStr.toLowerCase().includes(text.toLowerCase()));
+          const missingInGroup = group.features.filter((f) => !contentStr.toLowerCase().includes(f.content.toLowerCase()));
           if (missingInGroup.length > 0) {
             needsUpdate = true;
             if (newNodes.length === 0) {
@@ -380,13 +402,35 @@ export async function getProposalComposerData(proposalId: string) {
                 content: [{ type: "text", text: group.title }],
               });
             }
-            newNodes.push({
-              type: "bulletList",
-              content: missingInGroup.map((text) => ({
-                type: "listItem",
-                content: [{ type: "paragraph", content: [{ type: "text", text }] }],
-              })),
-            });
+            
+            let currentList: any[] = [];
+            for (const feature of missingInGroup) {
+              if (feature.isHeading) {
+                if (currentList.length > 0) {
+                  newNodes.push({
+                    type: "bulletList",
+                    content: currentList
+                  });
+                  currentList = [];
+                }
+                newNodes.push({
+                  type: "heading",
+                  attrs: { level: 4 },
+                  content: [{ type: "text", text: feature.content }],
+                });
+              } else {
+                currentList.push({
+                  type: "listItem",
+                  content: [{ type: "paragraph", content: [{ type: "text", text: feature.content }] }],
+                });
+              }
+            }
+            if (currentList.length > 0) {
+              newNodes.push({
+                type: "bulletList",
+                content: currentList
+              });
+            }
           }
         }
       }

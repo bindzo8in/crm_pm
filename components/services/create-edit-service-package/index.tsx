@@ -221,6 +221,7 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                     .map((feature: any) => ({
                         id: feature.id,
                         name: feature.content,
+                        isHeading: feature.isHeading ?? false,
                         sortOrder: feature.sortOrder,
                     })) ?? [],
         },
@@ -611,6 +612,7 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                                     onClick={() =>
                                         appendFeature({
                                             name: "",
+                                            isHeading: false,
                                             sortOrder: featureFields.length,
                                         })
                                     }
@@ -640,6 +642,22 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                                                                     <Input {...field} placeholder="e.g. 24/7 Priority Support" className="bg-background" />
                                                                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                                                                 </Field>
+                                                            )}
+                                                        />
+                                                    </div>
+                                                    <div className="flex items-center shrink-0">
+                                                        <Controller
+                                                            name={`features.${index}.isHeading`}
+                                                            control={control}
+                                                            render={({ field }) => (
+                                                                <div className="flex items-center gap-2 mr-2">
+                                                                    <Checkbox 
+                                                                        id={`feature-heading-${index}`} 
+                                                                        checked={!!field.value} 
+                                                                        onCheckedChange={(checked) => field.onChange(checked === true)} 
+                                                                    />
+                                                                    <label htmlFor={`feature-heading-${index}`} className="text-sm text-muted-foreground cursor-pointer">Heading</label>
+                                                                </div>
                                                             )}
                                                         />
                                                     </div>

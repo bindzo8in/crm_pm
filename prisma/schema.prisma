@@ -278,6 +278,7 @@ model PackageFeature {
   package   ServicePackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
 
   content String
+  isHeading Boolean @default(false)
 
   sortOrder Int @default(0)
 }
@@ -519,6 +520,7 @@ model ProposalFeature {
   proposalService ProposalService @relation(fields: [proposalServiceId], references: [id], onDelete: Cascade)
 
   content String
+  isHeading Boolean @default(false)
 
   sortOrder Int @default(0)
 

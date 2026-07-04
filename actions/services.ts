@@ -356,6 +356,7 @@ export async function createServicePackage(data: ServicePackageSchema) {
                 features: {
                     create: features.map((feature) => ({
                         content: feature.name,
+                        isHeading: feature.isHeading,
                         sortOrder: feature.sortOrder
                     })),
                 },
@@ -598,8 +599,8 @@ export async function editServicePackage(
                                 data: {
                                     content:
                                         feature.name,
-                                    sortOrder:
-                                        index,
+                                    isHeading: feature.isHeading,
+                                    sortOrder: index,
                                 },
                             }
                         );
@@ -638,6 +639,7 @@ export async function editServicePackage(
                                     packageId: id,
                                     content:
                                         feature.name,
+                                    isHeading: feature.isHeading,
                                     sortOrder:
                                         feature.sortOrder,
                                 })
@@ -962,7 +964,7 @@ export async function GetAllActivePackages() {
                 { name: "asc" },
             ],
         });
-        
+
         const formattedPackages = packages.map(pkg => ({
             id: pkg.id,
             name: `${pkg.service.name} - ${pkg.name}`,

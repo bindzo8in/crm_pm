@@ -32,6 +32,8 @@ export const packageFeatureSchema = z.object({
     .string()
     .min(1, "Feature name is required"),
 
+  isHeading: z.boolean().default(false).optional(),
+
   sortOrder: z.number(),
 });
 
