@@ -1,7 +1,3 @@
-export const metadata = {
-  title: "Proposal"
-};
-
 import { getPublicProposalData } from "@/actions/public-proposal";
 import { ProposalRenderer } from "@/components/proposal/renderer/ProposalRenderer";
 import { AcceptProposalButton } from "@/components/proposal/preview/AcceptProposalButton";

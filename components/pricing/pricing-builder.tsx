@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ServicePackageImporter } from "./service-package-importer";
 import { ServiceSectionCard } from "./service-card";
-import { PricingServiceSection } from "./types";
+
 import { PricingSummaryCard } from "./pricing-summary-card";
 import { PricingApi, PricingData, PricingServiceSection } from "./types";
 import { toast } from "sonner";
@@ -44,26 +44,10 @@ interface PricingBuilderProps {
   entityId: string;
 }
 
-interface PricingData {
-  id: string;
-  title: string;
-  status: string;
-  currency: string;
-  validUntil?: string | null;
-  subtotal: number;
-  discount: number;
-  tax: number;
-  roundOff?: number;
-  grandTotal: number;
-  customer?: {
-    id: string;
-    displayName: string;
-    companyName?: string | null;
-  };
-  services: PricingServiceSection[];
-}
+
 
 interface SortableServiceSectionProps {
+  pricingApi: PricingApi;
   service: PricingServiceSection;
   entityId: string;
   onRefresh: () => void;
@@ -73,6 +57,7 @@ interface SortableServiceSectionProps {
 }
 
 function SortableServiceSection({
+  pricingApi,
   service,
   entityId,
   onRefresh,
@@ -98,6 +83,7 @@ function SortableServiceSection({
   return (
     <div ref={setNodeRef} style={style}>
       <ServiceSectionCard
+        pricingApi={pricingApi}
         service={service}
         entityId={entityId}
         onRefresh={onRefresh}
@@ -286,7 +272,7 @@ export function PricingBuilder({ entityId, pricingApi }: PricingBuilderProps) {
           >
             <RefreshCw className={`size-4 ${refreshing ? "animate-spin text-primary" : ""}`} />
           </Button>
-          <ServicePackageImporter entityId={entityId} onSuccess={() => loadPricingData(true)} />
+          <ServicePackageImporter pricingApi={pricingApi} entityId={entityId} onSuccess={() => loadPricingData(true)} />
 
           <Button asChild className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 shadow-md rounded-xl h-10 px-4">
             <Link href={`/dashboard/proposals/${entityId}/composer`}>
@@ -322,7 +308,7 @@ export function PricingBuilder({ entityId, pricingApi }: PricingBuilderProps) {
                 </p>
               </div>
               <div className="pt-2">
-                <ServicePackageImporter entityId={entityId} onSuccess={() => loadPricingData(true)} />
+                <ServicePackageImporter pricingApi={pricingApi} entityId={entityId} onSuccess={() => loadPricingData(true)} />
               </div>
             </div>
           ) : (
@@ -332,6 +318,7 @@ export function PricingBuilder({ entityId, pricingApi }: PricingBuilderProps) {
                   {data.services.map((service, idx) => (
                     <SortableServiceSection
                       key={service.id}
+                      pricingApi={pricingApi}
                       service={service}
                       entityId={entityId}
                       onRefresh={() => loadPricingData(true)}
@@ -349,6 +336,7 @@ export function PricingBuilder({ entityId, pricingApi }: PricingBuilderProps) {
         {/* Right Column: Pricing Summary Card */}
         <div className="lg:col-span-4">
           <PricingSummaryCard
+            pricingApi={pricingApi}
             entityId={entityId}
             subtotal={data.subtotal}
             initialDiscount={data.discount}

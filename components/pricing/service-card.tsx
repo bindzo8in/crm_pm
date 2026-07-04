@@ -10,17 +10,7 @@ import { deleteProposalService, updateProposalService } from "@/actions/proposal
 import { toast } from "sonner";
 import { Trash2, Layers, Package, Loader2, ChevronDown, ChevronUp, Edit2, Check, X, GripVertical, ArrowUp, ArrowDown } from "lucide-react";
 
-export interface ProposalServiceSection {
-  id: string;
-  entityId: string;
-  serviceId?: string | null;
-  serviceName: string;
-  packageId?: string | null;
-  packageName?: string | null;
-  description?: string | null;
-  notes?: string | null;
-  items: LineItem[];
-}
+
 
 interface ServiceSectionCardProps {
   pricingApi: PricingApi;

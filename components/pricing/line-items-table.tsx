@@ -462,7 +462,7 @@ export function LineItemsTable({ pricingApi,
       const discType = editForm.discountType === "NONE" || !editForm.discountType ? null : editForm.discountType;
       const discVal = discType ? Number(editForm.discountValue || 0) : null;
 
-      const res = await pricingApi.updateLineItem(item.id, {
+      const res = await pricingApi.updateLineItem(itemId, {
         id: itemId,
         entityId,
         name: editForm.name,
