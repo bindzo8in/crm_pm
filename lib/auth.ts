@@ -9,6 +9,8 @@ import { UserRole } from "@/app/generated/prisma/enums";
 import { ac, adminRole, staffRole, superAdminRole } from './permissions'
 
 export const auth = betterAuth({
+    baseURL: env.BETTER_AUTH_URL,
+    secret: env.BETTER_AUTH_SECRET,
     database: prismaAdapter(prisma, {
         provider: "postgresql"
     }),
