@@ -920,6 +920,7 @@ export async function DuplicateServicePackage(
                                     feature.content,
                                 sortOrder:
                                     feature.sortOrder,
+                                isHeading: feature.isHeading
                             })
                         ),
                 },
