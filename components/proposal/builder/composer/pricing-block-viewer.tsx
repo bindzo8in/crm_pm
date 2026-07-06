@@ -21,6 +21,7 @@ interface PricingBlockViewerProps {
     tax: number;
     roundOff: number;
     grandTotal: number;
+    currency?: string;
     proposalServices?: Array<{
       id: string;
       serviceName: string;
@@ -43,9 +44,10 @@ export function PricingBlockViewer({ proposal }: PricingBlockViewerProps) {
   const services = proposal.proposalServices || [];
 
   const formatCurrency = (val: number) => {
-    return val.toLocaleString("en-IN", {
+    const currency = proposal.currency || "INR";
+    return val.toLocaleString(currency === "USD" ? "en-US" : "en-IN", {
       style: "currency",
-      currency: "INR",
+      currency: currency,
       maximumFractionDigits: 2,
     });
   };

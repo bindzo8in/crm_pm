@@ -18,6 +18,10 @@ export const packageItemSchema = z.object({
     .number()
     .min(0, "Unit price must be positive"),
 
+  unitPriceUSD: z
+    .number()
+    .min(0, "Unit price USD must be positive"),
+
   unit: z.string().nonempty("Unit is required"),
 
   billingCycle: z.enum(BillingCycle),

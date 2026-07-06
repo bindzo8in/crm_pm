@@ -42,6 +42,7 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
             customerDisplayName: initialData.customerDisplayName || "",
             notes: initialData.notes || "",
             validUntil: initialData.validUntil as "07_Days" | "15_Days" | "30_Days",
+            currency: initialData.currency as "INR" | "USD",
         } : {
             customerId: "",
             title: "",
@@ -49,6 +50,7 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
             customerDisplayName: "",
             notes: "",
             validUntil: "07_Days",
+            currency: "INR",
         }
     });
     const {
@@ -182,6 +184,47 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
 
                                 <FieldDescription>
                                     How long this proposal remains valid.
+                                </FieldDescription>
+
+                                {fieldState.error && (
+                                    <FieldError>
+                                        {fieldState.error.message}
+                                    </FieldError>
+                                )}
+                            </FieldContent>
+                        </Field>
+                    )}
+                />
+
+                <Controller
+                    control={form.control}
+                    name="currency"
+                    render={({ field, fieldState }) => (
+                        <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full">
+                            <FieldLabel>Currency</FieldLabel>
+
+                            <FieldContent>
+                                <Select
+                                    value={field.value}
+                                    onValueChange={field.onChange}
+                                >
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Select currency" />
+                                    </SelectTrigger>
+
+                                    <SelectContent>
+                                        <SelectItem value="INR">
+                                            INR (₹)
+                                        </SelectItem>
+
+                                        <SelectItem value="USD">
+                                            USD ($)
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+
+                                <FieldDescription>
+                                    Select the currency for this proposal.
                                 </FieldDescription>
 
                                 {fieldState.error && (

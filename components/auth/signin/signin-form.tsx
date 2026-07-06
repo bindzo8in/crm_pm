@@ -13,6 +13,7 @@ import { sendVerificationEmail, signIn } from "@/lib/auth-client"
 import { useState } from "react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import Link from "next/link"
 
 const socialMediaButtons = [{ "src": "https://cdn.brandfetch.io/id6O2oGzv-/theme/dark/symbol.svg?c=1bxid64Mup7aczewSAYMX&t=1755835725776", "label": "Continue with Google", provider: "google" as const },
   // {"src":"https://cdn.brandfetch.io/idM8Hlme1a/theme/dark/symbol.svg?c=1bxid64Mup7aczewSAYMX&t=1668075051777","label":"Continue with Discord"}
@@ -199,10 +200,7 @@ export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
             control={form.control}
             render={({ field, fieldState }) => (
               <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full">
-                <FieldContent className="gap-0.5">
-                  <FieldLabel htmlFor="password">Password *</FieldLabel>
-
-                </FieldContent>
+                <FieldLabel htmlFor="password">Password *</FieldLabel>
                 <Password
                   {...field}
                   aria-invalid={fieldState.invalid}
@@ -210,6 +208,11 @@ export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
                   placeholder="Password"
 
                 />
+                <FieldContent className="flex justify-center items-end w-full">
+                  <Link href="/forget-password" className="text-sm text-primary text-nowrap hover:underline">
+                    Forgot password?
+                  </Link>
+                </FieldContent>
                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
               </Field>
             )} />
@@ -252,6 +255,12 @@ export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
           <Button disabled={isSubmitting}>
             {isSubmitting ? 'Submitting...' : 'Submit'}
           </Button>
+        </div>
+        <div className="mt-4 text-center text-sm">
+          Don't have an account?{" "}
+          <Link href="/signup" className="text-primary hover:underline">
+            Sign up
+          </Link>
         </div>
       </form>
     </>

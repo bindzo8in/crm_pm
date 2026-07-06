@@ -238,9 +238,15 @@ export async function importServicePackageToProposal(data: ImportServicePackageS
         },
       });
 
+      const proposal = await tx.proposal.findUnique({
+        where: { id: proposalId },
+        select: { currency: true }
+      });
+      const isUSD = proposal?.currency === "USD";
+
       if (servicePackage.items.length > 0) {
         const lineItemsData = servicePackage.items.map((item, idx) => {
-          const unitPriceNum = item.unitPrice.toNumber();
+          const unitPriceNum = isUSD ? item.unitPriceUSD.toNumber() : item.unitPrice.toNumber();
           const totalNum = unitPriceNum * item.quantity;
           return {
             proposalServiceId: createdService.id,

@@ -12,6 +12,7 @@ import { signUp, signIn } from '@/lib/auth-client'
 import { toast } from 'sonner'
 import { useState } from 'react'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import Link from "next/link"
 
 const socialMediaButtons = [{ "src": "https://cdn.brandfetch.io/id6O2oGzv-/theme/dark/symbol.svg?c=1bxid64Mup7aczewSAYMX&t=1755835725776", "label": "Continue with Google", provider: "google" as const },
   // {"src":"https://cdn.brandfetch.io/idZAyF9rlg/theme/dark/symbol.svg?c=1bxid64Mup7aczewSAYMX&t=1719469980739","label":"Continue with GitHub"}
@@ -246,6 +247,12 @@ export function SignupForm() {
           <Button disabled={isLoading}>
             {isLoading ? 'Submitting...' : 'Submit'}
           </Button>
+        </div>
+        <div className="mt-4 text-center text-sm">
+          Already have an account?{" "}
+          <Link href="/signin" className="text-primary hover:underline">
+            Sign in
+          </Link>
         </div>
       </form>
     </>

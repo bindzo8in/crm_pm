@@ -11,6 +11,8 @@ export const proposalSchema = z.object({
 
     validUntil: z.enum(["07_Days", "15_Days", "30_Days"]),
 
+    currency: z.enum(["INR", "USD"]),
+
     notes: z.string().optional(),
 
 }).superRefine((data, ctx) => {

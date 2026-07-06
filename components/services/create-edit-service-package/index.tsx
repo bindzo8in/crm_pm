@@ -131,6 +131,12 @@ function LivePreviewSidebar() {
         return sum + qty * price;
     }, 0);
 
+    const totalPriceUSD = items.reduce((sum, item) => {
+        const qty = Number(item.quantity) || 0;
+        const price = Number(item.unitPriceUSD) || 0;
+        return sum + qty * price;
+    }, 0);
+
     return (
         <div className="sticky top-6 border rounded-lg bg-card shadow-sm p-6 space-y-6">
             <div className="flex items-center gap-2">
@@ -146,7 +152,9 @@ function LivePreviewSidebar() {
                     items.map((item, index) => {
                         const qty = Number(item.quantity) || 0;
                         const price = Number(item.unitPrice) || 0;
+                        const priceUSD = Number(item.unitPriceUSD) || 0;
                         const itemTotal = qty * price;
+                        const itemTotalUSD = qty * priceUSD;
 
                         return (
                             <div key={index} className="flex flex-col gap-1 text-sm">
@@ -154,13 +162,14 @@ function LivePreviewSidebar() {
                                     <span className="font-medium line-clamp-1 pr-2">
                                         {item.name || "Unnamed Item"}
                                     </span>
-                                    <span className="font-medium whitespace-nowrap">
-                                        ${itemTotal.toFixed(2)}
+                                    <span className="font-medium whitespace-nowrap text-right">
+                                        ₹{itemTotal.toFixed(2)} <br />
+                                        <span className="text-xs text-muted-foreground">${itemTotalUSD.toFixed(2)}</span>
                                     </span>
                                 </div>
                                 <div className="flex justify-between text-muted-foreground text-xs">
                                     <span>
-                                        {qty} {item.unit || "unit(s)"} × ${price.toFixed(2)}
+                                        {qty} {item.unit || "unit(s)"} × ₹{price.toFixed(2)} / ${priceUSD.toFixed(2)}
                                     </span>
                                     <span>{item.billingCycle}</span>
                                 </div>
@@ -174,9 +183,14 @@ function LivePreviewSidebar() {
 
             <div className="flex items-center justify-between pt-2">
                 <span className="text-lg font-semibold">Total</span>
-                <span className="text-2xl font-bold text-primary">
-                    ${totalPrice.toFixed(2)}
-                </span>
+                <div className="text-right">
+                    <div className="text-2xl font-bold text-primary">
+                        ₹{totalPrice.toFixed(2)}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                        ${totalPriceUSD.toFixed(2)}
+                    </div>
+                </div>
             </div>
             <p className="text-xs text-muted-foreground text-right">
                 *Excludes applicable taxes
@@ -211,6 +225,7 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                         description: item.description ?? "",
                         quantity: item.quantity,
                         unitPrice: item.unitPrice,
+                        unitPriceUSD: item.unitPriceUSD ?? 0,
                         unit: item.unit,
                         billingCycle: item.billingCycle,
                         sortOrder: item.sortOrder
@@ -438,6 +453,7 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                                             description: "",
                                             quantity: 1,
                                             unitPrice: 0,
+                                            unitPriceUSD: 0,
                                             unit: "",
                                             billingCycle: "MONTHLY",
                                             sortOrder: itemFields.length,
@@ -523,7 +539,7 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                                                     </div>
 
                                                     {/* Row 3: Numbers & Units */}
-                                                    <div className="md:col-span-4">
+                                                    <div className="md:col-span-3">
                                                         <Controller
                                                             name={`items.${index}.quantity`}
                                                             control={control}
@@ -543,9 +559,29 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                                                         />
                                                     </div>
 
-                                                    <div className="md:col-span-4">
+                                                    <div className="md:col-span-3">
                                                         <Controller
                                                             name={`items.${index}.unitPrice`}
+                                                            control={control}
+                                                            render={({ field, fieldState }) => (
+                                                                <Field data-invalid={fieldState.invalid} className="gap-1.5">
+                                                                    <FieldLabel>Unit Price (₹)</FieldLabel>
+                                                                    <Input
+                                                                        {...field}
+                                                                        type="number"
+                                                                        step="0.01"
+                                                                        onChange={(e) => field.onChange(e.target.valueAsNumber || 0)}
+                                                                        placeholder="0.00"
+                                                                    />
+                                                                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                                                                </Field>
+                                                            )}
+                                                        />
+                                                    </div>
+
+                                                    <div className="md:col-span-3">
+                                                        <Controller
+                                                            name={`items.${index}.unitPriceUSD`}
                                                             control={control}
                                                             render={({ field, fieldState }) => (
                                                                 <Field data-invalid={fieldState.invalid} className="gap-1.5">
@@ -563,7 +599,7 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                                                         />
                                                     </div>
 
-                                                    <div className="md:col-span-4">
+                                                    <div className="md:col-span-3">
                                                         <Controller
                                                             name={`items.${index}.unit`}
                                                             control={control}
@@ -597,6 +633,26 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                                     </div>
                                 </SortableContext>
                             </DndContext>
+
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                    appendItem({
+                                        name: "",
+                                        description: "",
+                                        quantity: 1,
+                                        unitPrice: 0,
+                                        unitPriceUSD: 0,
+                                        unit: "",
+                                        billingCycle: "MONTHLY",
+                                        sortOrder: itemFields.length,
+                                    })
+                                }
+                            >
+                                <Plus className="mr-2 h-4 w-4" /> Add Item
+                            </Button>
                         </div>
 
                         {/* ========== Package Features Section ========== */}

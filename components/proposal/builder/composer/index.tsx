@@ -413,7 +413,7 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
                 )}
 
                 {block.type === "PRICING" && (
-                  <PricingBlockViewer proposal={proposal || { id: proposalId, subtotal: 0, discount: 0, tax: 0, roundOff: 0, grandTotal: 0 }} />
+                  <PricingBlockViewer proposal={proposal || { id: proposalId, subtotal: 0, discount: 0, tax: 0, roundOff: 0, grandTotal: 0, currency: "INR" }} />
                 )}
 
                 {(block.type === "FEATURES" || block.type === "TERMS" || block.type === "CUSTOM") && (
