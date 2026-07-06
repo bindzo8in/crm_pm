@@ -16,6 +16,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { LayoutDashboardIcon, ChartBarIcon, FolderIcon, UsersIcon, CameraIcon, FileTextIcon, Settings2Icon, CircleHelpIcon, SearchIcon, DatabaseIcon, FileChartColumnIcon, FileIcon, CommandIcon, BookUser, BoxIcon, HandshakeIcon, ScrollText } from "lucide-react"
+import { env } from "@/lib/env"
 
 const data = {
   user: {
@@ -211,7 +212,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             >
               <a href="#">
                 <CommandIcon className="size-5!" />
-                <span className="text-base font-semibold">Design Hub CRM.</span>
+                <span className="text-base font-semibold">{env.NEXT_PUBLIC_APP_NAME}</span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>

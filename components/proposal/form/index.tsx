@@ -54,7 +54,6 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
     const {
         formState: { isSubmitting },
     } = form;
-    console.log(form.getValues())
 
     const handleSubmit = form.handleSubmit(async (data) => {
         let response;

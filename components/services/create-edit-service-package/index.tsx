@@ -124,6 +124,7 @@ function LivePreviewSidebar() {
         defaultValue: [],
     });
 
+
     const totalPrice = items.reduce((sum, item) => {
         const qty = Number(item.quantity) || 0;
         const price = Number(item.unitPrice) || 0;
@@ -651,10 +652,10 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                                                             control={control}
                                                             render={({ field }) => (
                                                                 <div className="flex items-center gap-2 mr-2">
-                                                                    <Checkbox 
-                                                                        id={`feature-heading-${index}`} 
-                                                                        checked={!!field.value} 
-                                                                        onCheckedChange={(checked) => field.onChange(checked === true)} 
+                                                                    <Checkbox
+                                                                        id={`feature-heading-${index}`}
+                                                                        checked={!!field.value}
+                                                                        onCheckedChange={(checked) => field.onChange(checked === true)}
                                                                     />
                                                                     <label htmlFor={`feature-heading-${index}`} className="text-sm text-muted-foreground cursor-pointer">Heading</label>
                                                                 </div>
@@ -677,6 +678,20 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                                     </div>
                                 </SortableContext>
                             </DndContext>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                    appendFeature({
+                                        name: "",
+                                        isHeading: false,
+                                        sortOrder: featureFields.length,
+                                    })
+                                }
+                            >
+                                <Plus className="mr-2 h-4 w-4" /> Add Feature
+                            </Button>
                         </div>
 
                         {/* ========== Submit Action ========== */}
