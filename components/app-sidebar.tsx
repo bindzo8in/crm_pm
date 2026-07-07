@@ -15,7 +15,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, ChartBarIcon, FolderIcon, UsersIcon, CameraIcon, FileTextIcon, Settings2Icon, CircleHelpIcon, SearchIcon, DatabaseIcon, FileChartColumnIcon, FileIcon, CommandIcon, BookUser, BoxIcon, HandshakeIcon, ScrollText } from "lucide-react"
+import { LayoutDashboardIcon, ChartBarIcon, FolderIcon, UsersIcon, CameraIcon, FileTextIcon, Settings2Icon, CircleHelpIcon, SearchIcon, DatabaseIcon, FileChartColumnIcon, FileIcon, CommandIcon, BookUser, BoxIcon, HandshakeIcon, ScrollText, TableIcon } from "lucide-react"
 import { env } from "@/lib/env"
 
 const data = {
@@ -60,6 +60,14 @@ const data = {
       url: "/dashboard/services/packages",
       icon: (
         <BoxIcon
+        />
+      ),
+    },
+    {
+      title: "Tariffs",
+      url: "/dashboard/tariffs",
+      icon: (
+        <TableIcon
         />
       ),
     },

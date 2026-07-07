@@ -44,6 +44,7 @@ import { AddBlockMenu } from "./add-block-menu";
 import { SortableBlockWrapper } from "./sortable-block-wrapper";
 import { CoverBlockEditor } from "./cover-block-editor";
 import { PricingBlockViewer } from "./pricing-block-viewer";
+import { PricingSummaryBlockViewer } from "./pricing-summary-block-viewer";
 import { RichTextBlockEditor } from "./rich-text-block-editor";
 import { TimelineBlockEditor } from "./timeline-block-editor";
 import { SignatureBlockEditor } from "./signature-block-editor";
@@ -72,6 +73,11 @@ interface ProposalData {
       unitPrice: number;
       total: number;
       billingCycle: string;
+    }>;
+    features?: Array<{
+      id: string;
+      content: string;
+      isHeading: boolean;
     }>;
   }>;
 }
@@ -414,6 +420,10 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
 
                 {block.type === "PRICING" && (
                   <PricingBlockViewer proposal={proposal || { id: proposalId, subtotal: 0, discount: 0, tax: 0, roundOff: 0, grandTotal: 0, currency: "INR" }} />
+                )}
+
+                {block.type === "PRICING_SUMMARY" && (
+                  <PricingSummaryBlockViewer proposal={proposal || { id: proposalId, currency: "INR" }} />
                 )}
 
                 {(block.type === "FEATURES" || block.type === "TERMS" || block.type === "CUSTOM") && (

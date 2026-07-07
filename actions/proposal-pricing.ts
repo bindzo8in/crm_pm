@@ -148,6 +148,9 @@ export async function getProposalPricing(proposalId: string) {
             items: {
               orderBy: { sortOrder: "asc" },
             },
+            features: {
+              orderBy: { sortOrder: "asc" },
+            },
           },
         },
       },

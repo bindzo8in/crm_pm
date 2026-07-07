@@ -695,9 +695,11 @@ export async function getServicePackage(id: string) {
             ? {
                 ...servicePackage,
                 totalPrice: servicePackage.totalPrice.toNumber(),
+                totalPriceUSD: servicePackage.totalPriceUSD.toNumber(),
                 items: servicePackage.items.map((item) => ({
                     ...item,
                     unitPrice: item.unitPrice.toNumber(),
+                    unitPriceUSD: item.unitPriceUSD.toNumber(),
                 })),
             }
             : null;

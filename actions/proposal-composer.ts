@@ -588,6 +588,9 @@ export async function createProposalBlock(input: CreateProposalBlockInput) {
           },
         ],
       };
+    } else if (validated.type === "PRICING_SUMMARY") {
+      defaultTitle = "Package Comparison Grid";
+      defaultContent = {};
     } else if (validated.type === "CUSTOM" && !defaultContent.type) {
       defaultContent = {
         type: "doc",

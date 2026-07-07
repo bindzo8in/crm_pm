@@ -104,6 +104,19 @@ export function AddBlockMenu({ onAddBlock, isAdding, hasTimeline }: AddBlockMenu
               <span className="text-[11px] text-muted-foreground">Starts a new page in PDF & Print</span>
             </div>
           </DropdownMenuItem>
+          
+          <DropdownMenuItem
+            onClick={() => onAddBlock("PRICING_SUMMARY" as any)}
+            className="gap-2.5 py-2.5 cursor-pointer"
+          >
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400">
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <div className="flex flex-col">
+              <span className="font-medium text-sm">Tariff Grid</span>
+              <span className="text-[11px] text-muted-foreground">Package Comparison Table</span>
+            </div>
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
