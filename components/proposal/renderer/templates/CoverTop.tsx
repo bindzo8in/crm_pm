@@ -21,7 +21,7 @@ export function CoverTop({ company, config }: { company: any; config: any }) {
       {/* Top Right Logo */}
       <div className="z-10 relative">
         {logo ? (
-          <img src={logo} alt="Company Logo" className="h-16 object-contain" />
+          <img src={logo} alt="Company Logo" className="h-28 max-w-[400px] object-contain" />
         ) : (
           <div className="text-2xl font-bold tracking-widest text-slate-800">
             {company?.displayName || "COMPANY"}

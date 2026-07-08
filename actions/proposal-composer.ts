@@ -274,7 +274,7 @@ export async function getProposalComposerData(proposalId: string) {
     const processedFeatureIds = new Set<string>();
 
     for (const ps of proposalServices) {
-      const title = ps.packageName || ps.serviceName || "Service Package";
+      const title = ps.packageName ? `${ps.packageName} (${ps.serviceName})` : (ps.serviceName || "Service Package");
       if (!featureGroupsMap.has(title)) {
         featureGroupsMap.set(title, []);
       }
@@ -334,25 +334,29 @@ export async function getProposalComposerData(proposalId: string) {
     const featuresBlock = blocks.find((b) => b.type === "FEATURES");
     if (featuresBlock && totalMergedFeaturesCount > 0) {
       const contentStr = JSON.stringify(featuresBlock.content || {});
-      const isDefaultPlaceholder = contentStr.includes("Our solution is architected");
+      // Consider the block stale/needing rebuild if:
+      // 1. It contains the original placeholder text
+      // 2. It contains old generated headings we've since removed
+      // 3. It has service group content but NO pageBreak nodes (pre-per-page-architecture)
+      const hasPageBreaks = contentStr.includes('"type":"pageBreak"');
+      const hasOldHeadings = contentStr.includes('Project Scope') || contentStr.includes('Key Features');
+      const isDefaultPlaceholder = contentStr.includes("Our solution is architected") || hasOldHeadings || !hasPageBreaks;
 
       let needsUpdate = false;
       let newNodes: Array<Record<string, unknown>> = [];
 
       if (isDefaultPlaceholder) {
         needsUpdate = true;
-        newNodes = [
-          {
-            type: "heading",
-            attrs: { level: 2 },
-            content: [{ type: "text", text: "Project Scope & Core Deliverables" }],
-          },
-        ];
+        newNodes = [];
 
-        for (const group of featureGroups) {
+        for (let i = 0; i < featureGroups.length; i++) {
+          const group = featureGroups[i];
+          if (i > 0) {
+            newNodes.push({ type: "pageBreak" });
+          }
           newNodes.push({
             type: "heading",
-            attrs: { level: 3 },
+            attrs: { level: 2 },
             content: [{ type: "text", text: group.title }],
           });
           
@@ -396,9 +400,12 @@ export async function getProposalComposerData(proposalId: string) {
             }
 
             if (!contentStr.toLowerCase().includes(group.title.toLowerCase())) {
+              if (newNodes.length > 0) {
+                newNodes.push({ type: "pageBreak" });
+              }
               newNodes.push({
                 type: "heading",
-                attrs: { level: 3 },
+                attrs: { level: 2 },
                 content: [{ type: "text", text: group.title }],
               });
             }
@@ -439,7 +446,10 @@ export async function getProposalComposerData(proposalId: string) {
         const updatedContent = { type: "doc", content: newNodes } as Prisma.JsonObject;
         await prisma.proposalBlock.update({
           where: { id: featuresBlock.id },
-          data: { content: updatedContent },
+          data: { 
+            content: updatedContent,
+            title: "Service Features" // Set block title instead of empty string
+          },
         });
         featuresBlock.content = updatedContent;
       }
@@ -449,25 +459,29 @@ export async function getProposalComposerData(proposalId: string) {
     const termsBlock = blocks.find((b) => b.type === "TERMS");
     if (termsBlock && mergedTerms.length > 0) {
       const contentStr = JSON.stringify(termsBlock.content || {});
-      const isDefaultPlaceholder = contentStr.includes("Validity: This proposal is valid as per the timeframe specified");
+      // Consider the terms block stale/needing rebuild if:
+      // 1. It contains the original placeholder text
+      // 2. It contains old generated headings we've since removed
+      // 3. It has terms content but NO pageBreak nodes (pre-per-page-architecture)
+      const hasTermsPageBreaks = contentStr.includes('"type":"pageBreak"');
+      const hasOldTermsHeadings = contentStr.includes('Commercial') || contentStr.includes('Legal Terms');
+      const isDefaultPlaceholder = contentStr.includes("Validity: This proposal is valid as per the timeframe specified") || hasOldTermsHeadings || !hasTermsPageBreaks;
 
       let needsUpdate = false;
       let newNodes: Array<Record<string, unknown>> = [];
 
       if (isDefaultPlaceholder) {
         needsUpdate = true;
-        newNodes = [
-          {
-            type: "heading",
-            attrs: { level: 2 },
-            content: [{ type: "text", text: "Commercial & Legal Terms" }],
-          },
-        ];
+        newNodes = [];
 
-        for (const term of mergedTerms) {
+        for (let i = 0; i < mergedTerms.length; i++) {
+          const term = mergedTerms[i];
+          if (i > 0) {
+            newNodes.push({ type: "pageBreak" });
+          }
           newNodes.push({
             type: "heading",
-            attrs: { level: 3 },
+            attrs: { level: 2 },
             content: [{ type: "text", text: term.title }],
           });
           if (term.content && typeof term.content === "object" && (term.content as Record<string, unknown>).type === "doc" && Array.isArray((term.content as Record<string, unknown>).content)) {
@@ -508,7 +522,10 @@ export async function getProposalComposerData(proposalId: string) {
         const updatedContent = { type: "doc", content: newNodes } as Prisma.JsonObject;
         await prisma.proposalBlock.update({
           where: { id: termsBlock.id },
-          data: { content: updatedContent },
+          data: {
+            content: updatedContent,
+            title: "", // Clear generic block title; each term's heading is its own page title
+          },
         });
         termsBlock.content = updatedContent;
       }

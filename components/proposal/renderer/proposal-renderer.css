@@ -11,7 +11,7 @@
   margin: 0 auto;
   padding: 0;
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  overflow: hidden;
+  /* overflow must NOT be hidden — it would clip proposal-pdf-page children */
 }
 
 /* Base typography for the document */
@@ -50,6 +50,19 @@
 .proposal-page-break-after {
   break-after: page;
   page-break-after: always;
+}
+
+/* Individual PDF page containers — each gets screenshotted as one PDF page */
+.proposal-pdf-page {
+  display: block;
+  background: white;
+  box-sizing: border-box;
+}
+
+/* Visual separator between pages in the on-screen preview */
+.proposal-renderer-document .proposal-pdf-page + .proposal-pdf-page {
+  margin-top: 12px;
+  box-shadow: 0 -3px 0 0 #e5e7eb;
 }
 
 /* A4 Page structure within the document */

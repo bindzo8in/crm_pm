@@ -21,6 +21,7 @@ import TableHeader from "@tiptap/extension-table-header"
 // --- Tiptap Node ---
 import { ImageUploadNode } from "@/components/tiptap-node/image-upload-node/image-upload-node-extension"
 import { HorizontalRule } from "@/components/tiptap-node/horizontal-rule-node/horizontal-rule-node-extension"
+import { PageBreak } from "@/components/tiptap-node/page-break-node/page-break-node-extension"
 import "@/components/tiptap-node/blockquote-node/blockquote-node.scss"
 import "@/components/tiptap-node/code-block-node/code-block-node.scss"
 import "@/components/tiptap-node/horizontal-rule-node/horizontal-rule-node.scss"
@@ -84,6 +85,7 @@ export function RichTextEditor({ value, onChange, disabled, className, placehold
         },
       }),
       HorizontalRule,
+      PageBreak,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       TaskList,
       TaskItem.configure({ nested: true }),

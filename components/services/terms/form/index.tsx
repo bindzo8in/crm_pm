@@ -114,14 +114,17 @@ export function ProposalTermForm({
         defaultValues: {
             id: initialData?.id || undefined,
             title: initialData?.title || "",
-            packages: initialData?.packages || activePackages.map((pkg, idx) => ({
-                packageId: pkg.id,
-                packageName: pkg.name,
-                include: false,
-                isRequired: false,
-                disabled: false,
-                sortOrder: idx
-            })),
+            packages: activePackages.map((pkg, idx) => {
+                const existingPkg = initialData?.packages?.find(p => p.packageId === pkg.id);
+                return {
+                    packageId: pkg.id,
+                    packageName: pkg.name,
+                    include: !!existingPkg,
+                    isRequired: !!existingPkg?.isRequired,
+                    disabled: false,
+                    sortOrder: existingPkg?.sortOrder ?? idx
+                };
+            }).sort((a, b) => a.sortOrder - b.sortOrder),
             content: initialData?.content ? initialData.content : {
                 type: "doc",
                 content: [

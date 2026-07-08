@@ -119,15 +119,14 @@ async function recalculateAndSaveTotals(proposalId: string, tx: Prisma.Transacti
   };
 }
 
-export async function getProposalPricing(proposalId: string) {
+export async function getProposalPricing(proposalId: string, isPublic = false) {
   try {
-    const perm = await checkPermission("read");
-    if (!perm.success) return errorResponse(perm.error!);
+    if (!isPublic) {
+      const perm = await checkPermission("read");
+      if (!perm.success) return errorResponse(perm.error!);
+    }
 
-    // Ensure totals and roundoff are recalculated and up to date whenever fetched
-    await prisma.$transaction(async (tx) => {
-      await recalculateAndSaveTotals(proposalId, tx);
-    });
+    // Totals are now only calculated on mutations to prevent transaction timeouts during fetches
 
     const proposal = await prisma.proposal.findUnique({
       where: { id: proposalId },

@@ -16,6 +16,7 @@ import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 import { ImageUploadNode } from "@/components/tiptap-node/image-upload-node/image-upload-node-extension";
 import { HorizontalRule } from "@/components/tiptap-node/horizontal-rule-node/horizontal-rule-node-extension";
+import { PageBreak } from "@/components/tiptap-node/page-break-node/page-break-node-extension";
 
 import "./proposal-renderer.css";
 
@@ -24,58 +25,118 @@ interface RichTextRendererProps {
     title: string | null;
     content?: unknown;
   };
+  /** When true the component is already inside a proposal-pdf-page wrapper.
+   *  When the content contains pageBreak nodes it will render multiple pages itself. */
+  insidePage?: boolean;
 }
 
-export function RichTextRenderer({ block }: RichTextRendererProps) {
-  const [contentHTML, setContentHTML] = useState<string>("");
+const TIPTAP_EXTENSIONS = [
+  StarterKit.configure({ horizontalRule: false }),
+  HorizontalRule,
+  PageBreak,
+  TextAlign.configure({ types: ["heading", "paragraph"] }),
+  TaskList,
+  TaskItem.configure({ nested: true }),
+  Highlight.configure({ multicolor: true }),
+  ImageExtension,
+  Typography,
+  Superscript,
+  Subscript,
+  Table.configure({ resizable: true }),
+  TableRow,
+  TableHeader,
+  TableCell,
+  ImageUploadNode,
+];
+
+/**
+ * Splits a TipTap doc's content array at every `pageBreak` node.
+ * Returns an array of content-node arrays (one per page).
+ */
+function splitAtPageBreaks(nodes: unknown[]): unknown[][] {
+  const pages: unknown[][] = [];
+  let current: unknown[] = [];
+  for (const node of nodes) {
+    if ((node as { type: string }).type === "pageBreak") {
+      pages.push(current);
+      current = [];
+    } else {
+      current.push(node);
+    }
+  }
+  if (current.length > 0) pages.push(current);
+  return pages;
+}
+
+export function RichTextRenderer({ block, insidePage }: RichTextRendererProps) {
+  const [pages, setPages] = useState<string[]>([]);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
     if (!block.content || typeof block.content !== "object") {
-      setContentHTML("");
+      setPages([]);
       return;
     }
-    
+
     try {
-      const html = generateHTML(block.content as Record<string, unknown>, [
-        StarterKit.configure({ horizontalRule: false }),
-        HorizontalRule,
-        TextAlign.configure({ types: ["heading", "paragraph"] }),
-        TaskList,
-        TaskItem.configure({ nested: true }),
-        Highlight.configure({ multicolor: true }),
-        ImageExtension,
-        Typography,
-        Superscript,
-        Subscript,
-        Table.configure({ resizable: true }),
-        TableRow,
-        TableHeader,
-        TableCell,
-        ImageUploadNode,
-      ]);
-      setContentHTML(html);
+      const doc = block.content as { type: string; content?: unknown[] };
+      const topNodes = Array.isArray(doc.content) ? doc.content : [];
+
+      // Check whether this document has any pageBreak nodes
+      const hasPageBreaks = topNodes.some(
+        (n) => (n as { type: string }).type === "pageBreak"
+      );
+
+      if (hasPageBreaks) {
+        const pageSections = splitAtPageBreaks(topNodes);
+        const htmlPages = pageSections
+          // Filter out empty sections (e.g. a trailing pageBreak produces an empty array)
+          .filter((section) => section.length > 0)
+          .map((section) => {
+            const subDoc = { type: "doc", content: section };
+            return generateHTML(subDoc, TIPTAP_EXTENSIONS);
+          })
+          // Also filter out sections that only produce whitespace HTML
+          .filter((html) => html.replace(/<[^>]*>/g, "").trim().length > 0);
+        setPages(htmlPages);
+      } else {
+        const html = generateHTML(doc, TIPTAP_EXTENSIONS);
+        setPages([html]);
+      }
     } catch (error) {
       console.error("Failed to generate HTML from TipTap JSON:", error);
-      setContentHTML("<p>Error rendering content.</p>");
+      setPages(["<p>Error rendering content.</p>"]);
     }
   }, [block.content]);
 
-  if (!mounted || !contentHTML) {
+  if (!mounted || pages.length === 0) {
     return null;
   }
 
+  // Every page section — whether one or many — gets its own proposal-pdf-page wrapper.
+  // This is REQUIRED so the PDF generator can screenshot each page individually.
+  // The multi-page case (feature groups split by pageBreak) naturally produces multiple divs.
+  // The single-page case (terms, custom, signature content) produces exactly one div.
   return (
-    <div className="mb-16">
-      {block.title && (
-        <h2 className="text-2xl font-bold text-gray-900 mb-8 border-b pb-4">{block.title}</h2>
-      )}
-      <div 
-        className="proposal-rich-text"
-        dangerouslySetInnerHTML={{ __html: contentHTML }} 
-      />
-    </div>
+    <>
+      {pages.map((html, i) => (
+        <div
+          key={i}
+          className="proposal-pdf-page proposal-page-content"
+          style={{ width: "210mm", minHeight: "297mm", background: "white" }}
+        >
+          {/* Only show the block-level title on the first page of multi-page blocks */}
+          {i === 0 && block.title && (
+            <h2 className="text-2xl font-bold text-gray-900 mb-8 border-b pb-4">{block.title}</h2>
+          )}
+          <div
+            className="proposal-rich-text"
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        </div>
+      ))}
+    </>
   );
 }
+

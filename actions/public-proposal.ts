@@ -7,7 +7,7 @@ export async function getPublicProposalData(proposalId: string) {
   try {
     // We only fetch pricing data because it correctly formats all fields for rendering.
     // It also checks if the proposal exists.
-    const pricingRes = await getProposalPricing(proposalId);
+    const pricingRes = await getProposalPricing(proposalId, true);
     if (!pricingRes.success || !pricingRes.data) {
       return { success: false, message: "Proposal not found" };
     }

@@ -27,7 +27,7 @@ export function ProposalCover({ proposal, company, template }: ProposalCoverProp
   if (!config.coverEnabled) return null;
 
   return (
-    <div className="relative flex flex-col w-full h-[297mm] max-h-[297mm] bg-white overflow-hidden proposal-page-break-after font-sans">
+    <div className="relative flex flex-col w-full h-[297mm] max-h-[297mm] bg-white overflow-hidden proposal-page-break-after">
       {config.coverBackground?.url && (
         <div className="absolute inset-0 w-full h-full z-0 pointer-events-none">
           <img 

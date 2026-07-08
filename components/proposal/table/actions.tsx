@@ -103,7 +103,7 @@ export function ProposalActions({
 
       <DropdownMenuContent align="end">
         <DropdownMenuItem asChild>
-          <Link href={`/dashboard/proposals/${proposal.id}`}>
+          <Link href={`/p/${proposal.id}`}>
             <Eye />
             View
           </Link>

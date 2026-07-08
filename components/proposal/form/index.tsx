@@ -42,7 +42,7 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
             customerDisplayName: initialData.customerDisplayName || "",
             notes: initialData.notes || "",
             validUntil: initialData.validUntil as "07_Days" | "15_Days" | "30_Days",
-            currency: initialData.currency as "INR" | "USD",
+            currency: initialData.currency as "INR" | "USD" || "INR",
         } : {
             customerId: "",
             title: "",

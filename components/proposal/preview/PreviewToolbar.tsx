@@ -31,46 +31,84 @@ export function PreviewToolbar({ proposalId }: PreviewToolbarProps) {
       
       if (!wrapper || !element) return;
       
-      // We temporarily reset zoom on the wrapper for correct PDF scaling
+      // Reset zoom for accurate dimensions during capture
       const originalZoom = wrapper.style.getPropertyValue("zoom");
       wrapper.style.setProperty("zoom", "100%");
 
-      // Let DOM repaint
-      await new Promise(resolve => setTimeout(resolve, 150));
+      // Temporarily hide the visual margin/separator between pages so they
+      // don't bleed into adjacent page screenshots
+      const pageEls = Array.from(element.querySelectorAll('.proposal-pdf-page')) as HTMLElement[];
+      const originalMargins: string[] = pageEls.map(p => p.style.marginTop);
+      pageEls.forEach(p => { p.style.marginTop = '0'; p.style.boxShadow = 'none'; });
 
-      const dataUrl = await toPng(element, { 
-        pixelRatio: 3,
-        backgroundColor: '#ffffff',
-        style: { 
-          boxShadow: 'none',
-          margin: '0',
-          transform: 'none'
-        }
-      });
-      
+      // Let DOM repaint fully
+      await new Promise(resolve => setTimeout(resolve, 300));
+
       const pdf = new jsPDF('p', 'mm', 'a4');
-      
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      const imgWidth = pdfWidth;
-      const imgHeight = (element.offsetHeight * pdfWidth) / element.offsetWidth;
-      
-      let heightLeft = imgHeight;
-      let position = 0;
+      const pdfWidth = pdf.internal.pageSize.getWidth();   // 210mm
+      const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm
 
-      pdf.addImage(dataUrl, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-      heightLeft -= pdfHeight;
+      if (pageEls.length === 0) {
+        // Legacy fallback: screenshot the entire document as one image
+        const dataUrl = await toPng(element, {
+          pixelRatio: 3,
+          backgroundColor: '#ffffff',
+          style: { boxShadow: 'none', margin: '0', transform: 'none' },
+        });
+        const imgHeight = (element.offsetHeight * pdfWidth) / element.offsetWidth;
+        pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, imgHeight, undefined, 'FAST');
+      } else {
+        let firstPage = true;
+        for (const page of pageEls) {
+          // Skip pages that have no actual pixel height (defensive)
+          if (page.offsetHeight < 5) continue;
 
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(dataUrl, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-        heightLeft -= pdfHeight;
+          const dataUrl = await toPng(page, {
+            pixelRatio: 3,
+            backgroundColor: '#ffffff',
+            // Force clean white background, no borders, no shadow during capture
+            style: {
+              boxShadow: 'none',
+              border: 'none',
+              outline: 'none',
+              margin: '0',
+              marginTop: '0',
+              transform: 'none',
+              overflow: 'visible',
+            },
+          });
+
+          // Scale captured image proportionally to A4 width
+          const imgH = (page.offsetHeight * pdfWidth) / page.offsetWidth;
+
+          if (!firstPage) pdf.addPage();
+          firstPage = false;
+
+          // Add a 1mm tolerance for floating point rounding so exact A4 pages don't tile an extra blank page
+          if (imgH <= pdfHeight + 1) {
+            pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, imgH, undefined, 'FAST');
+          } else {
+            // Content is taller than one A4 page — tile across multiple pages
+            let yOffset = 0;
+            let remaining = imgH;
+            // Only add a new page if the remaining content is larger than 1mm
+            while (remaining > 1) {
+              if (yOffset > 0) pdf.addPage();
+              pdf.addImage(dataUrl, 'PNG', 0, -(imgH - remaining), pdfWidth, imgH, undefined, 'FAST');
+              remaining -= pdfHeight;
+              yOffset++;
+            }
+          }
+        }
       }
       
       pdf.save('proposal.pdf');
       
-      // Restore original zoom on wrapper
+      // Restore margins and zoom
+      pageEls.forEach((p, i) => {
+        p.style.marginTop = originalMargins[i];
+        p.style.boxShadow = '';
+      });
       if (originalZoom) {
         wrapper.style.setProperty("zoom", originalZoom);
       } else {
@@ -82,6 +120,7 @@ export function PreviewToolbar({ proposalId }: PreviewToolbarProps) {
       setIsDownloading(false);
     }
   };
+
 
   const handleWhatsAppShare = async () => {
     const url = `${window.location.origin}/p/${proposalId}`;
