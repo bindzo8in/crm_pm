@@ -6,9 +6,10 @@ import { Printer, FileDown, ZoomIn, ZoomOut, Maximize, Loader2 } from "lucide-re
 
 interface PublicPreviewToolbarProps {
   proposalId: string;
+  proposalNumber: number;
 }
 
-export function PublicPreviewToolbar({ proposalId }: PublicPreviewToolbarProps) {
+export function PublicPreviewToolbar({ proposalId, proposalNumber }: PublicPreviewToolbarProps) {
   const [zoom, setZoom] = useState(100);
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -30,7 +31,7 @@ export function PublicPreviewToolbar({ proposalId }: PublicPreviewToolbarProps) 
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `proposal-${proposalId}.pdf`;
+      a.download = `quotation-${proposalNumber}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {

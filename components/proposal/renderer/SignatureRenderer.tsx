@@ -13,9 +13,11 @@ interface SignatureRendererProps {
     title: string | null;
     content?: unknown;
   };
+  proposal?: any;
+  company?: any;
 }
 
-export function SignatureRenderer({ block }: SignatureRendererProps) {
+export function SignatureRenderer({ block, proposal, company }: SignatureRendererProps) {
   const content = (block.content as SignatureContent) || {};
   const {
     clientSignatory = "Authorized Signatory",
@@ -23,6 +25,23 @@ export function SignatureRenderer({ block }: SignatureRendererProps) {
     companySignatory = "Account Executive",
     companyDesignation = "Company Representative",
   } = content;
+
+  // Extract signature images if they exist
+  const clientSignatureUrl = proposal?.clientSignature?.url || null;
+  
+  // Need to parse company logo/signatures safely just in case they are strings
+  let companySignatureUrl = null;
+  if (company?.signatureImage) {
+    if (typeof company.signatureImage === 'string') {
+      try {
+        companySignatureUrl = JSON.parse(company.signatureImage).url;
+      } catch (e) {
+        // ignore
+      }
+    } else {
+      companySignatureUrl = company.signatureImage.url;
+    }
+  }
 
   return (
     <div className="mb-16 break-inside-avoid">
@@ -35,8 +54,12 @@ export function SignatureRenderer({ block }: SignatureRendererProps) {
       <div className="grid grid-cols-2 gap-16 mt-8">
         {/* Client Signature */}
         <div className="space-y-12">
-          <div className="border-b border-gray-400 pb-2 flex items-end h-16">
-            <span className="text-xs text-gray-400 italic">Signature & Stamp</span>
+          <div className="border-b border-gray-400 pb-2 flex items-end h-24 relative">
+            {clientSignatureUrl ? (
+              <img src={clientSignatureUrl} alt="Client Signature" className="max-h-20 max-w-[200px] object-contain absolute bottom-2 left-0" />
+            ) : (
+              <span className="text-xs text-gray-400 italic">Signature & Stamp</span>
+            )}
           </div>
           <div>
             <p className="text-lg font-bold text-gray-900">{clientSignatory}</p>
@@ -47,8 +70,12 @@ export function SignatureRenderer({ block }: SignatureRendererProps) {
 
         {/* Company Signature */}
         <div className="space-y-12">
-          <div className="border-b border-gray-400 pb-2 flex items-end h-16">
-            <span className="text-xs text-gray-400 italic">Signature & Date</span>
+          <div className="border-b border-gray-400 pb-2 flex items-end h-24 relative">
+            {companySignatureUrl ? (
+              <img src={companySignatureUrl} alt="Company Signature" className="max-h-20 max-w-[200px] object-contain absolute bottom-2 left-0" />
+            ) : (
+              <span className="text-xs text-gray-400 italic">Signature & Date</span>
+            )}
           </div>
           <div>
             <p className="text-lg font-bold text-gray-900">{companySignatory}</p>

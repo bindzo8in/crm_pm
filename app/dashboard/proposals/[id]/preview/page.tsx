@@ -56,7 +56,7 @@ export default async function ProposalPreviewPage({ params }: ProposalPreviewPag
 
   return (
     <div className="min-h-screen bg-gray-200/50 flex flex-col">
-      <PreviewToolbar proposalId={proposal.id} />
+      <PreviewToolbar proposalId={proposal.id} proposalNumber={proposal.proposalNumber} />
       
       <main className="flex-1 overflow-auto py-8 mb-16">
         <div id="proposal-preview-wrapper" className="transition-transform duration-200 ease-out pb-16">

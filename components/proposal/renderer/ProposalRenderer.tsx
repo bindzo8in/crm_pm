@@ -118,7 +118,7 @@ export function ProposalRenderer({ proposal, blocks, company, bankAccount, templ
                 style={{ width: "210mm", height: "257mm" }}
               >
                 <div className="relative z-10">
-                  <SignatureRenderer block={block} />
+                  <SignatureRenderer block={block} proposal={proposal} company={company} />
                 </div>
                 <div className="absolute bottom-0 left-0 w-full z-10">
                   <CoverFooter proposal={proposal} company={company} config={config} />

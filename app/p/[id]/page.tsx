@@ -91,7 +91,7 @@ export default async function PublicProposalPage({ params, searchParams }: Publi
 
   return (
     <div className="min-h-screen bg-gray-200/50 flex flex-col font-sans">
-      <PublicPreviewToolbar proposalId={proposal.id} />
+      <PublicPreviewToolbar proposalId={proposal.id} proposalNumber={proposal.proposalNumber} />
       <main className="flex-1 overflow-auto py-8 mb-16">
         <div id="proposal-preview-wrapper" className="transition-transform duration-200 ease-out pb-16">
           <ProposalRenderer 

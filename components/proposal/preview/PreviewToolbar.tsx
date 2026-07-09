@@ -8,9 +8,10 @@ import { updateProposalStatus } from "@/actions/proposal";
 
 interface PreviewToolbarProps {
   proposalId: string;
+  proposalNumber: number;
 }
 
-export function PreviewToolbar({ proposalId }: PreviewToolbarProps) {
+export function PreviewToolbar({ proposalId, proposalNumber }: PreviewToolbarProps) {
   const [zoom, setZoom] = useState(100);
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -33,7 +34,7 @@ export function PreviewToolbar({ proposalId }: PreviewToolbarProps) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `proposal-${proposalId}.pdf`;
+      a.download = `quotation-${proposalNumber}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {
