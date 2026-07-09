@@ -17,6 +17,8 @@ import TableHeader from "@tiptap/extension-table-header";
 import { ImageUploadNode } from "@/components/tiptap-node/image-upload-node/image-upload-node-extension";
 import { HorizontalRule } from "@/components/tiptap-node/horizontal-rule-node/horizontal-rule-node-extension";
 import { PageBreak } from "@/components/tiptap-node/page-break-node/page-break-node-extension";
+import { PageHeader } from "./templates/PageHeader";
+import { PageFooter } from "./templates/PageFooter";
 
 import "./proposal-renderer.css";
 
@@ -31,6 +33,8 @@ interface RichTextRendererProps {
   services?: Array<{ serviceName: string; packageName?: string | null }>;
   /** @deprecated kept for prop compat — no longer used */
   isFirstBlock?: boolean;
+  company?: any;
+  proposal?: any;
 }
 
 const TIPTAP_EXTENSIONS = [
@@ -76,6 +80,8 @@ export function RichTextRenderer({
   blockType,
   backgroundUrl,
   services,
+  company,
+  proposal,
 }: RichTextRendererProps) {
   const [pages, setPages] = useState<string[]>([]);
   const [mounted, setMounted] = useState(false);
@@ -132,11 +138,14 @@ export function RichTextRenderer({
         return (
         <div
           key={i}
-          className="proposal-pdf-page proposal-page-break-before proposal-page-content relative"
+          className="proposal-pdf-page proposal-page-break-before proposal-page-content relative flex flex-col min-h-[297mm]"
           style={{ width: "210mm" }}
         >
           {useTableLayout ? (
-            <table style={{ width: "100%", borderCollapse: "collapse", border: "none", pageBreakInside: "auto", marginBottom: "-2px" }}>
+            <>
+            <PageHeader proposal={proposal} />
+            <div className="flex-1 pt-16 pb-16">
+              <table style={{ width: "100%", borderCollapse: "collapse", border: "none", pageBreakInside: "auto", marginBottom: "-2px" }}>
               <thead style={{ display: "table-header-group" }}>
                 <tr>
                   <th style={{ padding: 0, fontWeight: "normal", textAlign: "left" }}>
@@ -198,8 +207,12 @@ export function RichTextRenderer({
                 </tr>
               </tbody>
             </table>
+            </div>
+            <PageFooter company={company} proposal={proposal} />
+            </>
           ) : (
-            <>
+            <div className="flex flex-col min-h-[297mm]">
+              <PageHeader proposal={proposal} />
               {/* Non-FEATURES block rendering */}
               {backgroundUrl && (
                 <div className="absolute inset-0 w-full h-full z-0 pointer-events-none">
@@ -210,7 +223,7 @@ export function RichTextRenderer({
                   />
                 </div>
               )}
-              <div className="relative z-10">
+              <div className="relative z-10 flex-1 pt-16 pb-16">
                 {i === 0 && block.title && (
                   <h2 className="text-2xl font-bold text-gray-900 mb-8 border-b pb-4">
                     {block.title}
@@ -221,7 +234,8 @@ export function RichTextRenderer({
                   dangerouslySetInnerHTML={{ __html: html }}
                 />
               </div>
-            </>
+              <PageFooter company={company} proposal={proposal} />
+            </div>
           )}
         </div>
       )})}

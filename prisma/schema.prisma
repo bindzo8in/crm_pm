@@ -594,6 +594,7 @@ model Company {
   darkLogo       Json?
   favicon        Json?
   signatureImage Json?
+  sealImage      Json?
 
   bankAccounts CompanyBankAccount[]
 

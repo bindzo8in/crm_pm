@@ -28,6 +28,7 @@ export const companySchema = z.object({
   darkLogo: z.object({ url: z.string(), publicId: z.string() }).nullable().optional(),
   favicon: z.object({ url: z.string(), publicId: z.string() }).nullable().optional(),
   signatureImage: z.object({ url: z.string(), publicId: z.string() }).nullable().optional(),
+  sealImage: z.object({ url: z.string(), publicId: z.string() }).nullable().optional(),
 });
 
 export type CompanyFormValues = z.infer<typeof companySchema>;

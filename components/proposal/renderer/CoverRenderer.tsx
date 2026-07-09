@@ -8,6 +8,8 @@ interface CoverBlockContent {
   preparedBy?: string;
   date?: string;
   layoutStyle?: "MODERN" | "CLASSIC" | "MINIMAL";
+  showProposalTitle?: boolean;
+  showNotes?: boolean;
 }
 
 interface CoverRendererProps {
@@ -22,12 +24,15 @@ interface CoverRendererProps {
 
 export function CoverRenderer({ block, proposal, company }: CoverRendererProps) {
   const content = (block.content as CoverBlockContent) || {};
+  console.log(proposal)
   const {
     subtitle = "Smart Solutions. Strategic Thinking. Measurable Results.",
     preparedFor = proposal.customerCompanyName || proposal.customerDisplayName || "Client",
     preparedBy = proposal.preparedByName || "Sales Executive",
     date = new Date(proposal.createdAt || Date.now()).toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "2-digit" }),
     layoutStyle = "MODERN",
+    showProposalTitle = true,
+    showNotes = true,
   } = content;
 
   const validUntilDate = proposal.validUntil ? new Date(proposal.validUntil).toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "2-digit" }) : null;
@@ -39,10 +44,12 @@ export function CoverRenderer({ block, proposal, company }: CoverRendererProps) 
     return (
       <div className="proposal-page-content flex flex-col justify-center items-center text-center proposal-page-break-always">
         <div className="flex-1 flex flex-col justify-center items-center w-full max-w-2xl mx-auto space-y-16">
-          <div className="space-y-6">
-            <h1 className="text-5xl font-light tracking-tight text-gray-900">{proposal.title}</h1>
-            <h2 className="text-xl font-medium text-gray-500 uppercase tracking-widest">{subtitle}</h2>
-          </div>
+          {(showProposalTitle || showNotes) && (
+            <div className="space-y-6">
+              {showProposalTitle && <h1 className="text-5xl font-light tracking-tight text-gray-900">{proposal.title}</h1>}
+              {showNotes && <h2 className="text-xl font-medium text-gray-500 uppercase tracking-widest">{subtitle}</h2>}
+            </div>
+          )}
           
           <div className="space-y-12 w-full pt-16 border-t border-gray-200">
             <div className="space-y-2">
@@ -70,10 +77,12 @@ export function CoverRenderer({ block, proposal, company }: CoverRendererProps) 
   if (layoutStyle === "CLASSIC") {
     return (
       <div className="proposal-page-content proposal-cover-classic flex flex-col proposal-page-break-always">
-        <div className="mt-16 mb-24 border-b-4 border-blue-900 pb-12">
-          <h1 className="text-5xl font-serif font-bold text-blue-950 mb-6">{proposal.title}</h1>
-          <h2 className="text-2xl font-medium text-gray-600">{subtitle}</h2>
-        </div>
+        {(showProposalTitle || showNotes) && (
+          <div className="mt-16 mb-24 border-b-4 border-blue-900 pb-12">
+            {showProposalTitle && <h1 className="text-5xl font-serif font-bold text-blue-950 mb-6">{proposal.title}</h1>}
+            {showNotes && <h2 className="text-2xl font-medium text-gray-600">{subtitle}</h2>}
+          </div>
+        )}
         
         <div className="flex-1 grid grid-cols-2 gap-16 mt-12">
           <div className="space-y-4">
@@ -140,18 +149,24 @@ export function CoverRenderer({ block, proposal, company }: CoverRendererProps) 
         </div>
 
         {/* Title Section */}
-        <div className="mt-4 mb-8 flex flex-col">
-          <div className="inline-flex items-center gap-3 mb-4">
-            <div className="w-12 h-1 bg-[#D4AF37]"></div>
-            <span className="text-white font-semibold tracking-[0.2em] uppercase text-sm">Strategic Proposal</span>
+        {(showProposalTitle || showNotes) && (
+          <div className="mt-4 mb-8 flex flex-col">
+            <div className="inline-flex items-center gap-3 mb-4">
+              <div className="w-12 h-1 bg-[#D4AF37]"></div>
+              <span className="text-white font-semibold tracking-[0.2em] uppercase text-sm">Strategic Proposal</span>
+            </div>
+            {showProposalTitle && (
+              <h1 className="text-5xl font-black text-white leading-tight tracking-tight mb-4 drop-shadow-md">
+                {proposal.title || "DIGITAL SUCCESS"}
+              </h1>
+            )}
+            {showNotes && (
+              <p className="text-lg text-slate-200 font-light leading-relaxed max-w-2xl drop-shadow">
+                {subtitle}
+              </p>
+            )}
           </div>
-          <h1 className="text-5xl font-black text-white leading-tight tracking-tight mb-4 drop-shadow-md">
-            {proposal.title || "DIGITAL SUCCESS"}
-          </h1>
-          <p className="text-lg text-slate-200 font-light leading-relaxed max-w-2xl drop-shadow">
-            {subtitle}
-          </p>
-        </div>
+        )}
 
         {/* Details Card Overlaying Background Transition */}
         <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 p-8 flex w-full max-w-3xl mt-auto mb-10 z-20 mx-auto text-sm">
@@ -163,13 +178,40 @@ export function CoverRenderer({ block, proposal, company }: CoverRendererProps) 
                 <User className="w-4 h-4 text-slate-600" />
               </div>
               <div className="flex flex-col">
-                <span className="text-base font-bold text-slate-800 mb-1">{preparedFor}</span>
-                <span className="text-xs font-medium text-slate-500 truncate max-w-[150px]" title={proposal.customer?.primaryContactEmail || "client@example.com"}>
-                  {proposal.customer?.primaryContactEmail || "client@example.com"}
-                </span>
-                <span className="text-xs font-medium text-slate-500 mt-1">
-                  {proposal.customer?.primaryContactPhone || "+91 98765 43210"}
-                </span>
+                <span className="text-base font-bold text-slate-800 mb-1 leading-tight">{preparedFor}</span>
+                
+                {/* Contact Info */}
+                {(proposal.customer?.primaryContactEmail || proposal.customer?.primaryContactPhone) && (
+                  <div className="mb-2">
+                    {proposal.customer?.primaryContactEmail && (
+                      <div className="text-xs font-medium text-slate-500 truncate max-w-[200px]" title={proposal.customer.primaryContactEmail}>
+                        {proposal.customer.primaryContactEmail}
+                      </div>
+                    )}
+                    {proposal.customer?.primaryContactPhone && (
+                      <div className="text-xs font-medium text-slate-500">
+                        {proposal.customer.primaryContactPhone}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Address & GSTIN */}
+                {proposal.customer && (
+                  <div className="text-xs font-medium text-slate-500 flex flex-col mt-1 space-y-0.5">
+                    {proposal.customer.addressLine1 && <span>{proposal.customer.addressLine1}</span>}
+                    {proposal.customer.addressLine2 && <span>{proposal.customer.addressLine2}</span>}
+                    {proposal.customer.city && (
+                      <span>
+                        {[proposal.customer.city, proposal.customer.state, proposal.customer.postalCode].filter(Boolean).join(", ")}
+                      </span>
+                    )}
+                    {proposal.customer.country && <span>{proposal.customer.country}</span>}
+                    {proposal.customer.gstNumber && (
+                      <span className="font-semibold text-slate-700 mt-1 uppercase">GSTIN: {proposal.customer.gstNumber}</span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>

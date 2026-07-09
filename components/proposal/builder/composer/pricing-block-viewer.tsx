@@ -1,4 +1,5 @@
 "use client";
+import React from "react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +36,8 @@ interface PricingBlockViewerProps {
         unitPrice: number;
         total: number;
         billingCycle: string;
+        discountValue?: number | null;
+        taxRate?: number;
       }>;
     }>;
   };
@@ -102,41 +105,37 @@ export function PricingBlockViewer({ proposal }: PricingBlockViewerProps) {
           </Button>
         </div>
       ) : (
-        <div className="space-y-6">
-          {services.map((service, idx) => (
-            <div key={service.id} className="border rounded-lg overflow-hidden bg-background">
-              {/* Service Section Header */}
-              <div className="flex items-center justify-between px-4 py-3 bg-muted/40 border-b">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-sm">
-                    {idx + 1}. {service.serviceName}
-                  </span>
-                  {service.packageName && (
-                    <Badge variant="outline" className="text-[11px] font-normal bg-background">
-                      📦 {service.packageName}
-                    </Badge>
-                  )}
-                </div>
-                <Badge variant="secondary" className="text-xs font-mono font-medium">
-                  {service.items.length} {service.items.length === 1 ? "Item" : "Items"}
-                </Badge>
-              </div>
-
-              {/* Line Items Table */}
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/10 text-[11px] uppercase tracking-wider">
-                      <TableHead className="w-[45%]">Item & Description</TableHead>
-                      <TableHead className="text-center w-[15%]">Qty & Unit</TableHead>
-                      <TableHead className="text-right w-[20%]">Unit Rate</TableHead>
-                      <TableHead className="text-right w-[20%]">Total</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+        <div className="border rounded-lg overflow-hidden bg-background">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/10 text-[11px] uppercase tracking-wider">
+                  <TableHead className="w-[20%]">Service & Package</TableHead>
+                  <TableHead className="w-[25%]">Item & Description</TableHead>
+                  <TableHead className="text-center w-[10%]">Qty</TableHead>
+                  <TableHead className="text-right w-[12%]">Rate</TableHead>
+                  <TableHead className="text-right w-[10%]">Discount</TableHead>
+                  <TableHead className="text-right w-[8%]">Tax</TableHead>
+                  <TableHead className="text-right w-[15%]">Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {services.map((service, idx) => (
+                  <React.Fragment key={service.id}>
+                    {/* Line Items */}
                     {service.items.map((item) => (
                       <TableRow key={item.id} className="text-xs">
-                        <TableCell className="font-medium py-3">
+                        <TableCell className="align-top py-3">
+                          <div className="space-y-0.5">
+                            <span className="font-semibold text-foreground">{service.serviceName}</span>
+                            {service.packageName && (
+                              <p className="text-[11px] text-muted-foreground line-clamp-1">
+                                Pkg: {service.packageName}
+                              </p>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-medium py-3 align-top">
                           <div className="space-y-0.5">
                             <span className="text-foreground">{item.name}</span>
                             {item.description && (
@@ -146,24 +145,30 @@ export function PricingBlockViewer({ proposal }: PricingBlockViewerProps) {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="text-center py-3">
-                          <span className="font-mono">
-                            {item.quantity} {item.unit || "Unit"}
-                          </span>
+                        <TableCell className="text-center py-3 align-top">
+                          <div className="font-mono">{item.quantity}</div>
+                          <div className="text-[10px] text-muted-foreground mt-0.5">{item.unit || "Unit"}</div>
                         </TableCell>
-                        <TableCell className="text-right font-mono py-3">
-                          {formatCurrency(item.unitPrice)} {formatCycle(item.billingCycle)}
+                        <TableCell className="text-right font-mono py-3 align-top">
+                          <div>{formatCurrency(item.unitPrice)}</div>
+                          <div className="text-[10px] text-muted-foreground mt-0.5">{formatCycle(item.billingCycle)}</div>
                         </TableCell>
-                        <TableCell className="text-right font-mono font-semibold text-foreground py-3">
+                        <TableCell className="text-right font-mono py-3 align-top text-muted-foreground">
+                          {item.discountValue ? formatCurrency(item.discountValue) : "-"}
+                        </TableCell>
+                        <TableCell className="text-right font-mono py-3 align-top text-muted-foreground">
+                          {item.taxRate ? `${item.taxRate}%` : "-"}
+                        </TableCell>
+                        <TableCell className="text-right font-mono font-semibold text-foreground py-3 align-top">
                           {formatCurrency(item.total)}
                         </TableCell>
                       </TableRow>
                     ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          ))}
+                  </React.Fragment>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       )}
 

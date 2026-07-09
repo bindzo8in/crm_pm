@@ -53,6 +53,7 @@ export function CompanyProfileForm({ defaultValues }: { defaultValues?: any }) {
             darkLogo: defaultValues?.darkLogo || null,
             favicon: defaultValues?.favicon || null,
             signatureImage: defaultValues?.signatureImage || null,
+            sealImage: defaultValues?.sealImage || null,
         },
     });
 
@@ -408,6 +409,21 @@ export function CompanyProfileForm({ defaultValues }: { defaultValues?: any }) {
                     render={({ field }) => (
                         <Field className="gap-1 col-span-full md:col-span-3">
                             <FieldLabel>Signature</FieldLabel>
+                            <ImageUpload
+                                value={field.value || null}
+                                onChange={field.onChange}
+                                disabled={isPending}
+                            />
+                        </Field>
+                    )}
+                />
+
+                <Controller
+                    name="sealImage"
+                    control={form.control}
+                    render={({ field }) => (
+                        <Field className="gap-1 col-span-full md:col-span-3">
+                            <FieldLabel>Company Seal</FieldLabel>
                             <ImageUpload
                                 value={field.value || null}
                                 onChange={field.onChange}

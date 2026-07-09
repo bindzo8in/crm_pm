@@ -26,13 +26,14 @@ export function CoverFooter({ proposal, company, config }: { proposal?: any; com
           </div>
 
           <div className="max-w-4xl mx-auto px-8">
-            <div className="flex flex-wrap justify-center items-center text-xs font-bold text-gray-800 leading-relaxed gap-y-1">
+            <div className="flex flex-wrap justify-center items-center gap-2">
               {servicesList.map((service: string, index: number) => (
-                <div key={index} className="flex items-center">
-                  <span className="text-nowrap">{service}</span>
-                  {index < servicesList.length - 1 && (
-                    <span className="mx-2 text-blue-500">|</span>
-                  )}
+                <div 
+                  key={index} 
+                  className="px-3 py-1 text-[10px] font-bold text-white uppercase tracking-widest rounded-sm shadow-sm"
+                  style={{ backgroundColor: config.primaryColor || '#1f2937' }}
+                >
+                  {service}
                 </div>
               ))}
             </div>
@@ -52,6 +53,11 @@ export function CoverFooter({ proposal, company, config }: { proposal?: any; com
             <span className="opacity-80">
               {[company.address, company.city, company.postalCode, company.country].filter(Boolean).join(", ")}.
             </span>
+            {company.gstNumber && (
+              <span className="opacity-90 font-bold uppercase mt-0.5 tracking-wider">
+                GSTIN: {company.gstNumber}
+              </span>
+            )}
           </div>
 
           {/* Left: Phone & Website */}

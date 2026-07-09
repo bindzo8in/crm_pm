@@ -243,7 +243,8 @@
    ========================================================= */
 .proposal-rich-text ul {
   list-style-type: disc;
-  padding-left: 1.5em;
+  list-style-position: inside;
+  padding-left: 0.5em;
   margin-bottom: 1em;
   color: #374151;
   font-size: 11pt;
@@ -252,7 +253,8 @@
 
 .proposal-rich-text ol {
   list-style-type: decimal;
-  padding-left: 1.5em;
+  list-style-position: inside;
+  padding-left: 0.5em;
   margin-bottom: 1em;
   color: #374151;
   font-size: 11pt;
@@ -265,6 +267,27 @@
 
 .proposal-rich-text li {
   margin-bottom: 0.25em;
+}
+
+/* TipTap adds <p> inside <li> which creates massive gaps, so we remove the margin */
+.proposal-rich-text li > p {
+  margin-bottom: 0;
+  display: inline-block;
+}
+
+.proposal-rich-text li > p:not(:last-child) {
+  margin-bottom: 0.25em;
+}
+
+/* Reduced spacing specifically for features list */
+.proposal-features-rich-text ul,
+.proposal-features-rich-text ol {
+  line-height: 1.4;
+  margin-bottom: 0.75em;
+}
+
+.proposal-features-rich-text li {
+  margin-bottom: 0.15em;
 }
 
 .proposal-rich-text blockquote {
@@ -355,5 +378,31 @@
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+  }
+
+  /* Force page footer to repeat at the bottom of every printed page */
+  .page-footer-print {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 20mm !important;
+    width: calc(100% - 40mm) !important;
+    background: white;
+    z-index: 100;
+  }
+  
+  /* Force page header to repeat at the top of every printed page */
+  .page-header-print {
+    position: fixed !important;
+    top: 0 !important;
+    left: 20mm !important;
+    width: calc(100% - 40mm) !important;
+    background: white;
+    z-index: 100;
+  }
+  
+  /* Hide the page header and footer on the cover page */
+  .proposal-cover-page .page-header-print,
+  .proposal-cover-page .page-footer-print {
+    display: none !important;
   }
 }

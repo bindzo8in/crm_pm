@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Save, Check, FileText, Building, Calendar, User } from "lucide-react";
 import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
 
 interface CoverBlockContent {
   subtitle?: string;
@@ -20,6 +21,8 @@ interface CoverBlockContent {
   preparedBy?: string;
   date?: string;
   layoutStyle?: "MODERN" | "CLASSIC" | "MINIMAL";
+  showProposalTitle?: boolean;
+  showNotes?: boolean;
 }
 
 interface CoverBlockEditorProps {
@@ -49,6 +52,8 @@ export function CoverBlockEditor({ block, proposal, onSave }: CoverBlockEditorPr
       blockContent.date ??
       new Date().toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" }),
     layoutStyle: blockContent.layoutStyle ?? "MODERN",
+    showProposalTitle: blockContent.showProposalTitle ?? true,
+    showNotes: blockContent.showNotes ?? true,
   };
   const [form, setForm] = useState(initialForm);
   const [savedForm, setSavedForm] = useState(initialForm);
@@ -169,6 +174,25 @@ export function CoverBlockEditor({ block, proposal, onSave }: CoverBlockEditorPr
             placeholder="e.g., 01 July 2026"
             className="bg-background max-w-sm"
           />
+        </div>
+      </div>
+
+      <div className="flex gap-8 py-4 border-t border-b border-border my-6">
+        <div className="flex items-center space-x-2">
+          <Switch 
+            id="show-proposal-title" 
+            checked={form.showProposalTitle} 
+            onCheckedChange={(checked) => setForm({ ...form, showProposalTitle: checked })} 
+          />
+          <Label htmlFor="show-proposal-title" className="text-sm">Show Proposal Title</Label>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Switch 
+            id="show-notes" 
+            checked={form.showNotes} 
+            onCheckedChange={(checked) => setForm({ ...form, showNotes: checked })} 
+          />
+          <Label htmlFor="show-notes" className="text-sm">Show Proposal Notes</Label>
         </div>
       </div>
 

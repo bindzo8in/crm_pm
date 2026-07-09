@@ -106,16 +106,7 @@ export function PublicPreviewToolbar({ proposalId, proposalNumber }: PublicPrevi
         </Button>
       </div>
 
-      <div className="flex items-center gap-2">
-        <Button onClick={handlePrint} variant="outline" size="sm" className="gap-2 hidden sm:flex">
-          <Printer className="h-4 w-4 text-gray-600" />
-          Print
-        </Button>
-        <Button onClick={handlePrint} variant="outline" size="sm" className="sm:hidden px-2">
-          <Printer className="h-4 w-4 text-gray-600" />
-        </Button>
-
-        <Button
+      <div className="flex items-center gap-2">        <Button
           onClick={handleDownloadPdf}
           disabled={isDownloading}
           size="sm"

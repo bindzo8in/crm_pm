@@ -134,16 +134,7 @@ export function PreviewToolbar({ proposalId, proposalNumber }: PreviewToolbarPro
         </Button>
       </div>
 
-      <div className="flex items-center gap-2">
-        <Button onClick={handlePrint} variant="outline" size="sm" className="gap-2 hidden sm:flex">
-          <Printer className="h-4 w-4 text-gray-600" />
-          Print
-        </Button>
-        <Button onClick={handlePrint} variant="outline" size="sm" className="sm:hidden px-2">
-          <Printer className="h-4 w-4 text-gray-600" />
-        </Button>
-
-        <Button onClick={handleWhatsAppShare} size="sm" variant="outline" className="gap-2 text-green-600 border-green-200 hover:bg-green-50 hidden sm:flex">
+      <div className="flex items-center gap-2">        <Button onClick={handleWhatsAppShare} size="sm" variant="outline" className="gap-2 text-green-600 border-green-200 hover:bg-green-50 hidden sm:flex">
           <MessageCircle className="h-4 w-4" />
           WhatsApp
         </Button>

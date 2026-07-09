@@ -17,6 +17,11 @@ export function CoverCenter({ proposal, company, config }: { proposal: any; comp
 
   const accentColor = config.accentColor || "#000000";
 
+  const coverBlock = proposal?.blocks?.find((b: any) => b.type === "COVER");
+  const coverContent = coverBlock?.content || {};
+  const showTitle = coverContent.showProposalTitle !== false;
+  const showNotes = coverContent.showNotes !== false;
+
   return (
     <div className="flex-1 flex flex-col justify-center px-16 relative z-10">
       
@@ -25,8 +30,20 @@ export function CoverCenter({ proposal, company, config }: { proposal: any; comp
         {/* Client details */}
         <div className="flex flex-col gap-1">
           <span className="text-xs font-bold tracking-widest text-gray-400 uppercase">Prepared For</span>
-          <span className="text-2xl font-bold text-gray-800">{preparedFor}</span>
-          <span className="text-sm font-medium text-gray-500">{proposal?.customer?.city || ""}</span>
+          <span className="text-2xl font-bold text-gray-800 leading-tight">{preparedFor}</span>
+          {proposal?.customer && (
+            <div className="text-sm font-medium text-gray-500 flex flex-col gap-0.5 mt-2">
+              {proposal.customer.addressLine1 && <span>{proposal.customer.addressLine1}</span>}
+              {proposal.customer.addressLine2 && <span>{proposal.customer.addressLine2}</span>}
+              {proposal.customer.city && (
+                <span>
+                  {[proposal.customer.city, proposal.customer.state, proposal.customer.postalCode].filter(Boolean).join(", ")}
+                </span>
+              )}
+              {proposal.customer.country && <span>{proposal.customer.country}</span>}
+              {proposal.customer.gstNumber && <span className="font-bold text-gray-700 mt-1 uppercase">GSTIN: {proposal.customer.gstNumber}</span>}
+            </div>
+          )}
         </div>
 
         {/* Meta details */}
@@ -53,23 +70,30 @@ export function CoverCenter({ proposal, company, config }: { proposal: any; comp
       </div>
 
       {/* Title block */}
-      <div className="mb-12">
-        <h1 
-          className="text-6xl font-black uppercase tracking-tighter leading-none mb-4"
-          style={{ color: config.primaryColor || "#1f2937" }}
-        >
-          {proposal?.title || "QUOTATION"}
-        </h1>
-        <p className="text-xl font-light text-gray-500 max-w-lg leading-relaxed">
-          {subtitle}
-        </p>
-      </div>
+      {(showTitle || showNotes) && (
+        <div className="mb-12">
+          {showTitle && (
+            <h1 
+              className="text-6xl font-black uppercase tracking-tighter leading-none mb-4"
+              style={{ color: config.primaryColor || "#1f2937" }}
+            >
+              {proposal?.title || "QUOTATION"}
+            </h1>
+          )}
+          {showNotes && (
+            <p className="text-xl font-light text-gray-500 max-w-lg leading-relaxed">
+              {subtitle}
+            </p>
+          )}
+        </div>
+      )}
 
-      {/* Prepared By - Moved slightly away from the block above for whitespace breathing room */}
-      <div className="mt-16 pt-8 border-t border-gray-100 max-w-sm">
-        <span className="text-xs font-bold tracking-widest text-gray-400 uppercase block mb-1">Prepared By</span>
-        <span className="text-lg font-bold text-gray-800 block">{preparedBy}</span>
-        <span className="text-sm font-medium text-gray-500">{company?.displayName || "Our Company"}</span>
+      {/* Confidentiality Notice */}
+      <div className="mt-16 pt-8 border-t border-gray-100 max-w-lg">
+        <span className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-2">Confidential & Proprietary</span>
+        <p className="text-[10px] font-medium text-gray-400 leading-relaxed uppercase tracking-wider">
+          This document contains confidential business information and trade secrets. It is intended solely for the use of the individual or entity to whom it is addressed.
+        </p>
       </div>
 
     </div>

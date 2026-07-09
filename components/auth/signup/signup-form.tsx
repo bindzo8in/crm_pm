@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input"
 import { Password } from "@/components/password"
 import { Checkbox } from "@/components/ui/checkbox"
 import { signUp, signIn } from '@/lib/auth-client'
-import { toast } from 'sonner'
 import { useState } from 'react'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import Link from "next/link"

@@ -58,6 +58,7 @@ export async function UpdateCompany(data: CompanyFormValues) {
         darkLogo: validatedData.data.darkLogo ? JSON.parse(JSON.stringify(validatedData.data.darkLogo)) : null,
         favicon: validatedData.data.favicon ? JSON.parse(JSON.stringify(validatedData.data.favicon)) : null,
         signatureImage: validatedData.data.signatureImage ? JSON.parse(JSON.stringify(validatedData.data.signatureImage)) : null,
+        sealImage: validatedData.data.sealImage ? JSON.parse(JSON.stringify(validatedData.data.sealImage)) : null,
     }
 
     if (existing) {

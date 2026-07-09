@@ -54,7 +54,7 @@ export const columns: ColumnDef<ProposalRow>[] = [
     header: () => <div className="text-right">Total</div>,
     cell: ({ row }) => (
       <div className="text-right font-medium">
-        {row.original.grandTotal.toLocaleString(undefined, {
+        {row.original.grandTotal.toLocaleString("en-IN", {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         })}
