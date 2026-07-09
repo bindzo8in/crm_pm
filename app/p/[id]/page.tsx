@@ -18,9 +18,15 @@ export async function generateMetadata(props: { params: Promise<{ id: string }> 
   };
 }
 
-export default async function PublicProposalPage(props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
-  const { id } = params;
+interface PublicProposalPageProps {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ pdf?: string }>;
+}
+
+export default async function PublicProposalPage({ params, searchParams }: PublicProposalPageProps) {
+  const { id } = await params;
+  const { pdf } = await searchParams;
+  const isPdfMode = pdf === "1";
   
   const res = await getPublicProposalData(id);
 
@@ -68,9 +74,24 @@ export default async function PublicProposalPage(props: { params: Promise<{ id: 
     }
   }
 
+  // PDF mode: render the bare document with no UI chrome so Puppeteer captures
+  // a clean A4 output. The ?pdf=1 query param is set by the PDF API route.
+  if (isPdfMode) {
+    return (
+      <div style={{ background: "white" }}>
+        <ProposalRenderer
+          proposal={proposal}
+          blocks={blocks}
+          company={safeCompany}
+          bankAccount={bankAccount}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-200/50 flex flex-col font-sans">
-      <PublicPreviewToolbar />
+      <PublicPreviewToolbar proposalId={proposal.id} />
       <main className="flex-1 overflow-auto py-8 mb-16">
         <div id="proposal-preview-wrapper" className="transition-transform duration-200 ease-out pb-16">
           <ProposalRenderer 

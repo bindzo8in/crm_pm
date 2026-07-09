@@ -376,6 +376,8 @@ model Proposal {
   status ProposalStatus @default(DRAFT)
 
   validUntil DateTime?
+  acceptedAt DateTime?
+  clientSignature Json? // { url: string, publicId: string }
 
   currency String @default("INR")
 
@@ -647,12 +649,12 @@ model TariffGridPackage {
   tariffGridId String
   tariffGrid   TariffGrid @relation(fields: [tariffGridId], references: [id], onDelete: Cascade)
 
-  packageId    String
-  package      ServicePackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
-  
+  packageId String
+  package   ServicePackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
   isStartsFrom Boolean @default(false)
-  
-  sortOrder    Int @default(0)
+
+  sortOrder Int @default(0)
 
   @@index([tariffGridId])
   @@index([packageId])

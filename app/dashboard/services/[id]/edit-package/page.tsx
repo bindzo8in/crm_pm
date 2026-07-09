@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Edit Package"
+    title: "Edit Package"
 };
 
 import DashboardContainer from "@/app/dashboard/dashboard-container";
@@ -13,7 +13,6 @@ export default async function EditServicePackagePage({ params, searchParams }: P
 
     const service = await GetServiceNameById(id)
     const servicePackage = await getServicePackage(packageId as string)
-    console.log(servicePackage)
     return (
         <DashboardContainer
             title={service.success && service.data ? `Edit Service Package for ${service.data.name}` : "Edit Service Package"}
@@ -22,7 +21,7 @@ export default async function EditServicePackagePage({ params, searchParams }: P
                 label: "Back",
                 icon: <ArrowLeft />
             }}>
-            <CreateEditServicePackageForm serviceId={id} defaultValues={servicePackage.success ? servicePackage.data : undefined}/>
+            <CreateEditServicePackageForm serviceId={id} defaultValues={servicePackage.success ? servicePackage.data : undefined} />
         </DashboardContainer>
     )
 }

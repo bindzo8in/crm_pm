@@ -45,8 +45,13 @@ export function CoverFooter({ proposal, company, config }: { proposal?: any; com
         <div
           className="w-full py-4 px-12 text-white flex flex-col justify-between items-center text-xs font-medium bg-[#222222]"
         >
-          <div>
-            {[company.displayName, company.address, company.city, company.postalCode, company.country].filter(Boolean).join(", ")}.
+          <div className="flex flex-col items-center gap-1 mb-2">
+            {company.displayName && (
+              <span className="font-bold text-sm">{company.displayName}</span>
+            )}
+            <span className="opacity-80">
+              {[company.address, company.city, company.postalCode, company.country].filter(Boolean).join(", ")}.
+            </span>
           </div>
 
           {/* Left: Phone & Website */}
@@ -64,13 +69,21 @@ export function CoverFooter({ proposal, company, config }: { proposal?: any; com
             {config.showContacts && company?.website && (
               <div className="flex items-center gap-3">
                 <Globe className="w-3.5 h-3.5 opacity-70" />
-                <span>{company.website.replace(/^https?:\/\//, '')}</span>
+                <span>
+                  <a href={company.website.startsWith('http') ? company.website : `https://${company.website}`} className="text-white! hover:text-white/70! no-underline!" target="_blank" rel="noopener noreferrer">
+                    {company.website.replace(/^https?:\/\//, '')}
+                  </a>
+                </span>
               </div>
             )}
             {config.showContacts && company?.email && (
               <div className="flex items-center gap-3">
                 <Mail className="w-3.5 h-3.5 opacity-70" />
-                <span>{company.email}</span>
+                <span>
+                  <a href={`mailto:${company.email}`} className="text-white! hover:text-white/70! no-underline!">
+                    {company.email}
+                  </a>
+                </span>
               </div>
             )}
           </div>

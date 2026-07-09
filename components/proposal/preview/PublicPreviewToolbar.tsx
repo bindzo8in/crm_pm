@@ -2,111 +2,43 @@
 
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Printer, FileDown, ZoomIn, ZoomOut, Maximize } from "lucide-react";
+import { Printer, FileDown, ZoomIn, ZoomOut, Maximize, Loader2 } from "lucide-react";
 
-export function PublicPreviewToolbar() {
+interface PublicPreviewToolbarProps {
+  proposalId: string;
+}
+
+export function PublicPreviewToolbar({ proposalId }: PublicPreviewToolbarProps) {
   const [zoom, setZoom] = useState(100);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const handlePrint = () => {
     window.print();
   };
 
-  const [isDownloading, setIsDownloading] = useState(false);
-
   const handleDownloadPdf = async () => {
     try {
       setIsDownloading(true);
-      
-      const { toPng } = await import("html-to-image");
-      const { jsPDF } = await import("jspdf");
-      
-      const wrapper = document.getElementById("proposal-preview-wrapper");
-      const element = document.querySelector(".proposal-renderer-document") as HTMLElement;
-      
-      if (!wrapper || !element) return;
-      
-      const originalZoom = wrapper.style.getPropertyValue("zoom");
-      wrapper.style.setProperty("zoom", "100%");
-
-      // Temporarily strip the visual margin/separator between pages
-      const pageEls = Array.from(element.querySelectorAll('.proposal-pdf-page')) as HTMLElement[];
-      const originalMargins: string[] = pageEls.map(p => p.style.marginTop);
-      pageEls.forEach(p => { p.style.marginTop = '0'; p.style.boxShadow = 'none'; });
-
-      await new Promise(resolve => setTimeout(resolve, 300));
-
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-
-      if (pageEls.length === 0) {
-        const dataUrl = await toPng(element, {
-          pixelRatio: 3,
-          backgroundColor: '#ffffff',
-          style: { boxShadow: 'none', margin: '0', transform: 'none' },
-        });
-        const imgHeight = (element.offsetHeight * pdfWidth) / element.offsetWidth;
-        pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, imgHeight, undefined, 'FAST');
-      } else {
-        let firstPage = true;
-        for (const page of pageEls) {
-          if (page.offsetHeight < 5) continue;
-
-          const dataUrl = await toPng(page, {
-            pixelRatio: 3,
-            backgroundColor: '#ffffff',
-            style: {
-              boxShadow: 'none',
-              border: 'none',
-              outline: 'none',
-              margin: '0',
-              marginTop: '0',
-              transform: 'none',
-              overflow: 'visible',
-            },
-          });
-
-          const imgH = (page.offsetHeight * pdfWidth) / page.offsetWidth;
-
-          if (!firstPage) pdf.addPage();
-          firstPage = false;
-
-          // Add a 1mm tolerance for floating point rounding so exact A4 pages don't tile an extra blank page
-          if (imgH <= pdfHeight + 1) {
-            pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, imgH, undefined, 'FAST');
-          } else {
-            let yOffset = 0;
-            let remaining = imgH;
-            // Only add a new page if the remaining content is larger than 1mm
-            while (remaining > 1) {
-              if (yOffset > 0) pdf.addPage();
-              pdf.addImage(dataUrl, 'PNG', 0, -(imgH - remaining), pdfWidth, imgH, undefined, 'FAST');
-              remaining -= pdfHeight;
-              yOffset++;
-            }
-          }
-        }
+      // Trigger the server-side Puppeteer PDF endpoint.
+      const response = await fetch(`/api/proposals/${proposalId}/pdf`);
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: "Unknown error" }));
+        console.error("[PDF] server error:", err);
+        return;
       }
-      
-      pdf.save('proposal.pdf');
-      
-      // Restore margins and zoom
-      pageEls.forEach((p, i) => {
-        p.style.marginTop = originalMargins[i];
-        p.style.boxShadow = '';
-      });
-      if (originalZoom) {
-        wrapper.style.setProperty("zoom", originalZoom);
-      } else {
-        wrapper.style.removeProperty("zoom");
-      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `proposal-${proposalId}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch (error) {
-      console.error("Failed to generate PDF:", error);
+      console.error("Failed to download PDF:", error);
     } finally {
       setIsDownloading(false);
     }
   };
-
 
   const fitToScreen = () => {
     const screenWidth = window.innerWidth;
@@ -182,12 +114,30 @@ export function PublicPreviewToolbar() {
           <Printer className="h-4 w-4 text-gray-600" />
         </Button>
 
-        <Button onClick={handleDownloadPdf} size="sm" className="gap-2 bg-blue-600 hover:bg-blue-700 hidden sm:flex">
-          <FileDown className="h-4 w-4" />
-          Download PDF
+        <Button
+          onClick={handleDownloadPdf}
+          disabled={isDownloading}
+          size="sm"
+          className="gap-2 bg-blue-600 hover:bg-blue-700 hidden sm:flex"
+        >
+          {isDownloading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <FileDown className="h-4 w-4" />
+          )}
+          {isDownloading ? "Generating…" : "Download PDF"}
         </Button>
-        <Button onClick={handleDownloadPdf} size="sm" className="gap-1 bg-blue-600 hover:bg-blue-700 sm:hidden px-2">
-          <FileDown className="h-4 w-4" />
+        <Button
+          onClick={handleDownloadPdf}
+          disabled={isDownloading}
+          size="sm"
+          className="gap-1 bg-blue-600 hover:bg-blue-700 sm:hidden px-2"
+        >
+          {isDownloading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <FileDown className="h-4 w-4" />
+          )}
         </Button>
       </div>
     </div>

@@ -1,20 +1,91 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
+/* =========================================================
+   Document container — on-screen only (Puppeteer sees the
+   raw content without any wrapper constraints)
+   ========================================================= */
 .proposal-renderer-document {
-  /* A4 Paper Dimensions and Base Styling */
   width: 210mm;
-  min-height: 297mm;
   background-color: white;
-  color: #111827; /* Tailwind gray-900 */
+  color: #111827;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   box-sizing: border-box;
   margin: 0 auto;
   padding: 0;
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  /* overflow must NOT be hidden — it would clip proposal-pdf-page children */
 }
 
-/* Base typography for the document */
+/* =========================================================
+   PDF page control — Puppeteer / print media
+   Chromium respects break-before/break-after natively.
+   ========================================================= */
+
+/* Default @page — applied to ALL pages including continuation pages.
+   20mm top/bottom gives consistent spacing when long blocks overflow
+   onto new pages automatically. Puppeteer page.pdf() does NOT pass
+   an explicit margin so this CSS rule takes effect. */
+@page {
+  size: A4;
+  margin: 20mm 0;
+}
+
+/* Cover page uses a named @page so it gets zero margin (full-bleed). */
+@page cover-page {
+  size: A4;
+  margin: 0;
+}
+
+/* Apply the named page rule to the cover page wrapper. */
+.proposal-cover-page {
+  page: cover-page;
+}
+
+/* Hard page break BEFORE an element (used on every block except the cover) */
+.proposal-page-break-before {
+  break-before: page;
+  page-break-before: always;
+}
+
+/* Hard page break AFTER an element (used on the cover page) */
+.proposal-page-break-after {
+  break-after: page;
+  page-break-after: always;
+}
+
+/* Inline page break node rendered by TipTap's PageBreak extension */
+.proposal-page-break-always {
+  break-before: page;
+  page-break-before: always;
+}
+
+/* Prevent Chromium from breaking inside individual items */
+.break-inside-avoid {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* =========================================================
+   On-screen visual separator between logical pages
+   (purely cosmetic — not used by Puppeteer)
+   ========================================================= */
+.proposal-pdf-page {
+  display: block;
+  background: white;
+  box-sizing: border-box;
+  /* Visual gap between pages in browser preview */
+  margin-top: 12px;
+  box-shadow: 0 -3px 0 0 #e5e7eb;
+}
+
+/* No top gap on the very first page */
+.proposal-renderer-document > .proposal-pdf-page:first-child {
+  margin-top: 0;
+  box-shadow: none;
+}
+
+/* =========================================================
+   Base typography
+   ========================================================= */
 .proposal-renderer-document h1,
 .proposal-renderer-document h2,
 .proposal-renderer-document h3,
@@ -29,7 +100,7 @@
 }
 
 .proposal-renderer-document p {
-  color: #374151; /* Tailwind gray-700 */
+  color: #374151;
   margin-top: 0;
   margin-bottom: 1em;
   line-height: 1.6;
@@ -37,51 +108,113 @@
 }
 
 .proposal-renderer-document a {
-  color: #2563eb; /* Tailwind blue-600 */
+  color: #2563eb;
   text-decoration: underline;
 }
 
-/* Page Break Support */
-.proposal-page-break-always {
-  break-before: page;
-  page-break-before: always;
-}
-
-.proposal-page-break-after {
-  break-after: page;
-  page-break-after: always;
-}
-
-/* Individual PDF page containers — each gets screenshotted as one PDF page */
-.proposal-pdf-page {
-  display: block;
-  background: white;
+/* =========================================================
+   Page content padding (inner wrapper for content blocks)
+   ========================================================= */
+.proposal-page-content {
+  padding: 20mm;
+  position: relative;
+  width: 100%;
   box-sizing: border-box;
 }
 
-/* Visual separator between pages in the on-screen preview */
-.proposal-renderer-document .proposal-pdf-page + .proposal-pdf-page {
-  margin-top: 12px;
-  box-shadow: 0 -3px 0 0 #e5e7eb;
+/* =========================================================
+   FEATURES block page decorations
+   ========================================================= */
+
+/* Top header row: title on the left, service-name badge on the right */
+.proposal-features-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 24px;
+  border-bottom: 1.5px solid #e5e7eb;
+  padding-bottom: 14px;
 }
 
-/* A4 Page structure within the document */
-.proposal-page-content {
-  padding: 20mm; /* Standard A4 padding */
-  position: relative;
-  width: 100%;
+/* Service Package title highlight (first h2 inside FEATURES rich text) */
+.proposal-features-rich-text > h2:first-of-type,
+/* Terms headings highlight (all h2 inside TERMS rich text) */
+.proposal-terms-rich-text h2 {
+  background-color: #f8fafc;
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-size: 16pt;
+  color: #0B1B3D;
+  border-left: 4px solid #0B1B3D;
+  margin-bottom: 24px;
+  margin-top: 10px;
 }
 
-/* Cover Specifics */
+.proposal-features-title {
+  font-size: 20pt;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+  line-height: 1.2;
+  flex: 1;
+}
+
+/* Service name pill — top-right badge */
+.proposal-features-service-badge {
+  flex-shrink: 0;
+  background-color: #0B1B3D;
+  color: #ffffff;
+  font-size: 8pt;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  border-radius: 4px;
+  white-space: nowrap;
+  align-self: center;
+  line-height: 1.4;
+}
+
+/* Vertical watermark — package name, rotated bottom-to-top on the right edge */
+.proposal-features-watermark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28pt;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #e5e7eb;
+  opacity: 0.45;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+}
+
+
+
+/* =========================================================
+   Cover
+   ========================================================= */
 .proposal-cover-modern {
   background: linear-gradient(135deg, #eff6ff 0%, #e0e7ff 100%);
 }
 
 .proposal-cover-classic {
-  border: 12px solid #1e3a8a; /* Tailwind blue-900 */
+  border: 12px solid #1e3a8a;
 }
 
-/* Tables */
+/* =========================================================
+   Tables
+   ========================================================= */
 .proposal-table {
   width: 100%;
   border-collapse: collapse;
@@ -90,7 +223,7 @@
 }
 
 .proposal-table th {
-  background-color: #f3f4f6; /* Tailwind gray-100 */
+  background-color: #f3f4f6;
   color: #374151;
   font-weight: 600;
   text-align: left;
@@ -101,11 +234,13 @@
 .proposal-table td {
   padding: 10px 12px;
   border-bottom: 1px solid #e5e7eb;
-  color: #4b5563; /* Tailwind gray-600 */
+  color: #4b5563;
   vertical-align: top;
 }
 
-/* Rich Text / TipTap Overrides */
+/* =========================================================
+   Rich Text / TipTap
+   ========================================================= */
 .proposal-rich-text ul {
   list-style-type: disc;
   padding-left: 1.5em;
@@ -122,6 +257,10 @@
   color: #374151;
   font-size: 11pt;
   line-height: 1.6;
+}
+
+.proposal-rich-text > *:last-child {
+  margin-bottom: 0 !important;
 }
 
 .proposal-rich-text li {
@@ -147,12 +286,12 @@
 
 .proposal-rich-text table th,
 .proposal-rich-text table td {
-  border: 1px solid #d1d5db; /* Tailwind gray-300 */
+  border: 1px solid #d1d5db;
   padding: 8px 12px;
 }
 
 .proposal-rich-text table th {
-  background-color: #f3f4f6; /* Tailwind gray-100 */
+  background-color: #f3f4f6;
   font-weight: 600;
   text-align: left;
   color: #374151;
@@ -169,13 +308,10 @@
   line-height: 1.4;
 }
 
-/* Print Media Query */
+/* =========================================================
+   Print / Puppeteer media overrides
+   ========================================================= */
 @media print {
-  @page {
-    size: A4;
-    margin: 0; /* No margin to allow full bleed cover backgrounds */
-  }
-  
   body {
     margin: 0;
     padding: 0;
@@ -184,25 +320,38 @@
 
   .proposal-renderer-document {
     width: 100%;
-    min-height: auto;
     margin: 0;
     padding: 0;
-    box-shadow: none; /* Remove shadow when printing */
+    box-shadow: none;
   }
 
-  /* Force all overflowing containers to expand fully in print mode */
+  /* In print, the visual separator is meaningless — remove it */
+  .proposal-pdf-page {
+    margin-top: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* @page margin handles top/bottom spacing (including on continuation
+     pages). Remove the CSS padding so it doesn't double-add to the
+     @page margin on the first page of each block. Keep 0 padding so
+     content sits flush within the page margin box. */
+  .proposal-page-content {
+    padding: 0 20mm !important;
+  }
+
+  /* Expand all scroll containers so nothing is clipped */
   html, body, main, #proposal-preview-wrapper, .overflow-auto {
     height: auto !important;
     min-height: auto !important;
     overflow: visible !important;
   }
 
-  /* Hide the preview toolbar when printing */
+  /* Hide toolbar */
   .proposal-preview-toolbar {
     display: none !important;
   }
 
-  /* Ensure background colors print properly */
+  /* Ensure background colors and images print properly */
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;

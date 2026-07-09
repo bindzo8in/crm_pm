@@ -33,11 +33,10 @@ export function ProposalRenderer({ proposal, blocks, company, bankAccount, templ
 
   return (
     <div className="proposal-renderer-document">
-      {/* Cover page — always its own PDF page */}
-      <div
-        className="proposal-pdf-page"
-        style={{ width: "210mm", minHeight: "297mm", maxHeight: "297mm", overflow: "hidden", background: "white", position: "relative" }}
-      >
+      {/* Cover page — always its own PDF page.
+          proposal-cover-page applies @page cover-page { margin: 0 } so the
+          cover stays full-bleed. All other blocks use @page { margin: 20mm 0 }. */}
+      <div className="proposal-pdf-page proposal-cover-page" style={{ width: "210mm", height: "297mm" }}>
         <ProposalCover proposal={proposal} company={company} template={template} />
       </div>
 
@@ -45,10 +44,12 @@ export function ProposalRenderer({ proposal, blocks, company, bankAccount, templ
         switch (block.type as ProposalBlockType) {
           case "PRICING":
             return (
+              // proposal-pdf-page is the on-screen visual separator.
+              // proposal-page-break-before tells Chromium to start a new PDF page here.
               <div
                 key={block.id}
-                className="proposal-pdf-page proposal-page-content"
-                style={{ width: "210mm", minHeight: "297mm", background: "white" }}
+                className="proposal-pdf-page proposal-page-break-before proposal-page-content"
+                style={{ width: "210mm" }}
               >
                 <PricingRenderer block={block} proposal={proposal} bankAccount={bankAccount} />
               </div>
@@ -56,22 +57,43 @@ export function ProposalRenderer({ proposal, blocks, company, bankAccount, templ
 
           case "FEATURES":
           case "TERMS":
-          case "CUSTOM":
-            // RichTextRenderer manages its own proposal-pdf-page containers when
-            // the content contains pageBreak nodes (e.g., multiple feature groups).
-            // For a single-page block it renders inline, wrapped by the div below.
+          case "CUSTOM": {
+            const defaultTemplate = {
+              coverEnabled: true,
+              coverFooterEnabled: true,
+              showServices: true,
+              showContacts: true,
+              showAddress: true,
+              primaryColor: "#0B1B3D",
+              secondaryColor: "#D4AF37",
+            };
+            const config = template || defaultTemplate;
+            const bgUrl = block.type === "FEATURES" ? config.coverBackground?.url : undefined;
+
+            // For FEATURES blocks, pass the services array so the renderer
+            // can display the corresponding service badge and watermark on each page.
+            const services = block.type === "FEATURES" 
+              ? (proposal.proposalServices as Array<{ serviceName: string; packageName?: string | null }> | undefined)
+              : undefined;
+
             return (
               <React.Fragment key={block.id}>
-                <RichTextRenderer block={block} />
+                <RichTextRenderer
+                  block={block}
+                  blockType={block.type}
+                  backgroundUrl={bgUrl}
+                  services={services}
+                />
               </React.Fragment>
             );
+          }
 
           case "TIMELINE":
             return (
               <div
                 key={block.id}
-                className="proposal-pdf-page proposal-page-content"
-                style={{ width: "210mm", minHeight: "297mm", background: "white" }}
+                className="proposal-pdf-page proposal-page-break-before proposal-page-content"
+                style={{ width: "210mm" }}
               >
                 <TimelineRenderer block={block} />
               </div>
@@ -92,13 +114,15 @@ export function ProposalRenderer({ proposal, blocks, company, bankAccount, templ
             return (
               <div
                 key={block.id}
-                className="proposal-pdf-page flex flex-col justify-between"
-                style={{ display: "flex", width: "210mm", minHeight: "297mm", background: "white" }}
+                className="proposal-pdf-page proposal-page-break-before proposal-page-content relative"
+                style={{ width: "210mm", height: "257mm" }}
               >
-                <div className="proposal-page-content flex-1">
+                <div className="relative z-10">
                   <SignatureRenderer block={block} />
                 </div>
-                <CoverFooter proposal={proposal} company={company} config={config} />
+                <div className="absolute bottom-0 left-0 w-full z-10">
+                  <CoverFooter proposal={proposal} company={company} config={config} />
+                </div>
               </div>
             );
           }
