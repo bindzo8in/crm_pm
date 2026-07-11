@@ -309,8 +309,8 @@
    ========================================================= */
 .proposal-rich-text ul {
   list-style-type: disc;
-  list-style-position: inside;
-  padding-left: 0.5em;
+  list-style-position: outside;
+  padding-left: 1.5em;
   margin-bottom: 1em;
   color: #374151;
   font-size: 11pt;
@@ -319,8 +319,8 @@
 
 .proposal-rich-text ol {
   list-style-type: decimal;
-  list-style-position: inside;
-  padding-left: 0.5em;
+  list-style-position: outside;
+  padding-left: 1.5em;
   margin-bottom: 1em;
   color: #374151;
   font-size: 11pt;
@@ -338,7 +338,6 @@
 /* TipTap adds <p> inside <li> which creates massive gaps, so we remove the margin */
 .proposal-rich-text li > p {
   margin-bottom: 0;
-  display: inline-block;
 }
 
 .proposal-rich-text li > p:not(:last-child) {
