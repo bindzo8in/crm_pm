@@ -3,6 +3,7 @@ import { ProposalRenderer } from "@/components/proposal/renderer/ProposalRendere
 import { PreviewToolbar } from "@/components/proposal/preview/PreviewToolbar";
 import { AcceptProposalButton } from "@/components/proposal/preview/AcceptProposalButton";
 import prisma from "@/lib/prisma";
+import { requirePageAccess } from "@/lib/auth-guard";
 
 export const metadata = {
   title: "Proposal Preview",
@@ -13,6 +14,7 @@ interface ProposalPreviewPageProps {
 }
 
 export default async function ProposalPreviewPage({ params }: ProposalPreviewPageProps) {
+  await requirePageAccess("/dashboard/proposals");
   const { id } = await params;
   
   // Reuse composer data fetcher which returns precisely { proposal, blocks }

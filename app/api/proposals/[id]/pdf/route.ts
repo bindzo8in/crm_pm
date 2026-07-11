@@ -2,6 +2,7 @@ import chromium from "@sparticuz/chromium-min";
 import puppeteer from "puppeteer-core";
 import { NextRequest } from "next/server";
 import { env } from "@/lib/env";
+import prisma from "@/lib/prisma";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -45,12 +46,42 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  // Build the URL Puppeteer will navigate to.
-  // In production NEXT_PUBLIC_BASE_URL must be set (e.g. https://your-app.vercel.app).
-  // Locally it defaults to localhost:3000.
-  const baseUrl =
-    env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  // Fetch company data to build the footer
+  const company = await prisma.company.findFirst();
 
+  // Parse logo JSON if present
+  let logoUrl: string | null = null;
+  if (company?.logo) {
+    try {
+      const logoData = typeof company.logo === "string"
+        ? JSON.parse(company.logo)
+        : company.logo as { url?: string };
+      logoUrl = logoData?.url ?? null;
+    } catch {
+      // ignore parse error
+    }
+  }
+
+  const companyName = company?.displayName || company?.legalName || "";
+  const websiteRaw = company?.website || "";
+  const websiteDisplay = websiteRaw.replace(/^https?:\/\//, "");
+
+  // Pre-fetch logo as ArrayBuffer for pdf-lib embedding.
+  // pdf-lib uses binary data directly — no base64 or external URLs needed.
+  let logoBuffer: ArrayBuffer | null = null;
+  let logoMimeType = "image/png";
+  if (logoUrl) {
+    try {
+      const imgRes = await fetch(logoUrl);
+      logoMimeType = imgRes.headers.get("content-type") || "image/png";
+      logoBuffer = await imgRes.arrayBuffer();
+    } catch {
+      // logo fetch failed — footer will show text only
+    }
+  }
+
+  // Build the URL Puppeteer will navigate to.
+  const baseUrl = env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
   const targetUrl = `${baseUrl}/p/${id}?pdf=1`;
 
   let executablePath: string;
@@ -76,7 +107,6 @@ export async function GET(
       });
     } else {
       // Production: download Chromium from the remote URL at runtime.
-      // This avoids Vercel's 50 MB function bundle size limit.
       const remoteExecPath = env.CHROMIUM_REMOTE_EXEC_PATH;
       if (!remoteExecPath) {
         return new Response(
@@ -95,51 +125,50 @@ export async function GET(
 
     const page = await browser.newPage();
 
-    // Set viewport to exact A4 width at 96dpi so the renderer uses the right layout.
-    await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
+    // Set a large viewport to prevent a vertical scrollbar from reducing the 
+    // available width. This eliminates the horizontal overflow that causes 
+    // Chromium to generate a blank ghost page at the end of the document.
+    await page.setViewport({ width: 1200, height: 1600, deviceScaleFactor: 1 });
 
     // Navigate and wait until all network requests (fonts, images) have settled.
     await page.goto(targetUrl, { waitUntil: "networkidle0", timeout: 30_000 });
 
-    // Give JS components a moment to finish any client-side hydration.
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    // Explicitly wait for the proposal document to render to avoid hydration race conditions.
+    // ProposalPdfRenderer uses "pdf-renderer-document" as its root class.
+    await page.waitForSelector(".pdf-renderer-document", { timeout: 10_000 }).catch(() => {});
+
+    // ── CRITICAL: Reset html/body margin before printing ──────────────────
+    // Chromium's default body margin (8px) creates trailing whitespace that
+    // overflows the last page boundary and generates a ghost blank page.
+    // This must be injected AFTER page load so it overrides any framework CSS.
+    // NOTE: We do NOT set overflow:hidden here — that can clip tall content
+    //       pages (pricing tables, long terms) in edge cases. The margin reset
+    //       alone is sufficient to eliminate the ghost page.
+    await page.addStyleTag({
+      content: `
+        html, body {
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+      `,
+    });
+
+    // Detect if a signature block exists so we know to skip the last PDF page
+    // when stamping footers.
+    const hasSignature = await page.evaluate(() => {
+      return document.querySelector(".pdf-signature-page") !== null;
+    });
 
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
-      // No explicit margin — CSS @page rules in proposal-renderer.css handle margins:
-      //   @page              { margin: 20mm 0 }  → all pages including continuation pages
-      //   @page cover-page   { margin: 0 }       → cover stays full-bleed
-      // This ensures continuation pages (auto-broken by Chromium) also get the top margin.
+      preferCSSPageSize: true,
+      displayHeaderFooter: false,
     });
 
     await browser.close();
 
-    // Use pdf-lib to add page numbers starting from 1 after the cover page
-    const { PDFDocument, rgb } = require("pdf-lib");
-    const pdfDoc = await PDFDocument.load(pdfBuffer);
-    const pages = pdfDoc.getPages();
-    
-    // Start looping from index 1 (skip the cover page)
-    for (let i = 1; i < pages.length; i++) {
-      const p = pages[i];
-      const { width, height } = p.getSize();
-      
-      p.drawText(`Page ${i}`, {
-        x: width - 56.7, // roughly 20mm from right edge
-        y: 28.35,        // 10mm from bottom edge
-        size: 9,
-        color: rgb(0.42, 0.45, 0.50), // #6b7280 (gray-500) equivalent
-      });
-    }
-
-    const modifiedPdfBytes = await pdfDoc.save();
-
-    // page.pdf() returns a Uint8Array in puppeteer v25+; wrap in a Node.js
-    // Buffer so it is a valid BodyInit for the Response constructor.
-    const pdfBody = Buffer.from(modifiedPdfBytes);
-
-    return new Response(pdfBody, {
+    return new Response(Buffer.from(pdfBuffer), {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
@@ -156,7 +185,7 @@ export async function GET(
       // ignore
     }
     return new Response(
-      JSON.stringify({ error: "PDF generation failed. Please try again." }),
+      JSON.stringify({ error: "PDF generation failed", details: String(err) }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }

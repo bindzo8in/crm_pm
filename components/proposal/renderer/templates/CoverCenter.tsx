@@ -23,9 +23,9 @@ export function CoverCenter({ proposal, company, config }: { proposal: any; comp
   const showNotes = coverContent.showNotes !== false;
 
   return (
-    <div className="flex-1 flex flex-col justify-center px-16 relative z-10">
+    <div className="flex-1 flex flex-col justify-center px-16 relative z-10 min-h-0 overflow-hidden">
       
-      <div className="flex justify-between items-end border-l-4 pl-6 mb-16" style={{ borderColor: accentColor }}>
+      <div className="flex justify-between items-end border-l-4 pl-6 mb-10" style={{ borderColor: accentColor }}>
         
         {/* Client details */}
         <div className="flex flex-col gap-1">
@@ -33,11 +33,11 @@ export function CoverCenter({ proposal, company, config }: { proposal: any; comp
           <span className="text-2xl font-bold text-gray-800 leading-tight">{preparedFor}</span>
           {proposal?.customer && (
             <div className="text-sm font-medium text-gray-500 flex flex-col gap-0.5 mt-2">
-              {proposal.customer.addressLine1 && <span>{proposal.customer.addressLine1}</span>}
-              {proposal.customer.addressLine2 && <span>{proposal.customer.addressLine2}</span>}
+              {proposal.customer.addressLine1 && <span>{proposal.customer.addressLine1}{", "}</span>}
+              {proposal.customer.addressLine2 && <span>{proposal.customer.addressLine2}{", "}</span>}
               {proposal.customer.city && (
                 <span>
-                  {[proposal.customer.city, proposal.customer.state, proposal.customer.postalCode].filter(Boolean).join(", ")}
+                  {[proposal.customer.city, proposal.customer.state, proposal.customer.postalCode].filter(Boolean).join(", ")}{", "}
                 </span>
               )}
               {proposal.customer.country && <span>{proposal.customer.country}</span>}
@@ -71,7 +71,7 @@ export function CoverCenter({ proposal, company, config }: { proposal: any; comp
 
       {/* Title block */}
       {(showTitle || showNotes) && (
-        <div className="mb-12">
+        <div className="mb-8">
           {showTitle && (
             <h1 
               className="text-6xl font-black uppercase tracking-tighter leading-none mb-4"
@@ -89,7 +89,7 @@ export function CoverCenter({ proposal, company, config }: { proposal: any; comp
       )}
 
       {/* Confidentiality Notice */}
-      <div className="mt-16 pt-8 border-t border-gray-100 max-w-lg">
+      <div className="mt-8 pt-6 border-t border-gray-100 max-w-lg">
         <span className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-2">Confidential & Proprietary</span>
         <p className="text-[10px] font-medium text-gray-400 leading-relaxed uppercase tracking-wider">
           This document contains confidential business information and trade secrets. It is intended solely for the use of the individual or entity to whom it is addressed.

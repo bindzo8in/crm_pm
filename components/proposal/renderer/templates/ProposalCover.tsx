@@ -27,7 +27,7 @@ export function ProposalCover({ proposal, company, template }: ProposalCoverProp
   if (!config.coverEnabled) return null;
 
   return (
-    <div className="relative flex flex-col w-full h-[297mm] max-h-[297mm] bg-white overflow-hidden proposal-page-break-after">
+    <div className="relative w-full flex-1 bg-white flex flex-col justify-between" style={{ height: "297mm", minHeight: "297mm", overflow: "hidden", boxSizing: "border-box" }}>
       {config.coverBackground?.url && (
         <div className="absolute inset-0 w-full h-full z-0 pointer-events-none">
           <img 
@@ -37,7 +37,9 @@ export function ProposalCover({ proposal, company, template }: ProposalCoverProp
           />
         </div>
       )}
-      <div className="relative z-10 flex flex-col flex-1 w-full h-full">
+      
+      {/* Main content column: Top, Center (flex-1), Footer */}
+      <div className="relative z-10 flex flex-col justify-between w-full flex-1 h-full">
         <CoverTop company={company} config={config} />
         <CoverCenter proposal={proposal} company={company} config={config} />
         <CoverFooter proposal={proposal} company={company} config={config} />

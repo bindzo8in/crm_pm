@@ -12,6 +12,7 @@ import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { requirePageAccess } from "@/lib/auth-guard";
 import DashboardContainer from "@/app/dashboard/dashboard-container";
 
 interface ProposalEditPageProps {
@@ -21,13 +22,7 @@ interface ProposalEditPageProps {
 export default async function ProposalEditPage({ params }: ProposalEditPageProps) {
     const { id } = await params;
     
-    const session = await auth.api.getSession({
-        headers: await headers(),
-    });
-
-    if (!session?.user) {
-        redirect("/login");
-    }
+    await requirePageAccess("/dashboard/proposals");
 
     const proposal = await prisma.proposal.findUnique({
         where: { id }

@@ -1,7 +1,7 @@
 import React from "react";
 import { Phone, Globe, Mail, MapPin } from "lucide-react";
 
-export function CoverFooter({ proposal, company, config }: { proposal?: any; company: any; config: any }) {
+export function CoverFooter({ proposal, company, config, showPageNumber }: { proposal?: any; company: any; config: any; showPageNumber?: boolean }) {
   if (!config.coverFooterEnabled) return null;
 
   // Render services - use config.services if available, else active services from DB, else static fallback
@@ -12,7 +12,7 @@ export function CoverFooter({ proposal, company, config }: { proposal?: any; com
       : ["Branding", "Digital Marketing", "DV360", "Design Solution", "Website Development", "Mobile App Development", "Google Ads", "SEO", "Software Development"];
 
   return (
-    <div className="w-full flex flex-col z-20 mt-auto">
+    <div className="w-full flex flex-col z-20 mt-auto shrink-0">
 
       {/* Services Section */}
       {config.showServices && (
@@ -117,6 +117,12 @@ export function CoverFooter({ proposal, company, config }: { proposal?: any; com
               </div>
             )}
           </div> */}
+          
+          {showPageNumber && (
+            <div className="absolute bottom-4 right-12">
+              <span className="page-number-display font-medium text-white/50"></span>
+            </div>
+          )}
         </div>
       )}
 

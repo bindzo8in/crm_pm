@@ -62,7 +62,7 @@ export async function createProposal(proposal: ProposalSchema) {
                 customerCompanyName,
                 preparedById: session.user.id,
                 preparedByName: session.user.name,
-                title,
+                title: title || "",
                 notes,
                 validUntil: validUntilDate,
                 currency: "INR",
@@ -177,7 +177,7 @@ export async function updateProposal(id: string, data: ProposalSchema) {
                 customerId: restData.customerId,
                 customerDisplayName: restData.customerDisplayName,
                 customerCompanyName: restData.customerCompanyName,
-                title: restData.title,
+                title: restData.title || "",
                 notes: restData.notes,
                 validUntil: validUntilDate,
             }

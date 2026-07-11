@@ -8,8 +8,10 @@ import { getQueryClient } from "@/lib/query-client";
 import { customerKeys } from "@/components/customers/customer-query-key";
 import { GetCustomerOptions } from "@/actions/customer";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
+import { requirePageAccess } from "@/lib/auth-guard";
 
 export default async function ProposalCreatePage() {
+    await requirePageAccess("/dashboard/proposals");
     const queryClient = getQueryClient();
 
     await queryClient.prefetchQuery({

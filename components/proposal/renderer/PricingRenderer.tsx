@@ -59,16 +59,6 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
 
   return (
     <div className="mb-16">
-      <div className="flex items-center justify-between mb-8 pb-4 border-b border-gray-200">
-        <div className="space-y-1">
-          <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
-            {block.title || "Investment Breakdown"}
-          </h2>
-          <p className="text-sm text-gray-500">
-            Transparent pricing for your selected services and packages.
-          </p>
-        </div>
-      </div>
 
       {services.length === 0 ? (
         <div className="py-8 text-center text-gray-500 italic border rounded-lg bg-gray-50">
@@ -76,7 +66,7 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
         </div>
       ) : (
         <div className="space-y-10">
-          <div className="break-inside-avoid">
+          <div>
             <table className="proposal-table w-full">
               <thead>
                 <tr>
@@ -94,7 +84,7 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
                   <React.Fragment key={service.id}>
                     {/* Service Items */}
                     {service.items.map((item) => (
-                      <tr key={item.id}>
+                      <tr key={item.id} className="break-inside-avoid">
                         <td className="align-top">
                           <div className="font-semibold text-gray-900">{service.serviceName}</div>
                           {service.packageName && (

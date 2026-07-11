@@ -4,7 +4,7 @@ export function PageFooter({ company, proposal }: { company?: any, proposal?: an
   if (!company) return null;
 
   return (
-    <div className="w-[calc(100%-40mm)] pt-4 pb-2 border-t border-gray-200 flex items-center justify-between text-xs text-gray-500 page-footer-print absolute bottom-[20mm] left-[20mm] bg-white z-30">
+    <div className="w-full pt-4 pb-2 border-t border-gray-200 flex items-center justify-between text-xs text-gray-500 page-footer-print bg-white z-30 mt-6">
       <div className="flex items-center gap-3">
         {company?.logo?.url && (
           <img src={company.logo.url} alt="Logo" className="h-6 w-auto object-contain" />
@@ -14,10 +14,11 @@ export function PageFooter({ company, proposal }: { company?: any, proposal?: an
       
       <div className="flex items-center gap-6">
         {company?.website && (
-          <span>
+          <a href={company.website.startsWith('http') ? company.website : `https://${company.website}`} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 transition-colors">
             {company.website.replace(/^https?:\/\//, '')}
-          </span>
+          </a>
         )}
+        <span className="page-number-display font-medium text-gray-400"></span>
       </div>
     </div>
   );

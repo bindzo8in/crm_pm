@@ -9,10 +9,12 @@ import DashboardContainer from "../dashboard-container";
 import { PlusIcon } from "lucide-react";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { serviceKeys } from "@/components/services/util";
+import { requirePageAccess } from "@/lib/auth-guard";
 
 export default async function ServicesPage({
     searchParams,
 }: PageProps<"/dashboard/services">) {
+    await requirePageAccess("/dashboard/services");
     const params = await searchParams;
 
     const initialQuery = {

@@ -237,6 +237,21 @@ export async function GetServices(query: ServiceQuerySchema) {
                     name: true,
                     description: true,
                     isActive: true,
+                    packages: {
+                        select: {
+                            id: true,
+                            name: true,
+                            isActive: true,
+                        },
+                        orderBy: {
+                            createdAt: "asc",
+                        },
+                    },
+                    _count: {
+                        select: {
+                            packages: true,
+                        },
+                    },
                 },
 
                 where,
@@ -830,6 +845,21 @@ export async function updatePackageTotal(packageId: string) {
 
 export async function DeleteServicePackage(id: string) {
     try {
+        const hasPermission =
+            await auth.api.userHasPermission({
+                headers: await headers(),
+                body: {
+                    permissions: {
+                        services: ["delete"],
+                    },
+                },
+            });
+
+        if (!hasPermission.success) {
+            return errorResponse(
+                "You don't have permission to delete service packages"
+            );
+        }
         await prisma.servicePackage.delete({
             where: { id },
         });

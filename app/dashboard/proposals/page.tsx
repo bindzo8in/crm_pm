@@ -10,8 +10,10 @@ import { proposalKeys } from "@/components/proposal/util";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { ProposalTable } from "@/components/proposal/table";
 import { getProposals } from "@/actions/proposal";
+import { requirePageAccess } from "@/lib/auth-guard";
 
 export default async function ProposalsPage({ searchParams }: PageProps<"/dashboard/proposals">) {
+    await requirePageAccess("/dashboard/proposals");
     const { page, pageSize, search, sortDirection, status, customerId } = await searchParams;
     const initialQuery: ProposalQuerySchema = {
         page: Number(page ?? 0),

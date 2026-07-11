@@ -10,8 +10,10 @@ import { termsKeys } from "@/components/services/util";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { TermsTable } from "@/components/services/terms/table";
 import { GetTerms } from "@/actions/terms";
+import { requirePageAccess } from "@/lib/auth-guard";
 
 export default async function TermsPage({ searchParams }: PageProps<"/dashboard/terms">) {
+    await requirePageAccess("/dashboard/terms");
     const { page, pageSize, search, sortDirection, isActive, isDefault } = await searchParams;
     const initialQuery: TermQuerySchema = {
         page: Number(page ?? 0),
@@ -23,14 +25,12 @@ export default async function TermsPage({ searchParams }: PageProps<"/dashboard/
                 : undefined,
 
         sortDirection: sortDirection === "asc" ? "asc" : "desc",
-        isActive:
-            isActive === "true"
-                ? true
-                : undefined,
-        isDefault: isDefault === "true" ? true : undefined
+        isActive: isActive === "true" ? true : isActive === "false" ? false : undefined,
+        isDefault: isDefault === "true" ? true : isDefault === "false" ? false : undefined,
     } as const;
 
-    const queryClient = getQueryClient()
+    const queryClient = getQueryClient();
+
     await queryClient.prefetchQuery({
         queryKey: termsKeys.list(initialQuery),
         queryFn: () => GetTerms(initialQuery)

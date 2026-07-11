@@ -11,8 +11,10 @@ import {
   HydrationBoundary,
 } from "@tanstack/react-query";
 import { User } from "lucide-react";
+import { requirePageAccess } from "@/lib/auth-guard";
 
 export default async function CustomersPage() {
+  await requirePageAccess("/dashboard/customers");
   const queryClient = getQueryClient();
 
   await queryClient.prefetchQuery({

@@ -9,10 +9,12 @@ import { GetServicesPackages } from "@/actions/services";
 import { ServicesPackagesTable } from "@/components/services/packages/table";
 import { servicePackageKeys } from "@/components/services/util";
 import { PlusIcon } from "lucide-react";
+import { requirePageAccess } from "@/lib/auth-guard";
 
 export default async function ServicePackagePage({
     searchParams,
 }: PageProps<"/dashboard/services/packages">) {
+    await requirePageAccess("/dashboard/services");
     const params = await searchParams;
 
     const initialQuery = {

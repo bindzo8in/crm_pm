@@ -5,8 +5,10 @@ export const metadata = {
 import { ServiceForm } from "@/components/services/create-edit";
 import DashboardContainer from "../../dashboard-container";
 import { ArrowLeft } from "lucide-react";
+import { requirePageAccess } from "@/lib/auth-guard";
 
 export default async function CreateServicePage() {
+    await requirePageAccess("/dashboard/services");
 
     return (
         <DashboardContainer title="Create Service" action={{

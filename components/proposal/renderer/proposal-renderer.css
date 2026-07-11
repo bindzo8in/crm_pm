@@ -15,15 +15,78 @@
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
 }
 
+@media print {
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+  }
+  .proposal-renderer-document {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+}
+
 /* =========================================================
    PDF page control — Puppeteer / print media
    Chromium respects break-before/break-after natively.
    ========================================================= */
 
+/* =========================================================
+   Utility Classes for Screen vs Print
+   ========================================================= */
+@media screen {
+  .print-only { display: none !important; }
+}
+@media print {
+  .screen-only { display: none !important; }
+}
+
 /* Default @page — applied to ALL pages including continuation pages.
    20mm top/bottom gives consistent spacing when long blocks overflow
    onto new pages automatically. Puppeteer page.pdf() does NOT pass
    an explicit margin so this CSS rule takes effect. */
+.proposal-renderer-document {
+  counter-reset: proposal-page-num;
+}
+.proposal-pdf-page:not(.proposal-cover-page) {
+  counter-increment: proposal-page-num;
+}
+.page-number-display::after {
+  content: "Page " counter(proposal-page-num);
+}
+
+@media screen {
+  /* Force footer to bottom of container on screen for normal pages */
+  .proposal-pdf-page:not(.proposal-cover-page) {
+    position: relative;
+    padding-bottom: 50px;
+  }
+  .proposal-cover-page {
+    position: relative;
+    padding-bottom: 0 !important;
+    overflow: hidden;
+  }
+  .proposal-signature-page {
+    min-height: 297mm;
+  }
+  .page-footer-print {
+    position: absolute;
+    bottom: 0;
+    left: 20mm;
+    width: 170mm;
+  }
+}
+
+@media print {
+  /* Page numbers are stamped by pdf-lib post-processing — hide the CSS counter display */
+  .page-number-display {
+    visibility: hidden !important;
+  }
+}
+
 @page {
   size: A4;
   margin: 20mm 0;
@@ -36,8 +99,19 @@
 }
 
 /* Apply the named page rule to the cover page wrapper. */
-.proposal-cover-page {
+.proposal-cover-page,
+.proposal-signature-page {
   page: cover-page;
+  z-index: 20;
+  background-color: white;
+}
+
+/* Cover and signature pages: natural height on screen with footer pinned via absolute positioning.
+   The ProposalPdfRenderer uses its own separate component with fixed pixel heights.
+   This CSS only applies to the web preview renderer. */
+.proposal-strict-page-height {
+  position: relative;
+  min-height: 297mm;
 }
 
 /* Hard page break BEFORE an element (used on every block except the cover) */
@@ -65,23 +139,15 @@
 }
 
 /* =========================================================
-   On-screen visual separator between logical pages
-   (purely cosmetic — not used by Puppeteer)
+   On-screen page wrapper — no artificial splits or borders.
+   Preview shows content as natural continuous flow.
    ========================================================= */
 .proposal-pdf-page {
   display: block;
   background: white;
   box-sizing: border-box;
-  /* Visual gap between pages in browser preview */
-  margin-top: 12px;
-  box-shadow: 0 -3px 0 0 #e5e7eb;
 }
 
-/* No top gap on the very first page */
-.proposal-renderer-document > .proposal-pdf-page:first-child {
-  margin-top: 0;
-  box-shadow: none;
-}
 
 /* =========================================================
    Base typography
@@ -352,6 +418,7 @@
   .proposal-pdf-page {
     margin-top: 0 !important;
     box-shadow: none !important;
+    min-height: auto !important;
   }
 
   /* @page margin handles top/bottom spacing (including on continuation
@@ -380,24 +447,13 @@
     print-color-adjust: exact !important;
   }
 
-  /* Force page footer to repeat at the bottom of every printed page */
+  /* Headers and footers are now natively repeated using <thead> and <tfoot> */
   .page-footer-print {
-    position: fixed !important;
-    bottom: 0 !important;
-    left: 20mm !important;
-    width: calc(100% - 40mm) !important;
     background: white;
-    z-index: 100;
   }
   
-  /* Force page header to repeat at the top of every printed page */
   .page-header-print {
-    position: fixed !important;
-    top: 0 !important;
-    left: 20mm !important;
-    width: calc(100% - 40mm) !important;
     background: white;
-    z-index: 100;
   }
   
   /* Hide the page header and footer on the cover page */

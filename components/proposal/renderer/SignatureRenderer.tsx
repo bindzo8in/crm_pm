@@ -58,7 +58,6 @@ export function SignatureRenderer({ block, proposal, company }: SignatureRendere
 
   return (
     <div className="mb-16 break-inside-avoid">
-      <h2 className="text-2xl font-bold text-gray-900 mb-12 border-b pb-4">{block.title || "Acceptance & Sign-off"}</h2>
       
       <p className="text-sm text-gray-600 mb-12">
         By signing below, both parties agree to the terms, conditions, and pricing outlined in this quotation.

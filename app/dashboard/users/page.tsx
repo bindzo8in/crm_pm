@@ -7,8 +7,10 @@ import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query
 import UsersTable from "./UsersTable";
 import DashboardContainer from "../dashboard-container";
 import { getQueryClient } from "@/lib/query-client";
+import { requirePageAccess } from "@/lib/auth-guard";
 
 export default async function TestPage() {
+    await requirePageAccess("/dashboard/users");
 
     const queryClient = getQueryClient();
 

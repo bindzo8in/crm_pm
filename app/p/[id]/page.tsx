@@ -1,5 +1,6 @@
 import { getPublicProposalData } from "@/actions/public-proposal";
 import { ProposalRenderer } from "@/components/proposal/renderer/ProposalRenderer";
+import { ProposalPdfRenderer } from "@/components/proposal/renderer/ProposalPdfRenderer";
 import { AcceptProposalButton } from "@/components/proposal/preview/AcceptProposalButton";
 import { PublicPreviewToolbar } from "@/components/proposal/preview/PublicPreviewToolbar";
 import prisma from "@/lib/prisma";
@@ -74,12 +75,13 @@ export default async function PublicProposalPage({ params, searchParams }: Publi
     }
   }
 
-  // PDF mode: render the bare document with no UI chrome so Puppeteer captures
-  // a clean A4 output. The ?pdf=1 query param is set by the PDF API route.
+  // PDF mode: render the bare document using the dedicated PDF renderer.
+  // ProposalPdfRenderer uses strict A4 pixel dimensions (794×1123px) to guarantee
+  // no ghost pages are produced. It is completely separate from the preview renderer.
   if (isPdfMode) {
     return (
       <div style={{ background: "white" }}>
-        <ProposalRenderer
+        <ProposalPdfRenderer
           proposal={proposal}
           blocks={blocks}
           company={safeCompany}

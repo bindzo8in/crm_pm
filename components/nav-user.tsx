@@ -21,7 +21,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { signOut, useSession } from "@/lib/auth-client"
-import { EllipsisVerticalIcon, CircleUserRoundIcon, CreditCardIcon, BellIcon, LogOutIcon } from "lucide-react"
+import { EllipsisVerticalIcon, CircleUserRoundIcon, BellIcon, LogOutIcon } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 export function NavUser({
@@ -68,8 +68,8 @@ export function NavUser({
                 <AvatarFallback className="rounded-lg">CN</AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">{sessionUser?.name || user.name}</span>
-                <span className="truncate text-xs text-muted-foreground">
+                <span className="truncate font-medium" suppressHydrationWarning>{sessionUser?.name || user.name}</span>
+                <span className="truncate text-xs text-muted-foreground" suppressHydrationWarning>
                   {sessionUser?.email || user.email}
                 </span>
               </div>
@@ -89,8 +89,8 @@ export function NavUser({
                   <AvatarFallback className="rounded-lg">CN</AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">{sessionUser?.name || user.name}</span>
-                  <span className="truncate text-xs text-muted-foreground">
+                  <span className="truncate font-medium" suppressHydrationWarning>{sessionUser?.name || user.name}</span>
+                  <span className="truncate text-xs text-muted-foreground" suppressHydrationWarning>
                     {sessionUser?.email || user.email}
                   </span>
                 </div>
@@ -98,15 +98,10 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push('/dashboard/settings/account')}>
                 <CircleUserRoundIcon
                 />
                 Account
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <CreditCardIcon
-                />
-                Billing
               </DropdownMenuItem>
               <DropdownMenuItem>
                 <BellIcon

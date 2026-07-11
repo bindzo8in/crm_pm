@@ -11,8 +11,10 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 
 import data from "./data.json"
 import DashboardContainer from "./dashboard-container"
+import { requirePageAccess } from "@/lib/auth-guard"
 
-export default function Page() {
+export default async function Page() {
+  await requirePageAccess("/dashboard")
 
   return (
     <DashboardContainer title="Dashboard">

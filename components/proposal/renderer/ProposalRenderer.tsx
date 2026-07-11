@@ -38,27 +38,32 @@ export function ProposalRenderer({ proposal, blocks, company, bankAccount, templ
     <div className="proposal-renderer-document">
       {/* Cover page — always its own PDF page.
           proposal-cover-page applies @page cover-page { margin: 0 } so the
-          cover stays full-bleed. All other blocks use @page { margin: 20mm 0 }. */}
-      <div className="proposal-pdf-page proposal-cover-page" style={{ width: "210mm", height: "297mm" }}>
-        <ProposalCover proposal={proposal} company={company} template={template} />
+          cover stays full-bleed. All other blocks use @page { margin: 20mm 0 15mm 0 }. */}
+      <div className="proposal-pdf-page proposal-cover-page flex flex-col" style={{ width: "210mm", height: "297mm", overflow: "hidden", padding: 0 }}>
+        <ProposalCover proposal={{ ...proposal, blocks }} company={company} template={template} />
       </div>
 
       {otherBlocks.map((block) => {
         switch (block.type as ProposalBlockType) {
           case "PRICING":
             return (
-              // proposal-pdf-page is the on-screen visual separator.
-              // proposal-page-break-before tells Chromium to start a new PDF page here.
               <div
                 key={block.id}
-                className="proposal-pdf-page proposal-page-break-before proposal-page-content flex flex-col min-h-[297mm]"
+                className="proposal-pdf-page proposal-page-break-before proposal-page-content"
                 style={{ width: "210mm" }}
               >
-                <PageHeader proposal={proposal} />
-                <div className="flex-1 pt-16 pb-16">
+                <PageHeader
+                  proposal={proposal}
+                  title={block.title || "Investment Breakdown"}
+                  subtitle="Transparent pricing for your selected services and packages."
+                />
+                <div className="pt-4">
                   <PricingRenderer block={block} proposal={proposal} bankAccount={bankAccount} />
                 </div>
-                <PageFooter company={company} proposal={proposal} />
+                {/* Screen-only footer (in print, Puppeteer footerTemplate handles it) */}
+                <div className="screen-only absolute bottom-0 left-0 w-full px-[20mm] z-10">
+                  <PageFooter company={company} proposal={proposal} />
+                </div>
               </div>
             );
 
@@ -101,14 +106,17 @@ export function ProposalRenderer({ proposal, blocks, company, bankAccount, templ
             return (
               <div
                 key={block.id}
-                className="proposal-pdf-page proposal-page-break-before proposal-page-content flex flex-col min-h-[297mm]"
+                className="proposal-pdf-page proposal-page-break-before proposal-page-content"
                 style={{ width: "210mm" }}
               >
-                <PageHeader proposal={proposal} />
-                <div className="flex-1 pt-16 pb-16">
+                <PageHeader proposal={proposal} title={block.title || "Project Timeline & Milestones"} />
+                <div className="pt-8">
                   <TimelineRenderer block={block} />
                 </div>
-                <PageFooter company={company} proposal={proposal} />
+                {/* Screen-only footer (in print, Puppeteer footerTemplate handles it) */}
+                <div className="screen-only absolute bottom-0 left-0 w-full px-[20mm] z-10">
+                  <PageFooter company={company} proposal={proposal} />
+                </div>
               </div>
             );
 
@@ -128,8 +136,7 @@ export function ProposalRenderer({ proposal, blocks, company, bankAccount, templ
             return (
               <div
                 key={block.id}
-                className="proposal-pdf-page proposal-page-break-before proposal-page-content relative flex flex-col min-h-[297mm]"
-                style={{ width: "210mm" }}
+                className="proposal-pdf-page proposal-page-break-before proposal-signature-page proposal-strict-page-height"
               >
                 {bgUrl && (
                   <div className="absolute inset-0 w-full h-full z-0 pointer-events-none">
@@ -140,12 +147,16 @@ export function ProposalRenderer({ proposal, blocks, company, bankAccount, templ
                     />
                   </div>
                 )}
-                <PageHeader proposal={proposal} />
-                <div className="relative z-10 pt-16 flex-1 pb-32">
-                  <SignatureRenderer block={block} proposal={proposal} company={company} />
+                {/* Main content with bottom padding to leave room for absolutely-pinned footer */}
+                <div className="relative z-10 w-full px-[20mm] pt-[20mm]" style={{ paddingBottom: "200px" }}>
+                  <PageHeader proposal={proposal} title={block.title || "Acceptance & Sign-off"} />
+                  <div className="pt-16">
+                    <SignatureRenderer block={block} proposal={proposal} company={company} />
+                  </div>
                 </div>
-                <div className="absolute bottom-0 left-0 w-full z-10">
-                  <CoverFooter proposal={proposal} company={company} config={config} />
+                {/* Footer pinned absolutely to the bottom of the 297mm container */}
+                <div className="absolute bottom-0 left-0 right-0 z-20">
+                  <CoverFooter proposal={proposal} company={company} config={config} showPageNumber={false} />
                 </div>
               </div>
             );

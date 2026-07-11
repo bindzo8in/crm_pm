@@ -3,11 +3,11 @@ import z from "zod";
 
 export const proposalSchema = z.object({
 
-    customerId: z.string().nonempty("customerId is required"),
+    customerId: z.string().nonempty("customer is required"),
     customerDisplayName: z.string().nonempty("customerDisplayName is required"),
     customerCompanyName: z.string().optional(),
 
-    title: z.string().nonempty("title is required"),
+    title: z.string().optional(),
 
     validUntil: z.enum(["07_Days", "15_Days", "30_Days"]),
 

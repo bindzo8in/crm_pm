@@ -1,6 +1,15 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+/**
+ * PdfRichTextRenderer
+ *
+ * PDF-ONLY rich text renderer used exclusively by ProposalPdfRenderer.
+ * - Imports proposal-pdf-renderer.css (NOT proposal-renderer.css)
+ * - Uses pdf-* class names so there is zero CSS leakage from the preview renderer
+ * - No screen-only footer, no preview-specific elements
+ */
+
+import React from "react";
 import { generateHTML, JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
@@ -18,24 +27,9 @@ import { ImageUploadNode } from "@/components/tiptap-node/image-upload-node/imag
 import { HorizontalRule } from "@/components/tiptap-node/horizontal-rule-node/horizontal-rule-node-extension";
 import { PageBreak } from "@/components/tiptap-node/page-break-node/page-break-node-extension";
 import { PageHeader } from "./templates/PageHeader";
-import { PageFooter } from "./templates/PageFooter";
 
-import "./proposal-renderer.css";
-
-interface RichTextRendererProps {
-  block: {
-    title: string | null;
-    content?: unknown;
-  };
-  blockType?: string;
-  backgroundUrl?: string;
-  /** Services array — used to render per-page badges and watermarks in FEATURES block. */
-  services?: Array<{ serviceName: string; packageName?: string | null }>;
-  /** @deprecated kept for prop compat — no longer used */
-  isFirstBlock?: boolean;
-  company?: any;
-  proposal?: any;
-}
+// A4 at 96dpi
+const A4_WIDTH_PX = 793;
 
 const TIPTAP_EXTENSIONS = [
   StarterKit.configure({ horizontalRule: false }),
@@ -75,80 +69,81 @@ function splitAtPageBreaks(nodes: JSONContent[]): JSONContent[][] {
   return pages;
 }
 
-export function RichTextRenderer({
+interface PdfRichTextRendererProps {
+  block: {
+    title: string | null;
+    content?: unknown;
+  };
+  blockType?: string;
+  backgroundUrl?: string;
+  /** Services array — used to render per-page badges and watermarks in FEATURES block. */
+  services?: Array<{ serviceName: string; packageName?: string | null }>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  company?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  proposal?: any;
+}
+
+export function PdfRichTextRenderer({
   block,
   blockType,
   backgroundUrl,
   services,
-  company,
   proposal,
-}: RichTextRendererProps) {
-  const [pages, setPages] = useState<string[]>([]);
-  const [mounted, setMounted] = useState(false);
-
+}: PdfRichTextRendererProps) {
   const isFeaturesBlock = blockType === "FEATURES";
   const isTermsBlock = blockType === "TERMS";
 
-  useEffect(() => {
-    setMounted(true);
-    if (!block.content || typeof block.content !== "object") {
-      setPages([]);
-      return;
+  if (!block.content || typeof block.content !== "object") return null;
+
+  let pages: string[] = [];
+  try {
+    const doc = block.content as JSONContent;
+    const topNodes = Array.isArray(doc.content) ? doc.content : [];
+    const hasPageBreaks = topNodes.some((n) => n.type === "pageBreak");
+
+    if (hasPageBreaks) {
+      pages = splitAtPageBreaks(topNodes)
+        .filter((section) => section.length > 0)
+        .map((section) => generateHTML({ type: "doc", content: section }, TIPTAP_EXTENSIONS))
+        .filter((html) => html.replace(/<[^>]*>/g, "").trim().length > 0);
+    } else {
+      const html = generateHTML(doc, TIPTAP_EXTENSIONS);
+      pages = [html];
     }
-
-    try {
-      const doc = block.content as JSONContent;
-      const topNodes = Array.isArray(doc.content) ? doc.content : [];
-
-      const hasPageBreaks = topNodes.some((n) => n.type === "pageBreak");
-
-      if (hasPageBreaks) {
-        const pageSections = splitAtPageBreaks(topNodes);
-        const htmlPages = pageSections
-          .filter((section) => section.length > 0)
-          .map((section) => {
-            const subDoc: JSONContent = { type: "doc", content: section };
-            return generateHTML(subDoc, TIPTAP_EXTENSIONS);
-          })
-          .filter((html) => html.replace(/<[^>]*>/g, "").trim().length > 0);
-        setPages(htmlPages);
-      } else {
-        const html = generateHTML(doc, TIPTAP_EXTENSIONS);
-        setPages([html]);
-      }
-    } catch (error) {
-      console.error("Failed to generate HTML from TipTap JSON:", error);
-      setPages(["<p>Error rendering content.</p>"]);
-    }
-  }, [block.content]);
-
-  if (!mounted || pages.length === 0) {
-    return null;
+  } catch (error) {
+    console.error("[PdfRichTextRenderer] Failed to generate HTML:", error);
+    pages = ["<p>Error rendering content.</p>"];
   }
+
+  if (pages.length === 0) return null;
 
   return (
     <>
       {pages.map((html, i) => {
-        // Find the service/package name for this specific page (service)
         const currentService = services?.[i] ?? services?.[0];
         const serviceName = isFeaturesBlock ? currentService?.serviceName : null;
 
         return (
           <div
             key={i}
-            className="proposal-pdf-page proposal-page-break-before proposal-page-content relative"
-            style={{ width: "210mm" }}
+            className="pdf-page pdf-content-page pdf-page-break-before"
+            style={{ width: A4_WIDTH_PX, position: "relative" }}
           >
             {/* Optional background image */}
             {backgroundUrl && (
               <div
-                className="absolute z-0 pointer-events-none"
-                style={{ top: "-20mm", left: "-20mm", width: "210mm", height: "297mm" }}
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  zIndex: 0,
+                  pointerEvents: "none",
+                }}
               >
                 <img
                   src={backgroundUrl}
                   alt="Background"
-                  className="w-full h-full object-fill opacity-20"
+                  style={{ width: "100%", height: "100%", objectFit: "fill", opacity: 0.2 }}
                 />
               </div>
             )}
@@ -159,7 +154,7 @@ export function RichTextRenderer({
               title={block.title || (isTermsBlock ? "Terms & Conditions" : "Service Features")}
               badge={
                 isFeaturesBlock && serviceName ? (
-                  <div className="proposal-features-service-badge">{serviceName}</div>
+                  <div className="pdf-features-service-badge">{serviceName}</div>
                 ) : undefined
               }
             />
@@ -167,27 +162,19 @@ export function RichTextRenderer({
             {/* Right-side vertical watermark */}
             {isFeaturesBlock && serviceName && (
               <div
-                className="proposal-features-watermark"
+                className="pdf-features-watermark"
                 aria-hidden="true"
-                style={{ top: 0, bottom: "auto", height: "257mm" }}
               >
                 {serviceName}
               </div>
             )}
 
             {/* Rich text content */}
-            <div className="relative z-10 pb-8">
+            <div style={{ position: "relative", zIndex: 10, paddingBottom: "2rem" }}>
               <div
-                className={`proposal-rich-text ${
-                  isFeaturesBlock ? "proposal-features-rich-text" : ""
-                } ${isTermsBlock ? "proposal-terms-rich-text" : ""}`}
+                className={`pdf-rich-text${isFeaturesBlock ? " pdf-features-rich-text" : ""}${isTermsBlock ? " pdf-terms-rich-text" : ""}`}
                 dangerouslySetInnerHTML={{ __html: html }}
               />
-            </div>
-
-            {/* Screen-only footer (in print, Puppeteer footerTemplate handles it) */}
-            <div className="screen-only absolute bottom-0 left-0 w-full px-[20mm] z-10">
-              <PageFooter company={company} proposal={proposal} />
             </div>
           </div>
         );

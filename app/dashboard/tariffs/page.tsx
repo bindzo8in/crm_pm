@@ -3,12 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { TariffGridList } from "./tariff-grid-list";
+import { requirePageAccess } from "@/lib/auth-guard";
 
 export const metadata = {
   title: "Manage Tariffs | CRM",
 };
 
 export default async function TariffsPage() {
+  await requirePageAccess("/dashboard/tariffs");
   const result = await getTariffGrids();
   const grids = result.success && result.data ? result.data : [];
 
