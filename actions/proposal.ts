@@ -8,6 +8,7 @@ import { getErrorMessage } from "@/lib/schemas/prisma-utils";
 import { ProposalQuerySchema, proposalSchema, ProposalSchema } from "@/lib/schemas/proposal-schema"
 import { addDays } from "date-fns";
 import { headers } from "next/headers";
+import { sendProposalLinkEmail } from "@/lib/email";
 
 export async function createProposal(proposal: ProposalSchema) {
     try {
@@ -416,5 +417,34 @@ export async function getProposals(query: ProposalQuerySchema) {
         }
 
         return errorResponse("Failed to get proposals", getErrorMessage(error));
+    }
+}
+
+export async function sendProposalEmailAction(proposalId: string, email: string, proposalUrl: string) {
+    try {
+        const session = await auth.api.getSession({
+            headers: await headers()
+        });
+        if (!session?.user) {
+            return errorResponse("You don't have permission to send emails");
+        }
+
+        const company = await prisma.company.findFirst();
+        const companyName = company?.displayName || company?.legalName || "Our Company";
+
+        await sendProposalLinkEmail({
+            email,
+            appName: companyName,
+            proposalUrl,
+            companyName
+        });
+
+        // Update status to SENT
+        await updateProposalStatus(proposalId, "SENT");
+
+        return successResponse("Email sent successfully");
+    } catch (error) {
+        console.error("Failed to send proposal email:", error);
+        return errorResponse("Failed to send proposal email", getErrorMessage(error));
     }
 }

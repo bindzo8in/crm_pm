@@ -3,7 +3,7 @@ import puppeteer from "puppeteer-core";
 import { NextRequest } from "next/server";
 import { env } from "@/lib/env";
 import prisma from "@/lib/prisma";
-
+import { PDFDocument, rgb } from "pdf-lib";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -124,18 +124,33 @@ export async function GET(
     }
 
     const page = await browser.newPage();
+    
+    // ── DEBUG: Forward browser console logs to the Node terminal ──
+    page.on('console', (msg) => {
+      console.log(`[BROWSER CONSOLE] ${msg.type().toUpperCase()} - ${msg.text()}`);
+    });
+    page.on('pageerror', (err:any) => {
+      console.error(`[BROWSER ERROR] ${err.toString()}`);
+    });
 
+    console.log(`[PDF] Setting viewport...`);
     // Set a large viewport to prevent a vertical scrollbar from reducing the 
     // available width. This eliminates the horizontal overflow that causes 
     // Chromium to generate a blank ghost page at the end of the document.
     await page.setViewport({ width: 1200, height: 1600, deviceScaleFactor: 1 });
 
+    console.log(`[PDF] Navigating to ${targetUrl}...`);
     // Navigate and wait until all network requests (fonts, images) have settled.
     await page.goto(targetUrl, { waitUntil: "networkidle0", timeout: 30_000 });
+    console.log(`[PDF] Navigation complete.`);
 
+    console.log(`[PDF] Waiting for .pdf-renderer-document...`);
     // Explicitly wait for the proposal document to render to avoid hydration race conditions.
     // ProposalPdfRenderer uses "pdf-renderer-document" as its root class.
-    await page.waitForSelector(".pdf-renderer-document", { timeout: 10_000 }).catch(() => {});
+    await page.waitForSelector(".pdf-renderer-document", { timeout: 10_000 }).catch(() => {
+      console.log(`[PDF] waitForSelector timeout, proceeding anyway.`);
+    });
+    console.log(`[PDF] .pdf-renderer-document found.`);
 
     // ── CRITICAL: Reset html/body margin before printing ──────────────────
     // Chromium's default body margin (8px) creates trailing whitespace that
@@ -153,22 +168,54 @@ export async function GET(
       `,
     });
 
-    // Detect if a signature block exists so we know to skip the last PDF page
-    // when stamping footers.
-    const hasSignature = await page.evaluate(() => {
-      return document.querySelector(".pdf-signature-page") !== null;
+    // Detect exact number of cover and signature pages to accurately
+    // skip them when stamping page numbers via pdf-lib.
+    const { coverPageCount, signaturePageCount } = await page.evaluate(() => {
+      return {
+        coverPageCount: document.querySelectorAll(".pdf-cover-page").length,
+        signaturePageCount: document.querySelectorAll(".pdf-signature-page").length
+      };
     });
+    console.log(`[PDF] Pages detected: ${coverPageCount} cover, ${signaturePageCount} signature`);
 
+    console.log(`[PDF] Generating PDF buffer...`);
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
       preferCSSPageSize: true,
       displayHeaderFooter: false,
     });
+    console.log(`[PDF] PDF generated successfully. Buffer size: ${pdfBuffer.length} bytes.`);
 
     await browser.close();
 
-    return new Response(Buffer.from(pdfBuffer), {
+    // ── Post-process PDF to stamp page numbers ───────────────────────────────
+    // The visual footer is rendered natively via CSS position: fixed, but 
+    // page numbers must be stamped post-render to ensure they are correct
+    // and skip the cover and signature pages.
+    console.log(`[PDF] Stamping page numbers...`);
+    const pdfDoc = await PDFDocument.load(pdfBuffer);
+    const pages = pdfDoc.getPages();
+    
+    // Start after cover pages, end before signature pages
+    for (let i = coverPageCount; i < pages.length - signaturePageCount; i++) {
+      const page = pages[i];
+      // Format: "1 / X" where X is total content pages
+      const totalContentPages = pages.length - coverPageCount - signaturePageCount;
+      const currentPage = i - coverPageCount + 1;
+      const text = `${currentPage} / ${totalContentPages}`;
+      
+      page.drawText(text, {
+        x: page.getWidth() - 110, // right aligned
+        y: 28, // 10mm from bottom (inside the 20mm footer)
+        size: 8,
+        color: rgb(0.419, 0.447, 0.501), // #6b7280 (gray-500) matching CSS
+      });
+    }
+
+    const finalPdfBytes = await pdfDoc.save();
+
+    return new Response(Buffer.from(finalPdfBytes), {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",

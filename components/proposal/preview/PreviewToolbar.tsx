@@ -3,17 +3,20 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Printer, FileDown, ZoomIn, ZoomOut, Maximize, MessageCircle, Loader2 } from "lucide-react";
-import { updateProposalStatus } from "@/actions/proposal";
+import { ArrowLeft, Printer, FileDown, ZoomIn, ZoomOut, Maximize, MessageCircle, Mail, Loader2 } from "lucide-react";
+import { updateProposalStatus, sendProposalEmailAction } from "@/actions/proposal";
+import { toast } from "sonner";
 
 interface PreviewToolbarProps {
   proposalId: string;
   proposalNumber: number;
+  clientEmail?: string | null;
 }
 
-export function PreviewToolbar({ proposalId, proposalNumber }: PreviewToolbarProps) {
+export function PreviewToolbar({ proposalId, proposalNumber, clientEmail }: PreviewToolbarProps) {
   const [zoom, setZoom] = useState(100);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   const handlePrint = () => {
     window.print();
@@ -56,6 +59,27 @@ export function PreviewToolbar({ proposalId, proposalNumber }: PreviewToolbarPro
       await updateProposalStatus(proposalId, "SENT");
     } catch (error) {
       console.error("Failed to update proposal status", error);
+    }
+  };
+
+  const handleEmailShare = async () => {
+    if (!clientEmail) return;
+    
+    setIsSendingEmail(true);
+    const url = `${window.location.origin}/p/${proposalId}`;
+    
+    try {
+      const result = await sendProposalEmailAction(proposalId, clientEmail, url);
+      if (result.success) {
+        toast.success("Proposal sent successfully via email");
+      } else {
+        toast.error(result.message || "Failed to send email");
+      }
+    } catch (error) {
+      toast.error("An error occurred while sending email");
+      console.error(error);
+    } finally {
+      setIsSendingEmail(false);
     }
   };
 
@@ -134,7 +158,20 @@ export function PreviewToolbar({ proposalId, proposalNumber }: PreviewToolbarPro
         </Button>
       </div>
 
-      <div className="flex items-center gap-2">        <Button onClick={handleWhatsAppShare} size="sm" variant="outline" className="gap-2 text-green-600 border-green-200 hover:bg-green-50 hidden sm:flex">
+      <div className="flex items-center gap-2">
+        {clientEmail && (
+          <>
+            <Button onClick={handleEmailShare} disabled={isSendingEmail} size="sm" variant="outline" className="gap-2 text-blue-600 border-blue-200 hover:bg-blue-50 hidden sm:flex">
+              {isSendingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+              {isSendingEmail ? "Sending..." : "Send Mail"}
+            </Button>
+            <Button onClick={handleEmailShare} disabled={isSendingEmail} size="sm" variant="outline" className="gap-1 text-blue-600 border-blue-200 hover:bg-blue-50 sm:hidden px-2">
+              {isSendingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+            </Button>
+          </>
+        )}
+        
+        <Button onClick={handleWhatsAppShare} size="sm" variant="outline" className="gap-2 text-green-600 border-green-200 hover:bg-green-50 hidden sm:flex">
           <MessageCircle className="h-4 w-4" />
           WhatsApp
         </Button>

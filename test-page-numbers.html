@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    @page { margin: 0; }
+    body { margin: 0; font-family: sans-serif; }
+    .page { height: 1122px; position: relative; border-bottom: 2px solid red; box-sizing: border-box; }
+    
+    /* Try to use counter(page) in DOM */
+    .footer {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+    }
+    .footer::after {
+      content: "Page " counter(page);
+    }
+  </style>
+</head>
+<body>
+  <div class="page">Page 1 content <div class="footer"></div></div>
+  <div class="page">Page 2 content <div class="footer"></div></div>
+  <div class="page">Page 3 content <div class="footer"></div></div>
+</body>
+</html>

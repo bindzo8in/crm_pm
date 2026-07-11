@@ -23,7 +23,6 @@ import { Table } from "@tiptap/extension-table";
 import TableRow from "@tiptap/extension-table-row";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
-import { ImageUploadNode } from "@/components/tiptap-node/image-upload-node/image-upload-node-extension";
 import { HorizontalRule } from "@/components/tiptap-node/horizontal-rule-node/horizontal-rule-node-extension";
 import { PageBreak } from "@/components/tiptap-node/page-break-node/page-break-node-extension";
 import { PageHeader } from "./templates/PageHeader";
@@ -47,7 +46,6 @@ const TIPTAP_EXTENSIONS = [
   TableRow,
   TableHeader,
   TableCell,
-  ImageUploadNode,
 ];
 
 /**
@@ -83,6 +81,8 @@ interface PdfRichTextRendererProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   proposal?: any;
 }
+
+// SVG URL generator removed since we are using DOM watermark
 
 export function PdfRichTextRenderer({
   block,
@@ -125,58 +125,96 @@ export function PdfRichTextRenderer({
         const serviceName = isFeaturesBlock ? currentService?.serviceName : null;
 
         return (
-          <div
+          <table
             key={i}
-            className="pdf-page pdf-content-page pdf-page-break-before"
-            style={{ width: A4_WIDTH_PX, position: "relative" }}
+            className="pdf-page-break-before"
+            style={{ width: "100%", borderSpacing: 0, borderCollapse: "collapse" }}
           >
-            {/* Optional background image */}
-            {backgroundUrl && (
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  zIndex: 0,
-                  pointerEvents: "none",
-                }}
-              >
-                <img
-                  src={backgroundUrl}
-                  alt="Background"
-                  style={{ width: "100%", height: "100%", objectFit: "fill", opacity: 0.2 }}
-                />
-              </div>
-            )}
+            <thead style={{ display: "table-header-group" }}>
+              <tr>
+                <td style={{ padding: "0 20mm", position: "relative", boxSizing: "border-box" }}>
+                  {/* Page header repeats on every continued page! */}
+                  <PageHeader
+                    proposal={proposal}
+                    title={block.title || (isTermsBlock ? "Terms & Conditions" : "Service Features")}
+                    badge={
+                      isFeaturesBlock && serviceName ? (
+                        <div className="pdf-features-service-badge">{serviceName}</div>
+                      ) : undefined
+                    }
+                  />
 
-            {/* Page header */}
-            <PageHeader
-              proposal={proposal}
-              title={block.title || (isTermsBlock ? "Terms & Conditions" : "Service Features")}
-              badge={
-                isFeaturesBlock && serviceName ? (
-                  <div className="pdf-features-service-badge">{serviceName}</div>
-                ) : undefined
-              }
-            />
+                  {/* Watermark repeats on every continued page!
+                      Anchored to the repeating thead.
+                      top: -20mm counteracts the outer table's 20mm thead gap.
+                      height: 1122px forces it to span the full A4 physical page. */}
+                  {isFeaturesBlock && serviceName && (
+                    <div
+                      className="pdf-features-watermark"
+                      aria-hidden="true"
+                      style={{
+                        position: "absolute",
+                        top: "-20mm",
+                        right: 0,
+                        height: "1122px",
+                        writingMode: "vertical-rl",
+                        transform: "rotate(180deg)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "28pt",
+                        fontWeight: 900,
+                        letterSpacing: "0.12em",
+                        textTransform: "uppercase",
+                        color: "#e5e7eb",
+                        opacity: 0.45,
+                        zIndex: 0,
+                        pointerEvents: "none"
+                      }}
+                    >
+                      {serviceName}
+                    </div>
+                  )}
+                </td>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style={{ padding: 0 }}>
+                  <div
+                    className="pdf-content-page"
+                    style={{ width: A4_WIDTH_PX, position: "relative", boxSizing: "border-box" }}
+                  >
+                    {/* Optional background image (Covered by content/table background if any) */}
+                    {backgroundUrl && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          zIndex: 0,
+                          pointerEvents: "none",
+                        }}
+                      >
+                        <img
+                          src={backgroundUrl}
+                          alt="Background"
+                          style={{ width: "100%", height: "100%", objectFit: "fill", opacity: 0.2 }}
+                        />
+                      </div>
+                    )}
 
-            {/* Right-side vertical watermark */}
-            {isFeaturesBlock && serviceName && (
-              <div
-                className="pdf-features-watermark"
-                aria-hidden="true"
-              >
-                {serviceName}
-              </div>
-            )}
-
-            {/* Rich text content */}
-            <div style={{ position: "relative", zIndex: 10, paddingBottom: "2rem" }}>
-              <div
-                className={`pdf-rich-text${isFeaturesBlock ? " pdf-features-rich-text" : ""}${isTermsBlock ? " pdf-terms-rich-text" : ""}`}
-                dangerouslySetInnerHTML={{ __html: html }}
-              />
-            </div>
-          </div>
+                    {/* Rich text content */}
+                    <div style={{ position: "relative", zIndex: 10, paddingBottom: "2rem" }}>
+                      <div
+                        className={`pdf-rich-text${isFeaturesBlock ? " pdf-features-rich-text" : ""}${isTermsBlock ? " pdf-terms-rich-text" : ""}`}
+                        dangerouslySetInnerHTML={{ __html: html }}
+                      />
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         );
       })}
     </>

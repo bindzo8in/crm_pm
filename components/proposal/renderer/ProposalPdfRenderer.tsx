@@ -170,7 +170,7 @@ export function ProposalPdfRenderer({
           1122px container, preventing the 0.52px micro-overflow. */}
       <div
         className="pdf-page pdf-cover-page"
-        style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX - 1, overflow: "hidden", padding: 0, position: "relative" }}
+        style={{ width: A4_WIDTH_PX, height: A4_HEIGHT_PX - 1, overflow: "hidden", padding: 0, position: "relative", zIndex: 50, background: "white" }}
       >
         {/* Clipping wrapper — forces content to exactly A4_HEIGHT_PX - 1 */}
         <div style={{ width: "100%", height: "100%", overflow: "hidden", position: "relative" }}>
@@ -198,34 +198,7 @@ export function ProposalPdfRenderer({
           </tbody>
           <tfoot style={{ display: "table-footer-group" }}>
             <tr>
-              <td style={{ padding: 0, height: "20mm", verticalAlign: "bottom" }}>
-                <div
-                  style={{
-                    padding: "0 20mm",
-                    width: "100%",
-                    boxSizing: "border-box"
-                  }}
-                >
-                  <div
-                    style={{
-                      borderTop: "1px solid #e5e7eb",
-                      paddingTop: "4px",
-                      paddingBottom: "5mm",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      fontSize: "8pt",
-                      color: "#6b7280",
-                      fontFamily: "Helvetica, Arial, sans-serif"
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      {logoUrl && <img src={logoUrl} style={{ height: "14px" }} alt="Logo" />}
-                      <span style={{ fontWeight: "bold", color: "#374151" }}>{companyName}</span>
-                    </div>
-                    <div>{websiteDisplay}</div>
-                  </div>
-                </div>
-              </td>
+              <td style={{ padding: 0, height: "20mm" }}></td>
             </tr>
           </tfoot>
         </table>
@@ -252,6 +225,8 @@ export function ProposalPdfRenderer({
               padding: 0,
               display: "flex",
               flexDirection: "column",
+              zIndex: 50,
+              background: "white"
             }}
           >
             {bgUrl && (
@@ -316,6 +291,41 @@ export function ProposalPdfRenderer({
           </div>
         );
       })}
+
+      {/* Global Fixed Company Footer for Content Pages */}
+      <div
+        className="pdf-global-footer"
+        style={{
+          position: "fixed",
+          bottom: 0,
+          left: 0,
+          width: A4_WIDTH_PX,
+          height: "20mm",
+          boxSizing: "border-box",
+          padding: "0 20mm",
+          zIndex: 10,
+          background: "white"
+        }}
+      >
+        <div
+          style={{
+            borderTop: "1px solid #e5e7eb",
+            paddingTop: "4px",
+            height: "100%",
+            display: "flex",
+            justifyContent: "space-between",
+            fontSize: "8pt",
+            color: "#6b7280",
+            fontFamily: "Helvetica, Arial, sans-serif"
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "6px", paddingTop: "2px" }}>
+            {logoUrl && <img src={logoUrl} style={{ height: "14px" }} alt="Logo" />}
+            <span style={{ fontWeight: "bold", color: "#374151" }}>{companyName}</span>
+          </div>
+          <div style={{ paddingTop: "2px" }}>{websiteDisplay}</div>
+        </div>
+      </div>
     </div>
   );
 }

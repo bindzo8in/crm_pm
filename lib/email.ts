@@ -51,3 +51,34 @@ export async function sendResetPasswordEmail({ appName, email, resetUrl, support
         console.error(error)
     }
 }
+
+export async function sendProposalLinkEmail({ email, appName, proposalUrl, companyName }: { email: string, appName: string, proposalUrl: string, companyName: string }) {
+    try {
+        const { error } = await resend.emails.send({
+            from: env.MAIL_FROM,
+            to: email,
+            subject: `Proposal from ${companyName}`,
+            html: `
+                <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h2>Hello,</h2>
+                    <p>You have received a new proposal from <strong>${companyName}</strong>.</p>
+                    <p>You can review and accept the proposal by clicking the link below:</p>
+                    <p style="margin: 30px 0;">
+                        <a href="${proposalUrl}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">View Proposal</a>
+                    </p>
+                    <p>Or copy and paste this URL into your browser:</p>
+                    <p><a href="${proposalUrl}">${proposalUrl}</a></p>
+                    <hr style="border: none; border-top: 1px solid #eaeaea; margin: 30px 0;" />
+                    <p style="color: #666; font-size: 14px;">Powered by ${appName}</p>
+                </div>
+            `,
+            tags: [
+                { name: "type", value: "proposal-link" }
+            ]
+        });
+        if (error) throw error;
+    } catch (error) {
+        console.error("Failed to send proposal email:", error);
+        throw error;
+    }
+}

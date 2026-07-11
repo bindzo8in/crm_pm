@@ -152,8 +152,8 @@
 
 .pdf-rich-text ul {
   list-style-type: disc;
-  list-style-position: outside;
-  padding-left: 1.5em;
+  list-style-position: inside;
+  padding-left: 0.5em;
   margin-bottom: 1em;
   color: #374151;
   font-size: 11pt;
@@ -162,15 +162,15 @@
 
 .pdf-rich-text ol {
   list-style-type: decimal;
-  list-style-position: outside;
-  padding-left: 1.5em;
+  list-style-position: inside;
+  padding-left: 0.5em;
   margin-bottom: 1em;
   color: #374151;
   font-size: 11pt;
   line-height: 1.6;
 }
 
-.pdf-rich-text > *:last-child {
+.pdf-rich-text>*:last-child {
   margin-bottom: 0 !important;
 }
 
@@ -179,11 +179,12 @@
 }
 
 /* TipTap wraps <p> inside <li> — remove extra margin */
-.pdf-rich-text li > p {
+.pdf-rich-text li>p {
   margin-bottom: 0;
+  display: inline-block;
 }
 
-.pdf-rich-text li > p:not(:last-child) {
+.pdf-rich-text li>p:not(:last-child) {
   margin-bottom: 0.25em;
 }
 
@@ -199,7 +200,7 @@
 /* ── FEATURES rich text specific ─────────────────────────────────────────── */
 
 /* First h2 in FEATURES gets a highlighted style */
-.pdf-features-rich-text > h2:first-of-type {
+.pdf-features-rich-text>h2:first-of-type {
   background-color: #f8fafc;
   padding: 12px 16px;
   border-radius: 6px;

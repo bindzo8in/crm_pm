@@ -16,11 +16,14 @@
 }
 
 @media print {
-  html, body {
+
+  html,
+  body {
     margin: 0 !important;
     padding: 0 !important;
     background: transparent !important;
   }
+
   .proposal-renderer-document {
     width: 100% !important;
     margin: 0 !important;
@@ -38,10 +41,15 @@
    Utility Classes for Screen vs Print
    ========================================================= */
 @media screen {
-  .print-only { display: none !important; }
+  .print-only {
+    display: none !important;
+  }
 }
+
 @media print {
-  .screen-only { display: none !important; }
+  .screen-only {
+    display: none !important;
+  }
 }
 
 /* Default @page — applied to ALL pages including continuation pages.
@@ -51,27 +59,33 @@
 .proposal-renderer-document {
   counter-reset: proposal-page-num;
 }
+
 .proposal-pdf-page:not(.proposal-cover-page) {
   counter-increment: proposal-page-num;
 }
+
 .page-number-display::after {
   content: "Page " counter(proposal-page-num);
 }
 
 @media screen {
+
   /* Force footer to bottom of container on screen for normal pages */
   .proposal-pdf-page:not(.proposal-cover-page) {
     position: relative;
     padding-bottom: 50px;
   }
+
   .proposal-cover-page {
     position: relative;
     padding-bottom: 0 !important;
     overflow: hidden;
   }
+
   .proposal-signature-page {
     min-height: 297mm;
   }
+
   .page-footer-print {
     position: absolute;
     bottom: 0;
@@ -81,6 +95,7 @@
 }
 
 @media print {
+
   /* Page numbers are stamped by pdf-lib post-processing — hide the CSS counter display */
   .page-number-display {
     visibility: hidden !important;
@@ -204,7 +219,7 @@
 }
 
 /* Service Package title highlight (first h2 inside FEATURES rich text) */
-.proposal-features-rich-text > h2:first-of-type,
+.proposal-features-rich-text>h2:first-of-type,
 /* Terms headings highlight (all h2 inside TERMS rich text) */
 .proposal-terms-rich-text h2 {
   background-color: #f8fafc;
@@ -309,8 +324,8 @@
    ========================================================= */
 .proposal-rich-text ul {
   list-style-type: disc;
-  list-style-position: outside;
-  padding-left: 1.5em;
+  list-style-position: inside;
+  padding-left: 0.5em;
   margin-bottom: 1em;
   color: #374151;
   font-size: 11pt;
@@ -319,15 +334,15 @@
 
 .proposal-rich-text ol {
   list-style-type: decimal;
-  list-style-position: outside;
-  padding-left: 1.5em;
+  list-style-position: inside;
+  padding-left: 0.5em;
   margin-bottom: 1em;
   color: #374151;
   font-size: 11pt;
   line-height: 1.6;
 }
 
-.proposal-rich-text > *:last-child {
+.proposal-rich-text>*:last-child {
   margin-bottom: 0 !important;
 }
 
@@ -336,11 +351,12 @@
 }
 
 /* TipTap adds <p> inside <li> which creates massive gaps, so we remove the margin */
-.proposal-rich-text li > p {
+.proposal-rich-text li>p {
   margin-bottom: 0;
+  display: inline-block;
 }
 
-.proposal-rich-text li > p:not(:last-child) {
+.proposal-rich-text li>p:not(:last-child) {
   margin-bottom: 0.25em;
 }
 
@@ -429,7 +445,11 @@
   }
 
   /* Expand all scroll containers so nothing is clipped */
-  html, body, main, #proposal-preview-wrapper, .overflow-auto {
+  html,
+  body,
+  main,
+  #proposal-preview-wrapper,
+  .overflow-auto {
     height: auto !important;
     min-height: auto !important;
     overflow: visible !important;
@@ -450,11 +470,11 @@
   .page-footer-print {
     background: white;
   }
-  
+
   .page-header-print {
     background: white;
   }
-  
+
   /* Hide the page header and footer on the cover page */
   .proposal-cover-page .page-header-print,
   .proposal-cover-page .page-footer-print {
