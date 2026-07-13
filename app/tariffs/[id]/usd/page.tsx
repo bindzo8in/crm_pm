@@ -4,7 +4,7 @@ import { PricingSummaryBlockViewer } from "@/components/proposal/builder/compose
 import Link from "next/link";
 import { TariffClientGreeting } from "@/components/tariffs/tariff-client-greeting";
 import { Suspense } from "react";
-import { ArrowLeft, DollarSign } from "lucide-react";
+import { ArrowLeft, IndianRupee } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TariffFooter } from "@/components/tariffs/tariff-footer";
 
@@ -17,12 +17,12 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   }
   
   return {
-    title: `${result.data.name} | Pricing & Packages`,
-    description: result.data.description || "View our service packages and pricing options.",
+    title: `${result.data.name} (USD) | Pricing & Packages`,
+    description: result.data.description || "View our service packages and pricing options in USD.",
   };
 }
 
-export default async function PublicTariffGridPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PublicTariffGridUsdPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const result = await getPublicTariffGridById(id);
 
@@ -35,14 +35,14 @@ export default async function PublicTariffGridPage({ params }: { params: Promise
   // Convert ServicePackages to the format PricingSummaryBlockViewer expects
   const mockProposal = {
     id: grid.id,
-    currency: "INR",
+    currency: "USD",
     proposalServices: grid.packages.map(pkg => ({
       id: pkg.id,
       serviceName: pkg.package.service?.name || "Service",
       packageName: pkg.package.name,
       isStartsFrom: pkg.isStartsFrom,
       items: pkg.package.items?.map((item: any) => ({
-        total: item.unitPrice * item.quantity
+        total: item.unitPriceUSD * item.quantity
       })) || [],
       features: pkg.package.features || []
     }))
@@ -59,10 +59,10 @@ export default async function PublicTariffGridPage({ params }: { params: Promise
                 Back to all packages
               </Button>
             </Link>
-            <Link href={`/tariffs/${grid.id}/usd`}>
+            <Link href={`/tariffs/${grid.id}`}>
               <Button variant="outline" size="sm" className="text-primary hover:text-primary">
-                <DollarSign className="mr-2 h-4 w-4" />
-                View in USD
+                <IndianRupee className="mr-2 h-4 w-4" />
+                View in INR
               </Button>
             </Link>
           </div>

@@ -152,8 +152,8 @@
 
 .pdf-rich-text ul {
   list-style-type: disc;
-  list-style-position: inside;
-  padding-left: 0.5em;
+  list-style-position: outside;
+  padding-left: 1.25em;
   margin-bottom: 1em;
   color: #374151;
   font-size: 11pt;
@@ -162,8 +162,8 @@
 
 .pdf-rich-text ol {
   list-style-type: decimal;
-  list-style-position: inside;
-  padding-left: 0.5em;
+  list-style-position: outside;
+  padding-left: 1.25em;
   margin-bottom: 1em;
   color: #374151;
   font-size: 11pt;
@@ -181,7 +181,6 @@
 /* TipTap wraps <p> inside <li> — remove extra margin */
 .pdf-rich-text li>p {
   margin-bottom: 0;
-  display: inline-block;
 }
 
 .pdf-rich-text li>p:not(:last-child) {

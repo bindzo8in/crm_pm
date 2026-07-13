@@ -141,7 +141,7 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
                     <div className="flex justify-between items-center">
                       <span className="text-gray-500">Account Number</span>
                       <div className="flex items-center">
-                        <span className="font-medium font-mono uppercase">{bankAccount.accountNumber}</span>
+                        <span className="font-medium uppercase">{bankAccount.accountNumber}</span>
                         <CopyButton textToCopy={bankAccount.accountNumber} />
                       </div>
                     </div>

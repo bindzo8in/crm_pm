@@ -351,18 +351,24 @@ export async function createServicePackage(data: ServicePackageSchema) {
             (sum, item) => sum + item.unitPrice * item.quantity,
             0
         );
+        const totalPriceUSD = items.reduce(
+            (sum, item) => sum + item.unitPriceUSD * item.quantity,
+            0
+        );
         await prisma.servicePackage.create({
             data: {
                 name,
                 description,
                 serviceId,
                 totalPrice,
+                totalPriceUSD,
                 items: {
                     create: items.map((item, index) => ({
                         name: item.name,
                         description: item.description,
                         quantity: item.quantity,
                         unitPrice: item.unitPrice,
+                        unitPriceUSD: item.unitPriceUSD,
                         unit: item.unit,
                         billingCycle: item.billingCycle,
                         sortOrder: index,
@@ -436,6 +442,11 @@ export async function editServicePackage(
             0
         );
 
+        const totalPriceUSD = items.reduce(
+            (sum, item) => sum + item.unitPriceUSD * item.quantity,
+            0
+        );
+
         const debug =
             process.env.NODE_ENV === "development";
 
@@ -469,7 +480,8 @@ export async function editServicePackage(
                     serviceId,
                     isActive,
                     isPopular,
-                    totalPrice
+                    totalPrice,
+                    totalPriceUSD
                 },
             });
 
@@ -542,6 +554,8 @@ export async function editServicePackage(
                             quantity: item.quantity,
                             unitPrice:
                                 item.unitPrice,
+                            unitPriceUSD:
+                                item.unitPriceUSD,
                             unit: item.unit,
                             billingCycle:
                                 item.billingCycle,
@@ -584,6 +598,8 @@ export async function editServicePackage(
                                         item.quantity,
                                     unitPrice:
                                         item.unitPrice,
+                                    unitPriceUSD:
+                                        item.unitPriceUSD,
                                     unit: item.unit,
                                     billingCycle:
                                         item.billingCycle,

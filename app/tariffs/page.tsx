@@ -4,6 +4,10 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { PackageOpen } from "lucide-react";
 
+import { TariffClientGreeting } from "@/components/tariffs/tariff-client-greeting";
+import { Suspense } from "react";
+import { TariffFooter } from "@/components/tariffs/tariff-footer";
+
 export const metadata = {
   title: "Service Tariffs | Our Packages",
 };
@@ -13,12 +17,14 @@ export default async function PublicTariffsPage() {
   const grids = result.success && result.data ? result.data : [];
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-12">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-12 pb-24">
       <div className="container mx-auto px-4 max-w-5xl">
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-extrabold tracking-tight mb-4">Our Service Packages</h1>
+          <h1 className="text-4xl font-extrabold tracking-tight mb-4">
+            Solutions Tailored for <Suspense fallback={<span className="text-primary">Your Business</span>}><TariffClientGreeting defaultText="Your Business" /></Suspense>
+          </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Browse our curated service packages below to find the perfect plan for your business needs.
+            Explore flexible service packages designed to help your business grow with scalable digital solutions.
           </p>
         </div>
 
@@ -54,6 +60,7 @@ export default async function PublicTariffsPage() {
           </div>
         )}
       </div>
+      <TariffFooter />
     </div>
   );
 }
