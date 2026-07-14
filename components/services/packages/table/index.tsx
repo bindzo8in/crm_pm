@@ -7,8 +7,8 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
-import { columns } from "./columns";
+import { useState, useMemo } from "react";
+import { getColumns } from "./columns";
 import { servicePackageKeys } from "../../util";
 
 export function ServicesPackagesTable({ initialQuery }: {
@@ -24,6 +24,7 @@ export function ServicesPackagesTable({ initialQuery }: {
     }
 }) {
     const [search, setSearch] = useState(initialQuery.search ?? "");
+    const [currencyMode, setCurrencyMode] = useState<"INR" | "USD">("INR");
 
     const [isActive, setIsActive] = useState<boolean | undefined>(
         initialQuery.isActive
@@ -61,6 +62,9 @@ export function ServicesPackagesTable({ initialQuery }: {
             serviceId: initialQuery.serviceId,
         })
     })
+
+    const tableColumns = useMemo(() => getColumns(currencyMode), [currencyMode]);
+
     return (
         <div className="space-y-4">
             <div className="flex justify-center items-center gap-4">
@@ -96,10 +100,16 @@ export function ServicesPackagesTable({ initialQuery }: {
                         }} />
                         <FieldLabel htmlFor="isPopular">Show Popular Packages</FieldLabel>
                     </Field>
+                    <Field orientation={"horizontal"}>
+                        <Checkbox id="currencyMode" name="currencyMode" checked={currencyMode === "USD"} onCheckedChange={(value) => {
+                            setCurrencyMode(value ? "USD" : "INR");
+                        }} />
+                        <FieldLabel htmlFor="currencyMode">Show in USD</FieldLabel>
+                    </Field>
                 </FieldGroup>
             </div>
             <DataTable
-                columns={columns}
+                columns={tableColumns}
                 data={(data?.success ? data.data?.data : undefined) ?? []}
                 total={(data?.success ? data.data?.pagination.total : undefined) ?? 0}
                 pagination={pagination}

@@ -7,7 +7,7 @@ type ServicePackageRow = NonNullable<
     Extract<Awaited<ReturnType<typeof GetServicesPackages>>, { success: true }>["data"]
 >["data"][number];
 
-export const columns: ColumnDef<ServicePackageRow>[] = [
+export const getColumns = (currencyMode: "INR" | "USD"): ColumnDef<ServicePackageRow>[] => [
     {
         id: "name",
         accessorKey: "name",
@@ -26,29 +26,38 @@ export const columns: ColumnDef<ServicePackageRow>[] = [
         size: 350,
         cell: ({ row }) => (
             <div className="space-y-1">
-                {row.original.items.map((item: any) => (
-                    <div
-                        key={item.id}
-                        className="flex items-center justify-between gap-4 text-sm"
-                    >
-                        <span className="truncate text-muted-foreground">
-                            {item.name}
-                            {item.quantity > 1 && (
-                                <span>
-                                    {" "}
-                                    × {item.quantity} {item.unit}
-                                </span>
-                            )}
-                        </span>
+                {row.original.items.map((item: any) => {
+                    const price = currencyMode === "INR" ? Number(item.unitPrice) : Number(item.unitPriceUSD);
+                    return (
+                        <div
+                            key={item.id}
+                            className="flex items-center justify-between gap-4 text-sm"
+                        >
+                            <span className="truncate text-muted-foreground">
+                                {item.name}
+                                {item.quantity > 1 && (
+                                    <span>
+                                        {" "}
+                                        × {item.quantity} {item.unit}
+                                    </span>
+                                )}
+                            </span>
 
-                        <span className="font-medium whitespace-nowrap">
-                            ₹
-                            {(
-                                item.unitPrice * item.quantity
-                            ).toLocaleString("en-IN")}
-                        </span>
-                    </div>
-                ))}
+                            <span className="font-medium whitespace-nowrap">
+                                {currencyMode === "USD" && price === 0 ? (
+                                    "-"
+                                ) : (
+                                    <>
+                                        {currencyMode === "INR" ? "₹" : "$"}
+                                        {(price * item.quantity).toLocaleString(
+                                            currencyMode === "INR" ? "en-IN" : "en-US"
+                                        )}
+                                    </>
+                                )}
+                            </span>
+                        </div>
+                    );
+                })}
             </div>
         ),
     },
@@ -61,14 +70,23 @@ export const columns: ColumnDef<ServicePackageRow>[] = [
                 Total Price
             </div>
         ),
-        cell: ({ row }) => (
-            <div className="text-right font-semibold">
-                ₹ 
-                {row.original.totalPrice.toLocaleString(
-                    "en-IN"
-                )}
-            </div>
-        ),
+        cell: ({ row }) => {
+            const total = currencyMode === "INR" ? Number(row.original.totalPrice) : Number(row.original.totalPriceUSD);
+            return (
+                <div className="text-right font-semibold">
+                    {currencyMode === "USD" && total === 0 ? (
+                        "-"
+                    ) : (
+                        <>
+                            {currencyMode === "INR" ? "₹" : "$"} 
+                            {total.toLocaleString(
+                                currencyMode === "INR" ? "en-IN" : "en-US"
+                            )}
+                        </>
+                    )}
+                </div>
+            );
+        },
     },
 
     {

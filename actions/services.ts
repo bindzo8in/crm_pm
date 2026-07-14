@@ -759,9 +759,11 @@ export async function GetServicesPackages(query: ServicePackageQuerySchema) {
                             quantity: true,
                             unit: true,
                             unitPrice: true,
+                            unitPriceUSD: true,
                         }
                     },
                     totalPrice: true,
+                    totalPriceUSD: true,
                     service: {
                         select: {
                             id: true,
@@ -791,8 +793,10 @@ export async function GetServicesPackages(query: ServicePackageQuerySchema) {
                 items: pkg.items.map((item) => ({
                     ...item,
                     unitPrice: item.unitPrice.toNumber(),
+                    unitPriceUSD: item.unitPriceUSD.toNumber(),
                 })),
                 totalPrice: pkg.totalPrice.toNumber(),
+                totalPriceUSD: pkg.totalPriceUSD.toNumber(),
             })),
             pagination: {
                 page,
