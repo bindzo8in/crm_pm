@@ -425,8 +425,6 @@ export async function editServicePackage(
             );
         }
 
-
-
         const {
             name,
             description,
@@ -458,35 +456,45 @@ export async function editServicePackage(
                 console.log("Package ID:", id);
             }
 
-            const packageExists =
-                await tx.servicePackage.findUnique({
-                    where: { id },
-                    select: {
-                        id: true,
-                    },
-                });
-
-            if (!packageExists) {
-                throw new Error(
-                    "Service package not found"
-                );
-            }
-
-            await tx.servicePackage.update({
+            const existingPackage = await tx.servicePackage.findUnique({
                 where: { id },
-                data: {
-                    name,
-                    description,
-                    serviceId,
-                    isActive,
-                    isPopular,
-                    totalPrice,
-                    totalPriceUSD
+                include: {
+                    items: true,
+                    features: true,
                 },
             });
 
-            if (debug) {
-                console.log("✓ Package updated");
+            if (!existingPackage) {
+                throw new Error("Service package not found");
+            }
+
+            const hasPackageChanged =
+                existingPackage.name !== name ||
+                existingPackage.description !== description ||
+                existingPackage.serviceId !== serviceId ||
+                existingPackage.isActive !== isActive ||
+                existingPackage.isPopular !== isPopular ||
+                existingPackage.totalPrice.toNumber() !== totalPrice ||
+                existingPackage.totalPriceUSD.toNumber() !== totalPriceUSD;
+
+            if (hasPackageChanged) {
+                await tx.servicePackage.update({
+                    where: { id },
+                    data: {
+                        name,
+                        description,
+                        serviceId,
+                        isActive,
+                        isPopular,
+                        totalPrice,
+                        totalPriceUSD,
+                    },
+                });
+                if (debug) {
+                    console.log("✓ Package updated");
+                }
+            } else if (debug) {
+                console.log("✓ Package unchanged (skipped)");
             }
 
             const itemIdsFromForm = items
@@ -498,50 +506,53 @@ export async function editServicePackage(
                 .map((feature) => feature.id!);
 
             if (debug) {
-                console.log(
-                    "Item IDs From Form:",
-                    itemIdsFromForm
-                );
-                console.log(
-                    "Feature IDs From Form:",
-                    featureIdsFromForm
-                );
+                console.log("Item IDs From Form:", itemIdsFromForm);
+                console.log("Feature IDs From Form:", featureIdsFromForm);
             }
 
             // Delete removed items
-            const deletedItems =
-                await tx.servicePackageItem.deleteMany({
+            const existingItemIds = existingPackage.items.map(item => item.id);
+            const itemsToDelete = existingItemIds.filter(itemId => !itemIdsFromForm.includes(itemId));
+
+            if (itemsToDelete.length > 0) {
+                const deletedItems = await tx.servicePackageItem.deleteMany({
                     where: {
-                        packageId: id,
-                        id: {
-                            notIn: itemIdsFromForm,
-                        },
+                        id: { in: itemsToDelete },
                     },
                 });
+                if (debug) console.log(`✓ Deleted ${deletedItems.count} items`);
+            }
 
             // Delete removed features
-            const deletedFeatures =
-                await tx.packageFeature.deleteMany({
+            const existingFeatureIds = existingPackage.features.map(f => f.id);
+            const featuresToDelete = existingFeatureIds.filter(featureId => !featureIdsFromForm.includes(featureId));
+
+            if (featuresToDelete.length > 0) {
+                const deletedFeatures = await tx.packageFeature.deleteMany({
                     where: {
-                        packageId: id,
-                        id: {
-                            notIn: featureIdsFromForm,
-                        },
+                        id: { in: featuresToDelete },
                     },
                 });
-
-            if (debug) {
-                console.log(
-                    `✓ Deleted ${deletedItems.count} items`
-                );
-                console.log(
-                    `✓ Deleted ${deletedFeatures.count} features`
-                );
+                if (debug) console.log(`✓ Deleted ${deletedFeatures.count} features`);
             }
 
             const updateItemPromises = items
                 .map((item, index) => {
                     if (!item.id) return null;
+                    const existingItem = existingPackage.items.find(i => i.id === item.id);
+                    if (!existingItem) return null;
+
+                    const hasItemChanged =
+                        existingItem.name !== item.name ||
+                        existingItem.description !== item.description ||
+                        existingItem.quantity !== item.quantity ||
+                        existingItem.unitPrice.toNumber() !== item.unitPrice ||
+                        existingItem.unitPriceUSD.toNumber() !== item.unitPriceUSD ||
+                        existingItem.unit !== item.unit ||
+                        existingItem.billingCycle !== item.billingCycle ||
+                        existingItem.sortOrder !== index;
+
+                    if (!hasItemChanged) return null;
 
                     return tx.servicePackageItem.update({
                         where: {
@@ -549,16 +560,12 @@ export async function editServicePackage(
                         },
                         data: {
                             name: item.name,
-                            description:
-                                item.description,
+                            description: item.description,
                             quantity: item.quantity,
-                            unitPrice:
-                                item.unitPrice,
-                            unitPriceUSD:
-                                item.unitPriceUSD,
+                            unitPrice: item.unitPrice,
+                            unitPriceUSD: item.unitPriceUSD,
                             unit: item.unit,
-                            billingCycle:
-                                item.billingCycle,
+                            billingCycle: item.billingCycle,
                             sortOrder: index,
                         },
                     });
@@ -566,14 +573,9 @@ export async function editServicePackage(
                 .filter(Boolean);
 
             if (updateItemPromises.length) {
-                await Promise.all(
-                    updateItemPromises
-                );
-
+                await Promise.all(updateItemPromises);
                 if (debug) {
-                    console.log(
-                        `✓ Updated ${updateItemPromises.length} items`
-                    );
+                    console.log(`✓ Updated ${updateItemPromises.length} items`);
                 }
             }
 
@@ -585,70 +587,52 @@ export async function editServicePackage(
                 .filter((item) => !item.id);
 
             if (newItems.length) {
-                const created =
-                    await tx.servicePackageItem.createMany(
-                        {
-                            data: newItems.map(
-                                (item) => ({
-                                    packageId: id,
-                                    name: item.name,
-                                    description:
-                                        item.description,
-                                    quantity:
-                                        item.quantity,
-                                    unitPrice:
-                                        item.unitPrice,
-                                    unitPriceUSD:
-                                        item.unitPriceUSD,
-                                    unit: item.unit,
-                                    billingCycle:
-                                        item.billingCycle,
-                                    sortOrder:
-                                        item.sortOrder,
-                                })
-                            ),
-                        }
-                    );
-
-                if (debug) {
-                    console.log(
-                        `✓ Created ${created.count} items`
-                    );
-                }
+                const created = await tx.servicePackageItem.createMany({
+                    data: newItems.map((item) => ({
+                        packageId: id,
+                        name: item.name,
+                        description: item.description,
+                        quantity: item.quantity,
+                        unitPrice: item.unitPrice,
+                        unitPriceUSD: item.unitPriceUSD,
+                        unit: item.unit,
+                        billingCycle: item.billingCycle,
+                        sortOrder: item.sortOrder,
+                    })),
+                });
+                if (debug) console.log(`✓ Created ${created.count} items`);
             }
 
-            const updateFeaturePromises =
-                features
-                    .map((feature, index) => {
-                        if (!feature.id) return null;
+            const updateFeaturePromises = features
+                .map((feature, index) => {
+                    if (!feature.id) return null;
+                    const existingFeature = existingPackage.features.find(f => f.id === feature.id);
+                    if (!existingFeature) return null;
 
-                        return tx.packageFeature.update(
-                            {
-                                where: {
-                                    id: feature.id,
-                                },
-                                data: {
-                                    content:
-                                        feature.name,
-                                    isHeading: feature.isHeading,
-                                    sortOrder: index,
-                                },
-                            }
-                        );
-                    })
-                    .filter(Boolean);
+                    const hasFeatureChanged =
+                        existingFeature.content !== feature.name ||
+                        existingFeature.isHeading !== feature.isHeading ||
+                        existingFeature.sortOrder !== index;
 
-            if (
-                updateFeaturePromises.length
-            ) {
-                await Promise.all(
-                    updateFeaturePromises
-                );
+                    if (!hasFeatureChanged) return null;
 
+                    return tx.packageFeature.update({
+                        where: {
+                            id: feature.id,
+                        },
+                        data: {
+                            content: feature.name,
+                            isHeading: feature.isHeading,
+                            sortOrder: index,
+                        },
+                    });
+                })
+                .filter(Boolean);
+
+            if (updateFeaturePromises.length) {
+                await Promise.all(updateFeaturePromises);
                 if (debug) {
-                    console.log(
-                        `✓ Updated ${updateFeaturePromises.length} features`
-                    );
+                    console.log(`✓ Updated ${updateFeaturePromises.length} features`);
                 }
             }
 
@@ -657,32 +641,18 @@ export async function editServicePackage(
                     ...feature,
                     sortOrder: index,
                 }))
-                .filter(
-                    (feature) => !feature.id
-                );
+                .filter((feature) => !feature.id);
 
             if (newFeatures.length) {
-                const created =
-                    await tx.packageFeature.createMany(
-                        {
-                            data: newFeatures.map(
-                                (feature) => ({
-                                    packageId: id,
-                                    content:
-                                        feature.name,
-                                    isHeading: feature.isHeading,
-                                    sortOrder:
-                                        feature.sortOrder,
-                                })
-                            ),
-                        }
-                    );
-
-                if (debug) {
-                    console.log(
-                        `✓ Created ${created.count} features`
-                    );
-                }
+                const created = await tx.packageFeature.createMany({
+                    data: newFeatures.map((feature) => ({
+                        packageId: id,
+                        content: feature.name,
+                        isHeading: feature.isHeading,
+                        sortOrder: feature.sortOrder,
+                    })),
+                });
+                if (debug) console.log(`✓ Created ${created.count} features`);
             }
 
             if (debug) {
