@@ -690,6 +690,9 @@ export async function editServicePackage(
                     "========== PACKAGE UPDATED ==========\n"
                 );
             }
+        }, {
+            maxWait: 15000,
+            timeout: 30000,
         });
 
         return successResponse(
