@@ -7,7 +7,7 @@ export const metadata = {
 };
 
 export default async function AccountSettingsPage() {
-  await requirePageAccess("/dashboard/settings");
+  await requirePageAccess("/dashboard/account");
 
   return (
     <DashboardContainer title="Account Settings">

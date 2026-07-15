@@ -74,6 +74,11 @@ const statement = {
         "read",
         "update",
     ],
+
+    account: [
+        "read",
+        "update"
+    ]
 } as const;
 
 export const roleLevel: Record<UserRole, number> = {
@@ -106,6 +111,8 @@ export const superAdminRole = ac.newRole({
     reports: ["read"],
 
     settings: ["read", "update"],
+
+    account: ["read", "update"]
 });
 
 export const adminRole = ac.newRole({
@@ -126,6 +133,8 @@ export const adminRole = ac.newRole({
     reports: ["read"],
 
     users: ["read"],
+
+    account: ["read", "update"]
 });
 
 export const staffRole = ac.newRole({
@@ -138,6 +147,8 @@ export const staffRole = ac.newRole({
     projects: ["read", "update"],
 
     tasks: ["read", "update"],
+
+    account: ["read", "update"]
 });
 
 export function canManageUser(

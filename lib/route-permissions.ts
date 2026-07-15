@@ -29,6 +29,10 @@ export const routePermissions: RoutePermission[] = [
     path: "/dashboard/tasks",
     roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF],
   },
+  {
+    path: "/dashboard/account",
+    roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF]
+  },
 
   // Accessible only by SUPER_ADMIN and ADMIN (STAFF denied)
   {
@@ -53,6 +57,7 @@ export const routePermissions: RoutePermission[] = [
     path: "/dashboard/settings",
     roles: [UserRole.SUPER_ADMIN],
   },
+
 ];
 
 /**
@@ -66,11 +71,12 @@ export function canAccessRoute(pathname: string, userRole: UserRole): boolean {
     if (pathname.startsWith(route.path)) {
       // If the route matches a restricted path, check if the user's role is in the allowed list
       if (!route.roles.includes(userRole)) {
+        console.log("Access denied for route:", pathname, userRole);
         return false;
       }
     }
   }
-  
+
   // If the path doesn't match any restricted routes, allow access
   return true;
 }
