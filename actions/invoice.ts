@@ -12,8 +12,6 @@ import {
   invoiceQuerySchema,
   RecordPaymentInput,
   recordPaymentSchema,
-  UpdateInvoiceInput,
-  updateInvoiceSchema,
 } from "@/lib/schemas/invoice-schema";
 import { headers } from "next/headers";
 
@@ -48,6 +46,24 @@ async function getSessionUser() {
     return null;
   }
   return session.user;
+}
+
+type InvoicePermissionAction = "create" | "read" | "update" | "delete" | "send" | "record-payment" | "mark-paid";
+
+async function checkInvoicePermission(action: InvoicePermissionAction) {
+  try {
+    const hasPermission = await auth.api.userHasPermission({
+      headers: await headers(),
+      body: {
+        permissions: {
+          invoices: [action],
+        },
+      },
+    });
+    return hasPermission.success;
+  } catch {
+    return false;
+  }
 }
 
 function formatInvoice<T extends Record<string, any>>(inv: T) {
@@ -88,6 +104,9 @@ export async function getInvoices(query: InvoiceQuerySchema) {
   try {
     const user = await getSessionUser();
     if (!user) return errorResponse("Unauthorized");
+
+    const canRead = await checkInvoicePermission("read");
+    if (!canRead) return errorResponse("You don't have permission to view invoices");
 
     const validated = invoiceQuerySchema.safeParse(query);
     if (!validated.success) {
@@ -231,6 +250,8 @@ export async function getPublicInvoiceById(id: string) {
 export async function getInvoiceById(id: string) {
   const user = await getSessionUser();
   if (!user) return errorResponse("Unauthorized");
+  const canRead = await checkInvoicePermission("read");
+  if (!canRead) return errorResponse("You don't have permission to view invoices");
   return getPublicInvoiceById(id);
 }
 
@@ -238,6 +259,9 @@ export async function createInvoice(input: CreateInvoiceInput) {
   try {
     const user = await getSessionUser();
     if (!user) return errorResponse("Unauthorized");
+
+    const canCreate = await checkInvoicePermission("create");
+    if (!canCreate) return errorResponse("You don't have permission to create invoices");
 
     const validated = createInvoiceSchema.safeParse(input);
     if (!validated.success) {
@@ -322,6 +346,10 @@ export async function updateInvoiceStatus(id: string, status: InvoiceStatus) {
     const user = await getSessionUser();
     if (!user) return errorResponse("Unauthorized");
 
+    const permAction = status === InvoiceStatus.SENT ? "send" : status === InvoiceStatus.PAID || status === InvoiceStatus.VOID ? "mark-paid" : "update";
+    const canUpdate = await checkInvoicePermission(permAction);
+    if (!canUpdate) return errorResponse("You don't have permission to update invoice status");
+
     const existing = await (prisma as any).invoice.findFirst({
       where: { id, deletedAt: null },
     });
@@ -356,6 +384,9 @@ export async function recordInvoicePayment(input: RecordPaymentInput) {
   try {
     const user = await getSessionUser();
     if (!user) return errorResponse("Unauthorized");
+
+    const canRecord = await checkInvoicePermission("record-payment");
+    if (!canRecord) return errorResponse("You don't have permission to record invoice payments");
 
     const validated = recordPaymentSchema.safeParse(input);
     if (!validated.success) {
@@ -465,6 +496,9 @@ export async function softDeleteInvoice(id: string) {
   try {
     const user = await getSessionUser();
     if (!user) return errorResponse("Unauthorized");
+
+    const canDelete = await checkInvoicePermission("delete");
+    if (!canDelete) return errorResponse("You don't have permission to delete invoices");
 
     const invoice = await (prisma as any).invoice.findFirst({
       where: { id, deletedAt: null },
