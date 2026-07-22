@@ -2,8 +2,9 @@
 
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, ReceiptText, Loader2 } from "lucide-react";
 import { updateProposalStatus } from "@/actions/proposal";
+import { createInvoiceFromProposal } from "@/actions/invoice";
 import { publicAcceptProposal } from "@/actions/public-proposal";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -53,13 +54,44 @@ export function AcceptProposalButton({ proposalId, currentStatus, isPublic = fal
     setIsUpdating(false);
   };
 
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const handleGenerateInvoice = async () => {
+    try {
+      setIsGenerating(true);
+      const res = await createInvoiceFromProposal(proposalId);
+      if (res.success && res.data) {
+        toast.success(res.message || "Invoice ready!");
+        router.push(`/dashboard/invoices/${res.data.id}`);
+      } else {
+        toast.error(res.message || "Failed to generate invoice");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to generate invoice");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   if (currentStatus === "ACCEPTED") {
     return (
-      <div className="flex justify-center my-8">
-        <div className="bg-green-50 text-green-700 px-6 py-4 rounded-xl flex items-center gap-3 border border-green-200 shadow-sm print:hidden">
+      <div className="flex flex-col items-center gap-3 my-8 print:hidden">
+        <div className="bg-green-50 text-green-700 px-6 py-4 rounded-xl flex items-center gap-3 border border-green-200 shadow-sm">
           <CheckCircle2 className="h-6 w-6" />
           <span className="font-medium text-lg">This proposal has been accepted!</span>
         </div>
+        {!isPublic && (
+          <Button
+            onClick={handleGenerateInvoice}
+            disabled={isGenerating}
+            size="lg"
+            className="gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow px-8"
+          >
+            {isGenerating ? <Loader2 className="h-5 w-5 animate-spin" /> : <ReceiptText className="h-5 w-5" />}
+            {isGenerating ? "Generating Invoice..." : "Generate Invoice"}
+          </Button>
+        )}
       </div>
     );
   }

@@ -8,12 +8,15 @@ import { getErrorMessage } from "@/lib/schemas/prisma-utils";
 import {
   CreateInvoiceInput,
   createInvoiceSchema,
+  UpdateInvoiceInput,
+  updateInvoiceSchema,
   InvoiceQuerySchema,
   invoiceQuerySchema,
   RecordPaymentInput,
   recordPaymentSchema,
 } from "@/lib/schemas/invoice-schema";
 import { headers } from "next/headers";
+import { sendInvoiceLinkEmail } from "@/lib/email";
 
 const InvoiceStatus = {
   DRAFT: "DRAFT",
@@ -197,7 +200,13 @@ export async function getPublicInvoiceById(id: string) {
         lineItems: {
           include: {
             servicePackage: {
-              select: { id: true, name: true },
+              select: {
+                id: true,
+                name: true,
+                service: {
+                  select: { id: true, name: true },
+                },
+              },
             },
           },
           orderBy: { sortOrder: "asc" },
@@ -338,6 +347,121 @@ export async function createInvoice(input: CreateInvoiceInput) {
   } catch (error) {
     console.error("Failed to create invoice:", error);
     return errorResponse("Failed to create invoice", getErrorMessage(error));
+  }
+}
+
+export async function updateInvoice(input: UpdateInvoiceInput) {
+  try {
+    const user = await getSessionUser();
+    if (!user) return errorResponse("Unauthorized");
+
+    const canUpdate = await checkInvoicePermission("update");
+    if (!canUpdate) return errorResponse("You don't have permission to update invoices");
+
+    const validated = updateInvoiceSchema.safeParse(input);
+    if (!validated.success) {
+      return errorResponse("Invalid input data", validated.error.issues);
+    }
+
+    const { id, customerId, title, notes, terms, dueDate, bankAccountId, currency, discount, lineItems, status } = validated.data;
+
+    const existing = await (prisma as any).invoice.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!existing) return errorResponse("Invoice not found");
+
+    if (existing.status === InvoiceStatus.PAID) {
+      return errorResponse("Paid invoices are immutable and cannot be edited.");
+    }
+
+    let customerDisplayName = existing.customerDisplayName;
+    let customerCompanyName = existing.customerCompanyName;
+
+    if (customerId && customerId !== existing.customerId) {
+      const customer = await prisma.customer.findUnique({
+        where: { id: customerId },
+      });
+      if (!customer) return errorResponse("Selected customer not found");
+      customerDisplayName = customer.displayName;
+      customerCompanyName = customer.companyName || null;
+    }
+
+    let subtotalAcc = 0;
+    let taxAcc = 0;
+
+    let lineItemsData: any[] = [];
+    if (lineItems) {
+      lineItemsData = lineItems.map((item, index) => {
+        const lineSubtotal = item.quantity * item.unitPrice;
+        const lineTax = (lineSubtotal * (item.taxRate || 0)) / 100;
+        subtotalAcc += lineSubtotal;
+        taxAcc += lineTax;
+
+        return {
+          servicePackageId: item.servicePackageId || null,
+          name: item.name,
+          description: item.description || null,
+          quantity: item.quantity,
+          unit: item.unit || "item",
+          unitPrice: new Prisma.Decimal(item.unitPrice),
+          taxRate: item.taxRate || 18,
+          billingCycle: item.billingCycle || "ONE_TIME",
+          total: new Prisma.Decimal(lineSubtotal + lineTax),
+          sortOrder: index,
+        };
+      });
+    }
+
+    const discountVal = discount !== undefined ? discount : existing.discount.toNumber();
+    const rawTotal = subtotalAcc + taxAcc - discountVal;
+    const grandTotal = Math.max(0, Math.round(rawTotal));
+    const roundOff = grandTotal - rawTotal;
+
+    const updatedInvoice = await prisma.$transaction(async (tx: any) => {
+      if (lineItems) {
+        await tx.invoiceLineItem.deleteMany({
+          where: { invoiceId: id },
+        });
+      }
+
+      return tx.invoice.update({
+        where: { id },
+        data: {
+          ...(customerId ? { customerId, customerDisplayName, customerCompanyName } : {}),
+          ...(title ? { title } : {}),
+          ...(notes !== undefined ? { notes } : {}),
+          ...(terms !== undefined ? { terms } : {}),
+          ...(dueDate !== undefined ? { dueDate } : {}),
+          ...(bankAccountId !== undefined ? { bankAccountId } : {}),
+          ...(currency ? { currency } : {}),
+          ...(discount !== undefined ? { discount: new Prisma.Decimal(discountVal) } : {}),
+          ...(status ? { status } : {}),
+          subtotal: new Prisma.Decimal(subtotalAcc),
+          tax: new Prisma.Decimal(taxAcc),
+          roundOff: new Prisma.Decimal(roundOff),
+          grandTotal: new Prisma.Decimal(grandTotal),
+          ...(lineItemsData.length > 0
+            ? {
+                lineItems: {
+                  create: lineItemsData,
+                },
+              }
+            : {}),
+          activities: {
+            create: {
+              userId: user.id,
+              action: "UPDATED",
+              details: "Invoice updated",
+            },
+          },
+        },
+      });
+    });
+
+    return successResponse("Invoice updated successfully", formatInvoice(updatedInvoice));
+  } catch (error) {
+    console.error("Failed to update invoice:", error);
+    return errorResponse("Failed to update invoice", getErrorMessage(error));
   }
 }
 
@@ -542,5 +666,129 @@ export async function getCompanyBankAccounts() {
   } catch (error) {
     console.error("Failed to fetch bank accounts:", error);
     return errorResponse("Failed to fetch bank accounts", getErrorMessage(error));
+  }
+}
+
+export async function createInvoiceFromProposal(proposalId: string) {
+  try {
+    const user = await getSessionUser();
+    if (!user) return errorResponse("Unauthorized");
+
+    const canCreate = await checkInvoicePermission("create");
+    if (!canCreate) return errorResponse("You don't have permission to create invoices");
+
+    const existingInvoice = await (prisma as any).invoice.findFirst({
+      where: { proposalId, deletedAt: null },
+    });
+    if (existingInvoice) {
+      return successResponse("Invoice already exists for this proposal", formatInvoice(existingInvoice));
+    }
+
+    const proposal = await prisma.proposal.findUnique({
+      where: { id: proposalId },
+      include: {
+        customer: true,
+        proposalServices: {
+          include: {
+            items: { orderBy: { sortOrder: "asc" } },
+          },
+          orderBy: { sortOrder: "asc" },
+        },
+      },
+    });
+
+    if (!proposal) return errorResponse("Proposal not found");
+
+    const lineItemsData: any[] = [];
+    let sortOrder = 0;
+
+    for (const service of proposal.proposalServices) {
+      for (const item of service.items) {
+        lineItemsData.push({
+          servicePackageId: service.packageId || null,
+          name: item.name,
+          description: item.description || service.description || null,
+          quantity: item.quantity,
+          unit: item.unit || "item",
+          unitPrice: item.unitPrice,
+          taxRate: item.taxRate || 18,
+          billingCycle: item.billingCycle || "ONE_TIME",
+          total: item.total,
+          sortOrder: sortOrder++,
+        });
+      }
+    }
+
+    const invoice = await (prisma as any).invoice.create({
+      data: {
+        customerId: proposal.customerId,
+        customerDisplayName: proposal.customerDisplayName,
+        customerCompanyName: proposal.customerCompanyName || null,
+        proposalId: proposal.id,
+        createdById: user.id,
+        title: `Invoice for ${proposal.title}`,
+        notes: proposal.notes || null,
+        bankAccountId: proposal.bankAccountId || null,
+        currency: proposal.currency || "INR",
+        subtotal: proposal.subtotal,
+        discount: proposal.discount,
+        tax: proposal.tax,
+        roundOff: proposal.roundOff,
+        grandTotal: proposal.grandTotal,
+        amountPaid: new Prisma.Decimal(0),
+        status: InvoiceStatus.DRAFT,
+        lineItems: {
+          create: lineItemsData,
+        },
+        activities: {
+          create: {
+            userId: user.id,
+            action: "CREATED",
+            details: `Invoice generated from Proposal #${proposal.proposalNumber}`,
+          },
+        },
+      },
+    });
+
+    return successResponse("Invoice generated successfully from proposal", formatInvoice(invoice));
+  } catch (error) {
+    console.error("Failed to generate invoice from proposal:", error);
+    return errorResponse("Failed to generate invoice from proposal", getErrorMessage(error));
+  }
+}
+
+export async function sendInvoiceEmailAction(invoiceId: string, email: string, invoiceUrl: string) {
+  try {
+    const user = await getSessionUser();
+    if (!user) return errorResponse("Unauthorized");
+
+    const canSend = await checkInvoicePermission("send");
+    if (!canSend) return errorResponse("You don't have permission to send invoice emails");
+
+    const invoice = await (prisma as any).invoice.findFirst({
+      where: { id: invoiceId, deletedAt: null },
+    });
+    if (!invoice) return errorResponse("Invoice not found");
+
+    const company = await prisma.company.findFirst();
+    const companyName = company?.displayName || company?.legalName || "Our Company";
+    const invNum = String(invoice.invoiceNumber).padStart(4, "0");
+
+    await sendInvoiceLinkEmail({
+      email,
+      appName: companyName,
+      invoiceUrl,
+      invoiceNumber: invNum,
+      companyName,
+    });
+
+    if (invoice.status === InvoiceStatus.DRAFT) {
+      await updateInvoiceStatus(invoiceId, InvoiceStatus.SENT as any);
+    }
+
+    return successResponse("Invoice email sent successfully");
+  } catch (error) {
+    console.error("Failed to send invoice email:", error);
+    return errorResponse("Failed to send invoice email", getErrorMessage(error));
   }
 }

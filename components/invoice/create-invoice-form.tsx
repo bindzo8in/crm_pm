@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createInvoice, getCompanyBankAccounts } from "@/actions/invoice";
+import { createInvoice, updateInvoice, getCompanyBankAccounts } from "@/actions/invoice";
 import { GetCustomers } from "@/actions/customer";
+import { toast } from "sonner";
 import { ServicePackageSearch, ServicePackageSearchResult } from "@/components/invoice/service-package-search";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,32 +15,49 @@ import { PlusIcon, Trash2Icon, ArrowLeftIcon, SaveIcon, Loader2Icon } from "luci
 import Link from "next/link";
 import { InvoiceLineItemInput } from "@/lib/schemas/invoice-schema";
 
-export function CreateInvoiceForm() {
+export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<Array<{ id: string; displayName: string; companyName: string | null }>>([]);
   const [bankAccounts, setBankAccounts] = useState<Array<{ id: string; accountName: string; bankName: string; isDefault: boolean }>>([]);
 
-  const [currency, setCurrency] = useState("INR");
-  const [customerId, setCustomerId] = useState("");
-  const [title, setTitle] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [notes, setNotes] = useState("");
-  const [terms, setTerms] = useState("");
-  const [bankAccountId, setBankAccountId] = useState("");
-  const [discount, setDiscount] = useState(0);
+  const [currency, setCurrency] = useState(initialData?.currency || "INR");
+  const [customerId, setCustomerId] = useState(initialData?.customerId || "");
+  const [title, setTitle] = useState(initialData?.title || "");
+  const [dueDate, setDueDate] = useState(
+    initialData?.dueDate ? new Date(initialData.dueDate).toISOString().slice(0, 10) : ""
+  );
+  const [notes, setNotes] = useState(initialData?.notes || "");
+  const [terms, setTerms] = useState(initialData?.terms || "");
+  const [bankAccountId, setBankAccountId] = useState(initialData?.bankAccountId || "");
+  const [discount, setDiscount] = useState(initialData?.discount || 0);
 
-  const [lineItems, setLineItems] = useState<InvoiceLineItemInput[]>([
-    {
-      name: "",
-      description: "",
-      quantity: 1,
-      unit: "item",
-      unitPrice: 0,
-      taxRate: 18,
-      billingCycle: "ONE_TIME",
-    },
-  ]);
+  const [lineItems, setLineItems] = useState<any[]>(
+    initialData?.lineItems && initialData.lineItems.length > 0
+      ? initialData.lineItems.map((li: any) => ({
+          id: li.id,
+          servicePackageId: li.servicePackageId || null,
+          serviceName: li.servicePackage?.service?.name || li.servicePackage?.name || null,
+          name: li.name,
+          description: li.description || "",
+          quantity: li.quantity,
+          unit: li.unit || "item",
+          unitPrice: li.unitPrice,
+          taxRate: li.taxRate || 18,
+          billingCycle: li.billingCycle || "ONE_TIME",
+        }))
+      : [
+          {
+            name: "",
+            description: "",
+            quantity: 1,
+            unit: "item",
+            unitPrice: 0,
+            taxRate: 18,
+            billingCycle: "ONE_TIME",
+          },
+        ]
+  );
 
   useEffect(() => {
     async function loadData() {
@@ -50,9 +68,11 @@ export function CreateInvoiceForm() {
       const bankRes = await getCompanyBankAccounts();
       if (bankRes.success && bankRes.data && bankRes.data.length > 0) {
         setBankAccounts(bankRes.data);
-        const defaultAccount = bankRes.data.find((b) => b.isDefault) || bankRes.data[0];
-        if (defaultAccount) {
-          setBankAccountId(defaultAccount.id);
+        if (!initialData?.bankAccountId) {
+          const defaultAccount = bankRes.data.find((b) => b.isDefault) || bankRes.data[0];
+          if (defaultAccount) {
+            setBankAccountId(defaultAccount.id);
+          }
         }
       }
     }
@@ -60,9 +80,10 @@ export function CreateInvoiceForm() {
   }, []);
 
   const handleAddPackage = (pkg: ServicePackageSearchResult) => {
-    const newItems: InvoiceLineItemInput[] = pkg.items.map((item) => ({
+    const newItems = pkg.items.map((item) => ({
       servicePackageId: pkg.id,
-      name: `${pkg.serviceName} - ${item.name}`,
+      serviceName: pkg.serviceName,
+      name: item.name,
       description: item.description || pkg.description || "",
       quantity: item.quantity,
       unit: item.unit,
@@ -121,8 +142,7 @@ export function CreateInvoiceForm() {
     e.preventDefault();
     if (!customerId || !title.trim()) return;
 
-    setLoading(true);
-    const res = await createInvoice({
+    const payload = {
       customerId,
       title,
       currency,
@@ -132,11 +152,22 @@ export function CreateInvoiceForm() {
       bankAccountId: bankAccountId || null,
       discount,
       lineItems,
-    });
+    };
+
+    setLoading(true);
+    let res;
+    if (initialData?.id) {
+      res = await updateInvoice({ id: initialData.id, ...payload });
+    } else {
+      res = await createInvoice(payload);
+    }
     setLoading(false);
 
     if (res.success && res.data) {
+      toast.success(res.message || (initialData?.id ? "Invoice updated!" : "Invoice created!"));
       router.push(`/dashboard/invoices/${res.data.id}`);
+    } else {
+      toast.error(res.message || "Operation failed");
     }
   };
 
@@ -248,7 +279,14 @@ export function CreateInvoiceForm() {
           {lineItems.map((item, index) => (
             <div key={index} className="flex flex-col gap-3 p-3 rounded-lg border bg-card">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                <div className="md:col-span-4">
+                <div className="md:col-span-4 space-y-1">
+                  {item.serviceName && (
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                        {item.serviceName}
+                      </span>
+                    </div>
+                  )}
                   <Input
                     placeholder="Item name"
                     value={item.name}

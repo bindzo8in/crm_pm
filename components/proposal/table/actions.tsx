@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+import { useRouter } from "next/navigation";
 import {
   MoreHorizontal,
   Eye,
@@ -22,9 +23,11 @@ import {
   CopyCheck,
   CopyPlus,
   Trash2,
+  ReceiptText,
 } from "lucide-react";
 
 import { DeleteProposal, DuplicateProposal } from "@/actions/proposal";
+import { createInvoiceFromProposal } from "@/actions/invoice";
 import { proposalKeys } from "../util";
 
 interface ProposalActionsProps {
@@ -38,8 +41,28 @@ export function ProposalActions({
   proposal,
 }: ProposalActionsProps) {
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   const [copied, setCopied] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const handleGenerateInvoice = async () => {
+    try {
+      setIsGenerating(true);
+      const res = await createInvoiceFromProposal(proposal.id);
+      if (res.success && res.data) {
+        toast.success(res.message || "Invoice ready!");
+        router.push(`/dashboard/invoices/${res.data.id}`);
+      } else {
+        toast.error(res.message || "Failed to generate invoice");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Something went wrong");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(proposal.id);
@@ -115,6 +138,13 @@ export function ProposalActions({
             Preview
           </Link>
         </DropdownMenuItem>
+
+        {proposal.status === "ACCEPTED" && (
+          <DropdownMenuItem onClick={handleGenerateInvoice} disabled={isGenerating}>
+            <ReceiptText />
+            {isGenerating ? "Generating..." : "Generate Invoice"}
+          </DropdownMenuItem>
+        )}
 
         {proposal.status === "DRAFT" && (
           <DropdownMenuItem asChild>

@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getInvoiceById, getPublicInvoiceById, recordInvoicePayment, updateInvoiceStatus } from "@/actions/invoice";
+import { useRouter } from "next/navigation";
+import { getInvoiceById, getPublicInvoiceById, recordInvoicePayment, updateInvoiceStatus, sendInvoiceEmailAction, softDeleteInvoice } from "@/actions/invoice";
 import { invoiceKeys } from "@/components/invoice/util";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { ArrowLeftIcon, PrinterIcon, CreditCardIcon, CheckCircle2Icon, Loader2Icon, DownloadIcon } from "lucide-react";
+import { ArrowLeftIcon, CreditCardIcon, CheckCircle2Icon, Loader2Icon, DownloadIcon, MailIcon, MessageCircleIcon, PencilIcon, Trash2Icon, HistoryIcon } from "lucide-react";
 import Link from "next/link";
 import { PaymentMethodType } from "@/lib/schemas/invoice-schema";
 
@@ -37,6 +39,7 @@ function getImageUrl(field: any): string | null {
 }
 
 export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId: string; isPdfMode?: boolean }) {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [amount, setAmount] = useState("");
@@ -44,6 +47,7 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
   const [refId, setRefId] = useState("");
   const [notes, setNotes] = useState("");
   const [downloading, setDownloading] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: invoiceKeys.detail(invoiceId),
@@ -51,6 +55,7 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
   });
 
   const invoice = data?.success ? data.data : null;
+  console.log(invoice)
 
   const paymentMutation = useMutation({
     mutationFn: () =>
@@ -77,6 +82,21 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: invoiceKeys.detail(invoiceId) });
       queryClient.invalidateQueries({ queryKey: invoiceKeys.lists() });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => softDeleteInvoice(invoiceId),
+    onSuccess: (res) => {
+      if (res.success) {
+        toast.success(res.message || "Invoice deleted!");
+        router.push("/dashboard/invoices");
+      } else {
+        toast.error(res.message || "Failed to delete invoice");
+      }
+    },
+    onError: () => {
+      toast.error("Failed to delete invoice");
     },
   });
 
@@ -130,6 +150,38 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
     }
   };
 
+  const clientEmail = invoice?.customer?.primaryContactEmail;
+
+  const handleWhatsAppShare = async () => {
+    const url = `${window.location.origin}/i/${invoiceId}`;
+    const text = encodeURIComponent(`Here is your invoice INV-${String(invoice.invoiceNumber).padStart(4, "0")}: ${url}`);
+    window.open(`https://wa.me/?text=${text}`, "_blank");
+
+    if (invoice.status === "DRAFT") {
+      statusMutation.mutate("SENT");
+    }
+  };
+
+  const handleEmailShare = async () => {
+    if (!clientEmail) return;
+    setSendingEmail(true);
+    const url = `${window.location.origin}/i/${invoiceId}`;
+    try {
+      const res = await sendInvoiceEmailAction(invoiceId, clientEmail, url);
+      if (res.success) {
+        toast.success("Invoice email sent!");
+        queryClient.invalidateQueries({ queryKey: invoiceKeys.detail(invoiceId) });
+      } else {
+        toast.error(res.message || "Failed to send email");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to send email");
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
   return (
     <div className={`space-y-6 max-w-5xl mx-auto ${isPdfMode ? "p-0 bg-white" : "pb-12"}`}>
       {/* Header Actions */}
@@ -169,9 +221,38 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
               Download PDF
             </Button>
 
-            <Button variant="outline" onClick={() => window.print()} className="gap-2">
-              <PrinterIcon className="h-4 w-4" /> Print
+            {clientEmail && (
+              <Button
+                variant="outline"
+                onClick={handleEmailShare}
+                disabled={sendingEmail}
+                className="gap-2 text-blue-600 border-blue-200 hover:bg-blue-50"
+              >
+                {sendingEmail ? (
+                  <Loader2Icon className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MailIcon className="h-4 w-4" />
+                )}
+                Send Mail
+              </Button>
+            )}
+
+            <Button
+              variant="outline"
+              onClick={handleWhatsAppShare}
+              className="gap-2 text-green-600 border-green-200 hover:bg-green-50"
+            >
+              <MessageCircleIcon className="h-4 w-4" />
+              WhatsApp
             </Button>
+
+            {invoice.status !== "PAID" && (
+              <Button variant="outline" asChild className="gap-2">
+                <Link href={`/dashboard/invoices/${invoiceId}/edit`}>
+                  <PencilIcon className="h-4 w-4" /> Edit
+                </Link>
+              </Button>
+            )}
 
             {invoice.status === "DRAFT" && (
               <Button
@@ -243,6 +324,21 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
                 </DialogContent>
               </Dialog>
             )}
+
+            {invoice.status !== "PAID" && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (confirm("Are you sure you want to delete this invoice?")) {
+                    deleteMutation.mutate();
+                  }
+                }}
+                disabled={deleteMutation.isPending}
+                className="gap-2 text-destructive hover:bg-destructive/10 border-destructive/20"
+              >
+                <Trash2Icon className="h-4 w-4" /> Delete
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -260,7 +356,7 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
               />
             )}
             <div>
-              <h2 className="text-xl font-bold text-primary">{invoice.company?.legalName || invoice.company?.displayName || "Bindzo8 CRM"}</h2>
+              <h2 className="text-xl font-bold text-gray-900">{invoice.company?.legalName || invoice.company?.displayName || "Bindzo8 CRM"}</h2>
               <p className="text-sm text-muted-foreground whitespace-pre-line">{invoice.company?.address}</p>
               {invoice.company?.gstNumber && <p className="text-sm text-muted-foreground">GST: {invoice.company.gstNumber}</p>}
               {invoice.company?.email && <p className="text-sm text-muted-foreground">Email: {invoice.company.email}</p>}
@@ -268,7 +364,7 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
           </div>
 
           <div className="text-left md:text-right">
-            <h2 className="text-2xl font-bold tracking-tight text-primary">INVOICE</h2>
+            <h2 className="text-2xl font-bold tracking-tight text-gray-900">INVOICE</h2>
             <p className="text-sm font-medium text-foreground">
               INV-{String(invoice.invoiceNumber).padStart(4, "0")}
             </p>
@@ -326,9 +422,21 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
               {invoice.lineItems.map((item: any) => (
                 <tr key={item.id}>
                   <td className="p-3">
-                    <div className="font-medium text-foreground">{item.name}</div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-foreground">{item.name}</span>
+                      {(item.servicePackage?.service?.name || item.servicePackage?.name) && (
+                        <span className="inline-block text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                          {item.servicePackage?.service?.name || item.servicePackage?.name}
+                        </span>
+                      )}
+                      {item.billingCycle && (
+                        <span className="inline-block text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200">
+                          {item.billingCycle.replace("_", " ")}
+                        </span>
+                      )}
+                    </div>
                     {item.description && (
-                      <div className="text-xs text-muted-foreground">{item.description}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{item.description}</div>
                     )}
                   </td>
                   <td className="p-3 text-center">{item.quantity} {item.unit}</td>
@@ -366,20 +474,20 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
               <span>{symbol}{invoice.tax.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
             </div>
             {invoice.discount > 0 && (
-              <div className="flex justify-between text-emerald-600">
+              <div className="flex justify-between text-gray-700">
                 <span>Discount</span>
                 <span>-{symbol}{invoice.discount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
               </div>
             )}
-            <div className="flex justify-between font-bold text-base pt-2 border-t text-primary">
+            <div className="flex justify-between font-bold text-base pt-2 border-t text-gray-900">
               <span>Grand Total</span>
               <span>{symbol}{invoice.grandTotal.toLocaleString("en-IN")}</span>
             </div>
-            <div className="flex justify-between text-emerald-600 font-medium">
+            <div className="flex justify-between text-gray-900 font-medium">
               <span>Paid</span>
               <span>{symbol}{invoice.amountPaid.toLocaleString("en-IN")}</span>
             </div>
-            <div className="flex justify-between font-bold text-destructive pt-1 border-t">
+            <div className="flex justify-between font-bold text-gray-900 pt-1 border-t">
               <span>Balance Due</span>
               <span>{symbol}{Math.max(0, balance).toLocaleString("en-IN")}</span>
             </div>
@@ -441,6 +549,37 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
                   </div>
                   <div className="text-muted-foreground">
                     {new Date(p.paymentDate).toLocaleDateString("en-IN")}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Activity & Audit Log */}
+        {invoice.activities && invoice.activities.length > 0 && (
+          <div className="pt-6 border-t space-y-3 print:hidden">
+            <div className="flex items-center gap-2">
+              <HistoryIcon className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-sm font-semibold">Invoice Activity & Audit Log</h3>
+            </div>
+            <div className="space-y-2">
+              {invoice.activities.map((act: any) => (
+                <div key={act.id} className="flex items-center justify-between p-3 rounded-md bg-muted/60 border text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold px-2 py-0.5 rounded bg-gray-200 text-gray-800 text-[10px] uppercase">
+                      {act.action.replace("_", " ")}
+                    </span>
+                    <span className="text-foreground">{act.details}</span>
+                    {act.user?.name && (
+                      <span className="text-muted-foreground">by {act.user.name}</span>
+                    )}
+                  </div>
+                  <div className="text-muted-foreground whitespace-nowrap">
+                    {new Date(act.createdAt).toLocaleString("en-IN", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}
                   </div>
                 </div>
               ))}

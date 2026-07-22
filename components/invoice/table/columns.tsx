@@ -3,8 +3,9 @@
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { EyeIcon, MoreHorizontalIcon, Trash2Icon, CheckCircle2Icon } from "lucide-react";
+import { EyeIcon, MoreHorizontalIcon, Trash2Icon, CheckCircle2Icon, PencilIcon } from "lucide-react";
 import Link from "next/link";
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -127,15 +128,29 @@ function InvoiceActions({ row }: { row: InvoiceRow }) {
 
   const deleteMutation = useMutation({
     mutationFn: () => softDeleteInvoice(row.id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: invoiceKeys.lists() });
+    onSuccess: (res) => {
+      if (res.success) {
+        toast.success(res.message || "Invoice deleted!");
+        queryClient.invalidateQueries({ queryKey: invoiceKeys.lists() });
+      } else {
+        toast.error(res.message || "Failed to delete invoice");
+      }
+    },
+    onError: (err) => {
+      console.error(err);
+      toast.error("Failed to delete invoice");
     },
   });
 
   const statusMutation = useMutation({
     mutationFn: (status: InvoiceStatus) => updateInvoiceStatus(row.id, status),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: invoiceKeys.lists() });
+    onSuccess: (res) => {
+      if (res.success) {
+        toast.success(res.message || "Status updated!");
+        queryClient.invalidateQueries({ queryKey: invoiceKeys.lists() });
+      } else {
+        toast.error(res.message || "Failed to update status");
+      }
     },
   });
 
@@ -153,6 +168,14 @@ function InvoiceActions({ row }: { row: InvoiceRow }) {
             <EyeIcon className="mr-2 h-4 w-4" /> View Invoice
           </Link>
         </DropdownMenuItem>
+
+        {row.status !== "PAID" && (
+          <DropdownMenuItem asChild>
+            <Link href={`/dashboard/invoices/${row.id}/edit`} className="cursor-pointer">
+              <PencilIcon className="mr-2 h-4 w-4" /> Edit Invoice
+            </Link>
+          </DropdownMenuItem>
+        )}
 
         {row.status === "DRAFT" && (
           <DropdownMenuItem
