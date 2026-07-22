@@ -25,6 +25,7 @@ export async function requirePageAccess(targetPath?: string) {
   const userRole = session.user.role as UserRole;
 
   if (!canAccessRoute(pathname, userRole)) {
+    console.log('Access denied for route:', pathname, 'User role:', userRole);
     redirect("/dashboard");
   }
 

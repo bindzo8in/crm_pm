@@ -15,7 +15,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, ChartBarIcon, FolderIcon, UsersIcon, CameraIcon, FileTextIcon, Settings2Icon, CircleHelpIcon, SearchIcon, DatabaseIcon, FileChartColumnIcon, FileIcon, CommandIcon, BookUser, BoxIcon, HandshakeIcon, ScrollText, TableIcon } from "lucide-react"
+import { LayoutDashboardIcon, ChartBarIcon, FolderIcon, UsersIcon, CameraIcon, FileTextIcon, Settings2Icon, CircleHelpIcon, SearchIcon, DatabaseIcon, FileChartColumnIcon, FileIcon, CommandIcon, BookUser, BoxIcon, HandshakeIcon, ScrollText, TableIcon, ReceiptText } from "lucide-react"
 import { env } from "@/lib/env"
 
 const data = {
@@ -95,7 +95,13 @@ const data = {
         />
       ),
     },
-
+    {
+      title: "Invoice",
+      url: "/dashboard/invoices",
+      icon: (
+        <ReceiptText />
+      )
+    }
   ],
   navSecondary: [
     {

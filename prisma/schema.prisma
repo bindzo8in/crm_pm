@@ -49,6 +49,8 @@ model User {
   createdCustomers   Customer[]         @relation("CreatedCustomers")
   proposalActivities ProposalActivity[]
   proposals          Proposal[]
+  createdInvoices    Invoice[]
+  invoiceActivities  InvoiceActivity[]
 
   @@unique([email])
   @@map("user")
@@ -163,6 +165,7 @@ model Customer {
   lastActivityAt   DateTime?
   customerContacts CustomerContact[]
   proposals        Proposal[]
+  invoices         Invoice[]
 
   @@index([assignedToId])
   @@index([createdById])
@@ -240,6 +243,7 @@ model ServicePackage {
   proposalServices     ProposalService[]
   proposalTermPackages ProposalTermPackage[]
   tariffGridPackages   TariffGridPackage[]
+  invoiceLineItems     InvoiceLineItem[]
 
   @@index([serviceId])
   @@index([isActive])
@@ -398,6 +402,7 @@ model Proposal {
 
   bankAccountId String?
   bankAccount   CompanyBankAccount? @relation(fields: [bankAccountId], references: [id])
+  invoices      Invoice[]
 
   @@index([customerId])
   @@index([status])
@@ -626,6 +631,7 @@ model CompanyBankAccount {
   updatedAt DateTime @updatedAt
 
   proposals Proposal[]
+  invoices  Invoice[]
 
   @@index([companyId])
 }
@@ -660,3 +666,143 @@ model TariffGridPackage {
   @@index([tariffGridId])
   @@index([packageId])
 }
+
+// ------------------- Invoice Models -------------------
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  VOID
+}
+
+model Invoice {
+  id String @id @default(cuid())
+
+  invoiceNumber Int @unique @default(autoincrement())
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+
+  proposalId String?
+  proposal   Proposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
+
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id])
+
+  customerDisplayName String
+  customerCompanyName String?
+
+  title       String
+  notes       String?
+  terms       String?
+  status      InvoiceStatus @default(DRAFT)
+  issueDate   DateTime      @default(now())
+  dueDate     DateTime?
+
+  currency String @default("INR")
+
+  subtotal   Decimal @default(0) @db.Decimal(12, 2)
+  discount   Decimal @default(0) @db.Decimal(12, 2)
+  tax        Decimal @default(0) @db.Decimal(12, 2)
+  roundOff   Decimal @default(0) @db.Decimal(12, 2)
+  grandTotal Decimal @default(0) @db.Decimal(12, 2)
+  amountPaid Decimal @default(0) @db.Decimal(12, 2)
+
+  bankAccountId String?
+  bankAccount   CompanyBankAccount? @relation(fields: [bankAccountId], references: [id])
+
+  lineItems  InvoiceLineItem[]
+  payments   InvoicePayment[]
+  activities InvoiceActivity[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([customerId])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model InvoiceLineItem {
+  id String @id @default(cuid())
+
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  servicePackageId String?
+  servicePackage   ServicePackage? @relation(fields: [servicePackageId], references: [id], onDelete: SetNull)
+
+  name        String
+  description String?
+  quantity    Int          @default(1)
+  unit        String       @default("item")
+  unitPrice   Decimal      @db.Decimal(12, 2)
+  total       Decimal      @db.Decimal(12, 2)
+  taxRate     Int          @default(18)
+  billingCycle BillingCycle @default(ONE_TIME)
+
+  sortOrder Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([invoiceId])
+  @@index([servicePackageId])
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  UPI
+  CREDIT_CARD
+  DEBIT_CARD
+  CHEQUE
+  CASH
+  OTHER
+}
+
+model InvoicePayment {
+  id String @id @default(cuid())
+
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  amount        Decimal       @db.Decimal(12, 2)
+  paymentMethod PaymentMethod @default(BANK_TRANSFER)
+  paymentDate   DateTime      @default(now())
+  referenceId   String?
+  notes         String?
+
+  createdAt DateTime @default(now())
+
+  @@index([invoiceId])
+}
+
+enum InvoiceActivityType {
+  CREATED
+  UPDATED
+  SENT
+  PAYMENT_RECEIVED
+  MARKED_PAID
+  VOIDED
+}
+
+model InvoiceActivity {
+  id String @id @default(cuid())
+
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  action  InvoiceActivityType
+  details String?
+
+  createdAt DateTime @default(now())
+
+  @@index([invoiceId])
+}
+
