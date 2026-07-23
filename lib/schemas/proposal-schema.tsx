@@ -12,6 +12,8 @@ export const proposalSchema = z.object({
     validUntil: z.enum(["07_Days", "15_Days", "30_Days"]),
 
     currency: z.enum(["INR", "USD"]),
+    exchangeRate: z.number({ message: "Exchange rate must be a valid number" }).min(0.0001, "Exchange rate must be greater than 0").optional().nullable(),
+    placeOfSupply: z.string().optional().nullable(),
 
     notes: z.string().optional(),
 

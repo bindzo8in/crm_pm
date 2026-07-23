@@ -1,7 +1,11 @@
 "use client";
+
+import { useState } from "react";
 import { proposalSchema, type ProposalSchema } from "@/lib/schemas/proposal-schema";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Controller } from "react-hook-form";
+import { getLiveExchangeRate } from "@/actions/exchange-rate";
+import { RefreshCwIcon, Loader2Icon } from "lucide-react";
 import {
     Field,
     FieldGroup,
@@ -33,6 +37,8 @@ interface ProposalCreateEditFormProps {
 
 export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormProps) {
     const router = useRouter();
+    const [fetchingRate, setFetchingRate] = useState(false);
+
     const form = useForm<ProposalSchema>({
         resolver: zodResolver(proposalSchema),
         defaultValues: initialData ? {
@@ -42,7 +48,9 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
             customerDisplayName: initialData.customerDisplayName || "",
             notes: initialData.notes || "",
             validUntil: initialData.validUntil as "07_Days" | "15_Days" | "30_Days",
-            currency: initialData.currency as "INR" | "USD" || "INR",
+            currency: (initialData.currency as "INR" | "USD") || "INR",
+            exchangeRate: initialData.exchangeRate || 83.50,
+            placeOfSupply: initialData.placeOfSupply || "",
         } : {
             customerId: "",
             title: "",
@@ -51,8 +59,24 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
             notes: "",
             validUntil: "07_Days",
             currency: "INR",
+            exchangeRate: 83.50,
+            placeOfSupply: "",
         }
     });
+
+    const watchedCurrency = form.watch("currency");
+
+    const handleFetchRate = async () => {
+        setFetchingRate(true);
+        const res = await getLiveExchangeRate("USD", "INR");
+        setFetchingRate(false);
+        if (res.success && res.data) {
+            form.setValue("exchangeRate", res.data.rate, { shouldValidate: true });
+            toast.success(`Exchange rate updated: ₹${res.data.rate} / USD (${res.data.source})`);
+        } else {
+            toast.error("Failed to fetch exchange rate");
+        }
+    };
     const {
         formState: { isSubmitting },
     } = form;
@@ -206,7 +230,12 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
                             <FieldContent>
                                 <Select
                                     value={field.value}
-                                    onValueChange={field.onChange}
+                                    onValueChange={(val) => {
+                                        field.onChange(val);
+                                        if (val === "USD") {
+                                            handleFetchRate();
+                                        }
+                                    }}
                                 >
                                     <SelectTrigger className="w-full">
                                         <SelectValue placeholder="Select currency" />
@@ -236,6 +265,60 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
                         </Field>
                     )}
                 />
+
+                {watchedCurrency === "USD" && (
+                    <>
+                        <Controller
+                            name="exchangeRate"
+                            control={form.control}
+                            render={({ field, fieldState }) => (
+                                <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full md:col-span-3">
+                                    <div className="flex items-center justify-between">
+                                        <FieldLabel htmlFor="exchangeRate">RBI Exchange Rate (₹/USD)</FieldLabel>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={handleFetchRate}
+                                            disabled={fetchingRate}
+                                            className="h-6 text-xs text-blue-600 gap-1 px-1.5"
+                                        >
+                                            {fetchingRate ? <Loader2Icon className="h-3 w-3 animate-spin" /> : <RefreshCwIcon className="h-3 w-3" />}
+                                            Fetch Today&apos;s Rate
+                                        </Button>
+                                    </div>
+                                    <Input
+                                        id="exchangeRate"
+                                        type="number"
+                                        step="any"
+                                        min="0.0001"
+                                        value={field.value ?? 83.50}
+                                        onChange={(e) => field.onChange(Number(e.target.value))}
+                                        placeholder="83.50"
+                                    />
+                                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                                </Field>
+                            )}
+                        />
+
+                        <Controller
+                            name="placeOfSupply"
+                            control={form.control}
+                            render={({ field, fieldState }) => (
+                                <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full md:col-span-3">
+                                    <FieldLabel htmlFor="placeOfSupply">Place of Supply (Country)</FieldLabel>
+                                    <Input
+                                        id="placeOfSupply"
+                                        value={field.value || ""}
+                                        onChange={(e) => field.onChange(e.target.value)}
+                                        placeholder="e.g. United States"
+                                    />
+                                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                                </Field>
+                            )}
+                        />
+                    </>
+                )}
 
                 <Controller
                     name="notes"

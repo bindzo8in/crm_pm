@@ -310,6 +310,113 @@ async function seedData() {
   }
   console.log(`Imported ${tariffGridPkgRows.length} TariffGridPackage records.`);
 
+  // 9. Default Proposal Terms
+  const defaultTerms = [
+    {
+      title: "Payment Terms & Milestone Schedule",
+      isDefault: true,
+      isActive: true,
+      content: {
+        blocks: [
+          "1. 50% advance payment required upon project kickoff.",
+          "2. 40% upon completion of development and demo review.",
+          "3. 10% final balance due prior to deployment or source code handover.",
+          "4. Invoices are payable within 7 calendar days of receipt."
+        ]
+      }
+    },
+    {
+      title: "Scope & Out-of-Scope Work",
+      isDefault: true,
+      isActive: true,
+      content: {
+        blocks: [
+          "1. The project scope includes only features explicitly listed in this proposal.",
+          "2. Any additional features or design revisions beyond agreed limits will be billed separately at standard hourly/daily rates.",
+          "3. Client is responsible for providing copy, media, and third-party API credentials in a timely manner."
+        ]
+      }
+    },
+    {
+      title: "Intellectual Property & Ownership",
+      isDefault: true,
+      isActive: true,
+      content: {
+        blocks: [
+          "1. All intellectual property, source code, and design assets belong to the Client upon receipt of full final payment.",
+          "2. The Agency retains the right to display the completed work in portfolio and promotional materials unless covered by a custom NDA."
+        ]
+      }
+    },
+    {
+      title: "Warranty & Support Period",
+      isDefault: true,
+      isActive: true,
+      content: {
+        blocks: [
+          "1. Includes 30 days of complimentary post-deployment bug fixing and technical support.",
+          "2. Excludes issues caused by third-party server modifications, plugin updates by client, or unauthorized code changes."
+        ]
+      }
+    },
+    {
+      title: "Proposal Validity",
+      isDefault: true,
+      isActive: true,
+      content: {
+        blocks: [
+          "1. This proposal and quoted pricing remain valid for 30 calendar days from the date of issue.",
+          "2. Prices and timeline may be revised if acceptance is received after the validity period."
+        ]
+      }
+    },
+    {
+      title: "Confidentiality & Non-Disclosure",
+      isDefault: true,
+      isActive: true,
+      content: {
+        blocks: [
+          "1. Both parties agree to maintain strict confidentiality regarding proprietary business data, credentials, and technical documentation shared during the project."
+        ]
+      }
+    }
+  ];
+
+  const existingPackages = await prisma.servicePackage.findMany({ select: { id: true } });
+  const packageIds = existingPackages.map((p) => p.id);
+
+  for (const termData of defaultTerms) {
+    const existing = await prisma.proposalTerm.findFirst({
+      where: { title: termData.title }
+    });
+
+    let termId = existing?.id;
+    if (!existing) {
+      const created = await prisma.proposalTerm.create({
+        data: termData
+      });
+      termId = created.id;
+    }
+
+    if (termId && packageIds.length > 0) {
+      for (const packageId of packageIds) {
+        await prisma.proposalTermPackage.upsert({
+          where: {
+            termId_packageId: { termId, packageId }
+          },
+          update: {},
+          create: {
+            termId,
+            packageId,
+            isRequired: true,
+            sortOrder: 0
+          }
+        });
+      }
+    }
+  }
+  console.log(`Imported ${defaultTerms.length} default ProposalTerm records and linked to packages.`);
+
   console.log("Database seed completed successfully!");
 }
 

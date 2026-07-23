@@ -66,6 +66,12 @@ function calculateItemFinancials(
 }
 
 async function recalculateAndSaveTotals(proposalId: string, tx: Prisma.TransactionClient) {
+  const proposal = await tx.proposal.findUnique({
+    where: { id: proposalId },
+    select: { currency: true },
+  });
+  const isUSD = proposal?.currency === "USD";
+
   const proposalServices = await tx.proposalService.findMany({
     where: { proposalId },
     include: { items: true },
@@ -76,16 +82,17 @@ async function recalculateAndSaveTotals(proposalId: string, tx: Prisma.Transacti
   let totalTax = 0;
   for (const service of proposalServices) {
     for (const item of service.items) {
+      const effectiveTaxRate = isUSD ? 0 : (item.taxRate ?? 18);
       const fin = calculateItemFinancials(
         item.quantity,
         item.unitPrice.toNumber(),
         item.discountType,
         item.discountValue ? item.discountValue.toNumber() : 0,
-        item.taxRate || 18
+        effectiveTaxRate
       );
       subtotal += fin.base;
       totalDiscount += fin.discount;
-      totalTax += fin.tax;
+      totalTax += isUSD ? 0 : fin.tax;
     }
   }
 
@@ -174,8 +181,13 @@ export async function getProposalPricing(proposalId: string, isPublic = false) {
     });
     const activeServiceNames = activeServices.map(s => s.name);
 
+    const company = await prisma.company.findFirst({
+      include: { bankAccounts: true },
+    });
+
     const serialized = {
       ...proposal,
+      exchangeRate: proposal.exchangeRate ? proposal.exchangeRate.toNumber() : 83.50,
       subtotal: proposal.subtotal.toNumber(),
       discount: proposal.discount.toNumber(),
       tax: proposal.tax.toNumber(),
@@ -188,10 +200,12 @@ export async function getProposalPricing(proposalId: string, isPublic = false) {
           unitPrice: item.unitPrice.toNumber(),
           total: item.total.toNumber(),
           discountValue: item.discountValue ? item.discountValue.toNumber() : null,
-          taxRate: item.taxRate ?? 18,
+          taxRate: proposal.currency === "USD" ? 0 : (item.taxRate ?? 18),
+          sacCode: item.sacCode || "9983",
         })),
       })),
       activeServiceNames,
+      company,
     };
 
     return successResponse("Fetched proposal pricing", serialized);
@@ -270,6 +284,7 @@ export async function importServicePackageToProposal(data: ImportServicePackageS
             sortOrder: item.sortOrder || idx,
             isCustom: false,
             taxRate: 18,
+            sacCode: item.sacCode || servicePackage.sacCode || "9983",
             discountType: null,
             discountValue: null,
           };
@@ -315,9 +330,16 @@ export async function updateProposalLineItem(data: ProposalLineItemEditSchema) {
       discountType,
       discountValue,
       taxRate,
+      sacCode,
     } = validated.data;
 
-    const fin = calculateItemFinancials(quantity, unitPrice, discountType, discountValue, taxRate);
+    const proposal = await prisma.proposal.findUnique({
+      where: { id: proposalId },
+      select: { currency: true },
+    });
+    const effectiveTaxRate = proposal?.currency === "USD" ? 0 : (taxRate ?? 18);
+
+    const fin = calculateItemFinancials(quantity, unitPrice, discountType, discountValue, effectiveTaxRate);
 
     await prisma.$transaction(async (tx) => {
       await tx.proposalLineItem.update({
@@ -333,7 +355,8 @@ export async function updateProposalLineItem(data: ProposalLineItemEditSchema) {
           ...(sortOrder !== undefined ? { sortOrder } : {}),
           discountType: discountType || null,
           discountValue: discountValue !== undefined && discountValue !== null ? new Prisma.Decimal(discountValue) : null,
-          taxRate: taxRate ?? 18,
+          taxRate: effectiveTaxRate,
+          sacCode: sacCode || "9983",
         },
       });
 
@@ -369,9 +392,16 @@ export async function addCustomLineItem(data: CustomLineItemCreateSchema) {
       discountType,
       discountValue,
       taxRate,
+      sacCode,
     } = validated.data;
 
-    const fin = calculateItemFinancials(quantity, unitPrice, discountType, discountValue, taxRate);
+    const proposal = await prisma.proposal.findUnique({
+      where: { id: proposalId },
+      select: { currency: true },
+    });
+    const effectiveTaxRate = proposal?.currency === "USD" ? 0 : (taxRate ?? 18);
+
+    const fin = calculateItemFinancials(quantity, unitPrice, discountType, discountValue, effectiveTaxRate);
 
     const maxOrder = await prisma.proposalLineItem.aggregate({
       where: { proposalServiceId },
@@ -395,7 +425,8 @@ export async function addCustomLineItem(data: CustomLineItemCreateSchema) {
           isCustom: true,
           discountType: discountType || null,
           discountValue: discountValue !== undefined && discountValue !== null ? new Prisma.Decimal(discountValue) : null,
-          taxRate: taxRate ?? 18,
+          taxRate: effectiveTaxRate,
+          sacCode: sacCode || "9983",
         },
       });
 

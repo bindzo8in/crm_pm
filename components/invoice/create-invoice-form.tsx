@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createInvoice, updateInvoice, getCompanyBankAccounts } from "@/actions/invoice";
+import { getLiveExchangeRate } from "@/actions/exchange-rate";
 import { GetCustomers } from "@/actions/customer";
 import { toast } from "sonner";
 import { ServicePackageSearch, ServicePackageSearchResult } from "@/components/invoice/service-package-search";
@@ -11,17 +12,20 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PlusIcon, Trash2Icon, ArrowLeftIcon, SaveIcon, Loader2Icon } from "lucide-react";
+import { PlusIcon, Trash2Icon, ArrowLeftIcon, SaveIcon, Loader2Icon, RefreshCwIcon } from "lucide-react";
 import Link from "next/link";
 import { InvoiceLineItemInput } from "@/lib/schemas/invoice-schema";
 
 export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [fetchingRate, setFetchingRate] = useState(false);
   const [customers, setCustomers] = useState<Array<{ id: string; displayName: string; companyName: string | null }>>([]);
   const [bankAccounts, setBankAccounts] = useState<Array<{ id: string; accountName: string; bankName: string; isDefault: boolean }>>([]);
 
   const [currency, setCurrency] = useState(initialData?.currency || "INR");
+  const [exchangeRate, setExchangeRate] = useState<number>(initialData?.exchangeRate || 83.50);
+  const [placeOfSupply, setPlaceOfSupply] = useState(initialData?.placeOfSupply || "");
   const [customerId, setCustomerId] = useState(initialData?.customerId || "");
   const [title, setTitle] = useState(initialData?.title || "");
   const [dueDate, setDueDate] = useState(
@@ -43,7 +47,8 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
           quantity: li.quantity,
           unit: li.unit || "item",
           unitPrice: li.unitPrice,
-          taxRate: li.taxRate || 18,
+          taxRate: initialData?.currency === "USD" ? 0 : (li.taxRate || 18),
+          sacCode: li.sacCode || "9983",
           billingCycle: li.billingCycle || "ONE_TIME",
         }))
       : [
@@ -54,6 +59,7 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
             unit: "item",
             unitPrice: 0,
             taxRate: 18,
+            sacCode: "9983",
             billingCycle: "ONE_TIME",
           },
         ]
@@ -79,16 +85,29 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
     loadData();
   }, []);
 
+  const handleFetchRate = async () => {
+    setFetchingRate(true);
+    const res = await getLiveExchangeRate("USD", "INR");
+    setFetchingRate(false);
+    if (res.success && res.data) {
+      setExchangeRate(res.data.rate);
+      toast.success(`Rate updated: ₹${res.data.rate} / USD (${res.data.source})`);
+    } else {
+      toast.error("Failed to fetch live exchange rate");
+    }
+  };
+
   const handleAddPackage = (pkg: ServicePackageSearchResult) => {
     const newItems = pkg.items.map((item) => ({
       servicePackageId: pkg.id,
-      serviceName: pkg.serviceName,
+      serviceName: pkg.serviceName ? `${pkg.serviceName} • ${pkg.name}` : pkg.name,
       name: item.name,
       description: item.description || pkg.description || "",
       quantity: item.quantity,
       unit: item.unit,
       unitPrice: currency === "USD" && item.unitPriceUSD > 0 ? item.unitPriceUSD : item.unitPrice,
       taxRate: currency === "USD" ? 0 : 18,
+      sacCode: item.sacCode || pkg.sacCode || "9983",
       billingCycle: item.billingCycle,
     }));
 
@@ -109,6 +128,7 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
         unit: "item",
         unitPrice: 0,
         taxRate: currency === "USD" ? 0 : 18,
+        sacCode: "9983",
         billingCycle: "ONE_TIME",
       },
     ]);
@@ -119,7 +139,7 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
     setLineItems((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleItemChange = (index: number, field: keyof InvoiceLineItemInput, value: any) => {
+  const handleItemChange = (index: number, field: keyof InvoiceLineItemInput | "sacCode", value: any) => {
     setLineItems((prev) =>
       prev.map((item, i) => (i === index ? { ...item, [field]: value } : item))
     );
@@ -128,11 +148,13 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
   const calculateSubtotal = () =>
     lineItems.reduce((acc, item) => acc + item.quantity * item.unitPrice, 0);
 
-  const calculateTax = () =>
-    lineItems.reduce(
+  const calculateTax = () => {
+    if (currency === "USD") return 0;
+    return lineItems.reduce(
       (acc, item) => acc + (item.quantity * item.unitPrice * (item.taxRate || 0)) / 100,
       0
     );
+  };
 
   const subtotal = calculateSubtotal();
   const tax = calculateTax();
@@ -146,12 +168,18 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
       customerId,
       title,
       currency,
+      exchangeRate: currency === "USD" ? exchangeRate : null,
+      placeOfSupply: currency === "USD" ? placeOfSupply : null,
       dueDate: dueDate ? new Date(dueDate) : null,
       notes,
       terms,
       bankAccountId: bankAccountId || null,
       discount,
-      lineItems,
+      lineItems: lineItems.map((li) => ({
+        ...li,
+        taxRate: currency === "USD" ? 0 : (li.taxRate || 0),
+        sacCode: li.sacCode || "9983",
+      })),
     };
 
     setLoading(true);
@@ -171,6 +199,16 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
     }
   };
 
+  const handleCurrencyChange = (val: string) => {
+    setCurrency(val);
+    if (val === "USD") {
+      setLineItems((prev) => prev.map((item) => ({ ...item, taxRate: 0 })));
+      handleFetchRate();
+    } else {
+      setLineItems((prev) => prev.map((item) => ({ ...item, taxRate: item.taxRate === 0 ? 18 : item.taxRate })));
+    }
+  };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6 max-w-5xl mx-auto pb-12">
       <div className="flex items-center justify-between">
@@ -181,15 +219,19 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
             </Link>
           </Button>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Create Invoice</h1>
+            <h1 className="text-2xl font-bold tracking-tight">
+              {currency === "USD" ? "Create Export Invoice (LUT 0% Tax)" : "Create Invoice"}
+            </h1>
             <p className="text-sm text-muted-foreground">
-              Generate a new client billing invoice
+              {currency === "USD"
+                ? "Zero-rated export invoice under Indian GST LUT route"
+                : "Generate a new client billing invoice"}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          <Select value={currency} onValueChange={setCurrency}>
+          <Select value={currency} onValueChange={handleCurrencyChange}>
             <SelectTrigger className="w-[110px]">
               <SelectValue />
             </SelectTrigger>
@@ -231,7 +273,7 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
           <div className="space-y-2">
             <label className="text-sm font-medium">Invoice Title *</label>
             <Input
-              placeholder="e.g. Web Development Phase 1 Billing"
+              placeholder="e.g. Custom Software Export Billing Phase 1"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
@@ -262,6 +304,44 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
               </SelectContent>
             </Select>
           </div>
+
+          {currency === "USD" && (
+            <>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">RBI Exchange Rate (₹/USD) *</label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleFetchRate}
+                    disabled={fetchingRate}
+                    className="h-6 text-xs text-blue-600 gap-1 px-1.5"
+                  >
+                    {fetchingRate ? <Loader2Icon className="h-3 w-3 animate-spin" /> : <RefreshCwIcon className="h-3 w-3" />}
+                    Fetch Today&apos;s Rate
+                  </Button>
+                </div>
+                <Input
+                  type="number"
+                  step="any"
+                  min="0.0001"
+                  placeholder="e.g. 83.50"
+                  value={exchangeRate}
+                  onChange={(e) => setExchangeRate(Number(e.target.value))}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Place of Supply (Destination Country) *</label>
+                <Input
+                  placeholder="e.g. United States or State Code 96"
+                  value={placeOfSupply}
+                  onChange={(e) => setPlaceOfSupply(e.target.value)}
+                />
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -276,10 +356,19 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="hidden md:grid grid-cols-12 gap-2.5 px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/50 rounded-md border">
+            <div className="col-span-3">Item & Description</div>
+            <div className="col-span-2">Billing Cycle</div>
+            <div className="col-span-1 text-center">Qty</div>
+            <div className="col-span-2 text-right">Unit Price ({currency === "USD" ? "$" : "₹"})</div>
+            <div className="col-span-2 text-center">SAC Code</div>
+            <div className="col-span-2 text-right">Tax Rate</div>
+          </div>
+
           {lineItems.map((item, index) => (
             <div key={index} className="flex flex-col gap-3 p-3 rounded-lg border bg-card">
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                <div className="md:col-span-4 space-y-1">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-center">
+                <div className="md:col-span-3 space-y-1">
                   {item.serviceName && (
                     <div className="flex items-center gap-1">
                       <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
@@ -295,6 +384,23 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
                   />
                 </div>
                 <div className="md:col-span-2">
+                  <Select
+                    value={item.billingCycle || "ONE_TIME"}
+                    onValueChange={(val) => handleItemChange(index, "billingCycle", val)}
+                  >
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue placeholder="Cycle" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ONE_TIME">One Time</SelectItem>
+                      <SelectItem value="MONTHLY">Monthly</SelectItem>
+                      <SelectItem value="QUARTERLY">Quarterly</SelectItem>
+                      <SelectItem value="HALF_YEARLY">Half Yearly</SelectItem>
+                      <SelectItem value="YEARLY">Yearly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="md:col-span-1">
                   <Input
                     type="number"
                     min="1"
@@ -304,42 +410,56 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
                     required
                   />
                 </div>
-                <div className="md:col-span-3">
+                <div className="md:col-span-2">
                   <Input
                     type="number"
                     min="0"
-                    step="0.01"
-                    placeholder="Unit Price (₹)"
+                    step="any"
+                    placeholder={`Unit Price (${currency === "USD" ? "$" : "₹"})`}
                     value={item.unitPrice}
                     onChange={(e) => handleItemChange(index, "unitPrice", Number(e.target.value))}
                     required
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <Select
-                    value={String(item.taxRate)}
-                    onValueChange={(val) => handleItemChange(index, "taxRate", Number(val))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Tax %" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="0">0% Tax</SelectItem>
-                      <SelectItem value="5">5% GST</SelectItem>
-                      <SelectItem value="12">12% GST</SelectItem>
-                      <SelectItem value="18">18% GST</SelectItem>
-                      <SelectItem value="28">28% GST</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Input
+                    placeholder="SAC Code (e.g. 9983)"
+                    value={item.sacCode || "9983"}
+                    onChange={(e) => handleItemChange(index, "sacCode", e.target.value)}
+                    className="font-mono text-xs"
+                  />
                 </div>
-                <div className="md:col-span-1 flex justify-end">
+                <div className="md:col-span-2 flex items-center gap-1">
+                  <div className="flex-1">
+                    {currency === "USD" ? (
+                      <div className="h-9 px-2.5 py-1.5 rounded-md border bg-muted text-xs flex items-center justify-center text-muted-foreground font-medium">
+                        0% (Nil)
+                      </div>
+                    ) : (
+                      <Select
+                        value={String(item.taxRate)}
+                        onValueChange={(val) => handleItemChange(index, "taxRate", Number(val))}
+                      >
+                        <SelectTrigger className="h-9 text-xs">
+                          <SelectValue placeholder="Tax %" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0">0% Tax</SelectItem>
+                          <SelectItem value="5">5% GST</SelectItem>
+                          <SelectItem value="12">12% GST</SelectItem>
+                          <SelectItem value="18">18% GST</SelectItem>
+                          <SelectItem value="28">28% GST</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
                     onClick={() => handleRemoveLineItem(index)}
                     disabled={lineItems.length === 1}
-                    className="text-destructive"
+                    className="text-destructive h-9 w-9 shrink-0"
                   >
                     <Trash2Icon className="h-4 w-4" />
                   </Button>

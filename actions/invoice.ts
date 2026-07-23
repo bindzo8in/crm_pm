@@ -86,6 +86,7 @@ function formatInvoice<T extends Record<string, any>>(inv: T) {
     roundOff: inv.roundOff !== undefined ? toNumber(inv.roundOff) : inv.roundOff,
     grandTotal: inv.grandTotal !== undefined ? toNumber(inv.grandTotal) : inv.grandTotal,
     amountPaid: inv.amountPaid !== undefined ? toNumber(inv.amountPaid) : inv.amountPaid,
+    exchangeRate: inv.exchangeRate !== undefined && inv.exchangeRate !== null ? toNumber(inv.exchangeRate) : (inv.currency === "USD" ? 83.50 : 1),
     lineItems: Array.isArray(inv.lineItems)
       ? inv.lineItems.map((li: any) => ({
           ...li,
@@ -231,9 +232,11 @@ export async function getPublicInvoiceById(id: string) {
 
     const formatted = {
       ...invoice,
+      exchangeRate: invoice.exchangeRate ? invoice.exchangeRate.toNumber() : 83.50,
+      placeOfSupply: invoice.placeOfSupply,
       subtotal: invoice.subtotal.toNumber(),
       discount: invoice.discount.toNumber(),
-      tax: invoice.tax.toNumber(),
+      tax: invoice.currency === "USD" ? 0 : invoice.tax.toNumber(),
       roundOff: invoice.roundOff.toNumber(),
       grandTotal: invoice.grandTotal.toNumber(),
       amountPaid: invoice.amountPaid.toNumber(),
@@ -241,6 +244,8 @@ export async function getPublicInvoiceById(id: string) {
         ...li,
         unitPrice: li.unitPrice.toNumber(),
         total: li.total.toNumber(),
+        taxRate: invoice.currency === "USD" ? 0 : (li.taxRate ?? 18),
+        sacCode: li.sacCode || "9983",
       })),
       payments: invoice.payments.map((p) => ({
         ...p,
@@ -282,12 +287,14 @@ export async function createInvoice(input: CreateInvoiceInput) {
     });
     if (!customer) return errorResponse("Selected customer not found");
 
+    const isUSD = validated.data.currency === "USD";
     let subtotalAcc = 0;
     let taxAcc = 0;
 
     const lineItemsData = validated.data.lineItems.map((item, index) => {
       const lineSubtotal = item.quantity * item.unitPrice;
-      const lineTax = (lineSubtotal * (item.taxRate || 0)) / 100;
+      const effectiveTaxRate = isUSD ? 0 : (item.taxRate || 0);
+      const lineTax = (lineSubtotal * effectiveTaxRate) / 100;
       subtotalAcc += lineSubtotal;
       taxAcc += lineTax;
 
@@ -298,12 +305,17 @@ export async function createInvoice(input: CreateInvoiceInput) {
         quantity: item.quantity,
         unit: item.unit || "item",
         unitPrice: new Prisma.Decimal(item.unitPrice),
-        taxRate: item.taxRate || 18,
+        taxRate: effectiveTaxRate,
+        sacCode: item.sacCode || "9983",
         billingCycle: item.billingCycle || "ONE_TIME",
         total: new Prisma.Decimal(lineSubtotal + lineTax),
         sortOrder: index,
       };
     });
+
+    if (isUSD) {
+      taxAcc = 0;
+    }
 
     const discountVal = validated.data.discount || 0;
     const rawTotal = subtotalAcc + taxAcc - discountVal;
@@ -323,6 +335,8 @@ export async function createInvoice(input: CreateInvoiceInput) {
         dueDate: validated.data.dueDate || null,
         bankAccountId: validated.data.bankAccountId || null,
         currency: validated.data.currency || "INR",
+        exchangeRate: validated.data.exchangeRate !== undefined && validated.data.exchangeRate !== null ? new Prisma.Decimal(validated.data.exchangeRate) : new Prisma.Decimal(83.50),
+        placeOfSupply: validated.data.placeOfSupply || null,
         subtotal: new Prisma.Decimal(subtotalAcc),
         discount: new Prisma.Decimal(discountVal),
         tax: new Prisma.Decimal(taxAcc),
@@ -363,7 +377,7 @@ export async function updateInvoice(input: UpdateInvoiceInput) {
       return errorResponse("Invalid input data", validated.error.issues);
     }
 
-    const { id, customerId, title, notes, terms, dueDate, bankAccountId, currency, discount, lineItems, status } = validated.data;
+    const { id, customerId, title, notes, terms, dueDate, bankAccountId, currency, exchangeRate, placeOfSupply, discount, lineItems, status } = validated.data;
 
     const existing = await (prisma as any).invoice.findFirst({
       where: { id, deletedAt: null },
@@ -386,6 +400,9 @@ export async function updateInvoice(input: UpdateInvoiceInput) {
       customerCompanyName = customer.companyName || null;
     }
 
+    const activeCurrency = currency || existing.currency;
+    const isUSD = activeCurrency === "USD";
+
     let subtotalAcc = 0;
     let taxAcc = 0;
 
@@ -393,7 +410,8 @@ export async function updateInvoice(input: UpdateInvoiceInput) {
     if (lineItems) {
       lineItemsData = lineItems.map((item, index) => {
         const lineSubtotal = item.quantity * item.unitPrice;
-        const lineTax = (lineSubtotal * (item.taxRate || 0)) / 100;
+        const effectiveTaxRate = isUSD ? 0 : (item.taxRate || 0);
+        const lineTax = (lineSubtotal * effectiveTaxRate) / 100;
         subtotalAcc += lineSubtotal;
         taxAcc += lineTax;
 
@@ -404,12 +422,17 @@ export async function updateInvoice(input: UpdateInvoiceInput) {
           quantity: item.quantity,
           unit: item.unit || "item",
           unitPrice: new Prisma.Decimal(item.unitPrice),
-          taxRate: item.taxRate || 18,
+          taxRate: effectiveTaxRate,
+          sacCode: item.sacCode || "9983",
           billingCycle: item.billingCycle || "ONE_TIME",
           total: new Prisma.Decimal(lineSubtotal + lineTax),
           sortOrder: index,
         };
       });
+    }
+
+    if (isUSD) {
+      taxAcc = 0;
     }
 
     const discountVal = discount !== undefined ? discount : existing.discount.toNumber();
@@ -434,6 +457,8 @@ export async function updateInvoice(input: UpdateInvoiceInput) {
           ...(dueDate !== undefined ? { dueDate } : {}),
           ...(bankAccountId !== undefined ? { bankAccountId } : {}),
           ...(currency ? { currency } : {}),
+          ...(exchangeRate !== undefined ? { exchangeRate: exchangeRate !== null ? new Prisma.Decimal(exchangeRate) : null } : {}),
+          ...(placeOfSupply !== undefined ? { placeOfSupply } : {}),
           ...(discount !== undefined ? { discount: new Prisma.Decimal(discountVal) } : {}),
           ...(status ? { status } : {}),
           subtotal: new Prisma.Decimal(subtotalAcc),
@@ -597,6 +622,7 @@ export async function searchServicePackages(searchQuery: string) {
       description: pkg.description,
       totalPrice: pkg.totalPrice.toNumber(),
       totalPriceUSD: pkg.totalPriceUSD ? pkg.totalPriceUSD.toNumber() : 0,
+      sacCode: pkg.sacCode || "9983",
       items: pkg.items.map((it) => ({
         id: it.id,
         name: it.name,
@@ -604,6 +630,7 @@ export async function searchServicePackages(searchQuery: string) {
         quantity: it.quantity,
         unitPrice: it.unitPrice.toNumber(),
         unitPriceUSD: it.unitPriceUSD ? it.unitPriceUSD.toNumber() : 0,
+        sacCode: it.sacCode || pkg.sacCode || "9983",
         unit: it.unit,
         billingCycle: it.billingCycle,
       })),
@@ -702,6 +729,8 @@ export async function createInvoiceFromProposal(proposalId: string) {
     const lineItemsData: any[] = [];
     let sortOrder = 0;
 
+    const isUSD = proposal.currency === "USD";
+
     for (const service of proposal.proposalServices) {
       for (const item of service.items) {
         lineItemsData.push({
@@ -711,7 +740,8 @@ export async function createInvoiceFromProposal(proposalId: string) {
           quantity: item.quantity,
           unit: item.unit || "item",
           unitPrice: item.unitPrice,
-          taxRate: item.taxRate || 18,
+          taxRate: isUSD ? 0 : (item.taxRate || 18),
+          sacCode: item.sacCode || "9983",
           billingCycle: item.billingCycle || "ONE_TIME",
           total: item.total,
           sortOrder: sortOrder++,
@@ -730,9 +760,11 @@ export async function createInvoiceFromProposal(proposalId: string) {
         notes: proposal.notes || null,
         bankAccountId: proposal.bankAccountId || null,
         currency: proposal.currency || "INR",
+        exchangeRate: proposal.exchangeRate || new Prisma.Decimal(83.50),
+        placeOfSupply: proposal.placeOfSupply || null,
         subtotal: proposal.subtotal,
         discount: proposal.discount,
-        tax: proposal.tax,
+        tax: isUSD ? new Prisma.Decimal(0) : proposal.tax,
         roundOff: proposal.roundOff,
         grandTotal: proposal.grandTotal,
         amountPaid: new Prisma.Decimal(0),

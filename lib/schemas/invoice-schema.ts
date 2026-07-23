@@ -36,6 +36,7 @@ export const invoiceLineItemSchema = z.object({
   unit: z.string().default("item"),
   unitPrice: z.number().min(0, "Unit price must be >= 0"),
   taxRate: z.number().min(0).max(100).default(18),
+  sacCode: z.string().optional().nullable().default("9983"),
   billingCycle: BillingCycleEnum.default("ONE_TIME"),
   total: z.number().min(0).optional(),
 });
@@ -49,6 +50,8 @@ export const createInvoiceSchema = z.object({
   dueDate: z.date().optional().nullable(),
   bankAccountId: z.string().optional().nullable(),
   currency: z.string().default("INR"),
+  exchangeRate: z.number({ message: "Exchange rate must be a valid number" }).min(0.0001, "Exchange rate must be greater than 0").optional().nullable().default(83.50),
+  placeOfSupply: z.string().optional().nullable(),
   discount: z.number().min(0).default(0),
   lineItems: z.array(invoiceLineItemSchema).min(1, "At least one line item is required"),
 });

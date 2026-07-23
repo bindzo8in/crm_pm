@@ -32,6 +32,7 @@ export const proposalLineItemEditSchema = z.object({
   discountType: z.enum(DiscountType).optional().nullable(),
   discountValue: z.coerce.number().min(0).optional().nullable(),
   taxRate: z.coerce.number().min(0).default(0),
+  sacCode: z.string().optional().nullable(),
 });
 
 export type ProposalLineItemEditSchema = z.infer<typeof proposalLineItemEditSchema>;
@@ -48,6 +49,7 @@ export const customLineItemCreateSchema = z.object({
   discountType: z.enum(DiscountType).optional().nullable(),
   discountValue: z.coerce.number().min(0).optional().nullable(),
   taxRate: z.coerce.number().min(0).default(0),
+  sacCode: z.string().optional().nullable(),
 });
 
 export type CustomLineItemCreateSchema = z.infer<typeof customLineItemCreateSchema>;

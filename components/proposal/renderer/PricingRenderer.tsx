@@ -13,6 +13,9 @@ interface PricingRendererProps {
     roundOff: number;
     grandTotal: number;
     currency?: string;
+    exchangeRate?: number;
+    placeOfSupply?: string | null;
+    company?: any;
     proposalServices?: Array<{
       id: string;
       serviceName: string;
@@ -29,6 +32,7 @@ interface PricingRendererProps {
         billingCycle: string;
         discountValue?: number | null;
         taxRate: number;
+        sacCode?: string | null;
       }>;
     }>;
   };
@@ -38,6 +42,10 @@ interface PricingRendererProps {
 
 export function PricingRenderer({ block, proposal, bankAccount }: PricingRendererProps) {
   const services = proposal.proposalServices || [];
+  const isUSD = proposal.currency === "USD";
+  const exRate = proposal.exchangeRate || 83.5;
+  const inrEquivalent = proposal.grandTotal * exRate;
+  const company = proposal.company;
 
   const formatCurrency = (val: number) => {
     const currency = proposal.currency || "INR";
@@ -53,6 +61,7 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
       case "MONTHLY": return "/ mo";
       case "QUARTERLY": return "/ qtr";
       case "YEARLY": return "/ yr";
+      case "HALF_YEARLY": return "/ 6mo";
       default: return "";
     }
   };
@@ -75,7 +84,7 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
                   <th className="text-center w-[10%]">Qty</th>
                   <th className="text-right w-[12%]">Rate</th>
                   <th className="text-right w-[10%]">Discount</th>
-                  <th className="text-right w-[8%]">Tax</th>
+                  <th className="text-right w-[8%]">SAC / Tax</th>
                   <th className="text-right w-[15%]">Total</th>
                 </tr>
               </thead>
@@ -108,7 +117,8 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
                           {item.discountValue ? formatCurrency(item.discountValue) : "-"}
                         </td>
                         <td className="text-right whitespace-nowrap align-top text-gray-600">
-                          {item.taxRate ? `${item.taxRate}%` : "-"}
+                          <div className="text-xs font-mono font-medium text-gray-700">SAC: {item.sacCode || "9983"}</div>
+                          <div className="text-[10px] text-gray-500">{isUSD ? "0% (Nil)" : `${item.taxRate}%`}</div>
                         </td>
                         <td className="text-right font-medium whitespace-nowrap align-top">
                           {formatCurrency(item.total)}
@@ -121,13 +131,31 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
             </table>
           </div>
 
+          {/* Export LUT Notice Banner if USD */}
+          {isUSD && (
+            <div className="p-4 rounded-lg border border-blue-200 bg-blue-50/60 text-xs text-blue-900 space-y-1.5 break-inside-avoid">
+              <div className="font-bold uppercase tracking-wider text-[11px] text-blue-950 flex items-center gap-2">
+                <span>Mandatory Export Legal Endorsement (Indian GST - LUT Route)</span>
+              </div>
+              <p className="font-semibold italic text-blue-900">
+                &ldquo;Supply meant for export under LUT without payment of Integrated Tax&rdquo;
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-1 font-mono text-[11px] text-blue-800 border-t border-blue-200/60">
+                <div><span className="font-semibold font-sans">LUT ARN:</span> {company?.lutNumber || "Active LUT"}</div>
+                <div><span className="font-semibold font-sans">IEC Code:</span> {company?.iecCode || "10-digit IEC"}</div>
+                <div><span className="font-semibold font-sans">GSTIN:</span> {company?.gstNumber || "15-digit GST"}</div>
+                <div><span className="font-semibold font-sans">Place of Supply:</span> {proposal.placeOfSupply || "Foreign Country"}</div>
+              </div>
+            </div>
+          )}
+
           {/* Financial Summary and Bank Account */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6 break-inside-avoid">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-2 break-inside-avoid">
             <div>
               {bankAccount && (
                 <div className="w-full rounded-lg border bg-gray-50/50 p-6 h-full">
                   <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 border-b pb-3">
-                    Bank Details
+                    Bank Details (Inward Remittance)
                   </h4>
                   <div className="space-y-2 text-sm text-gray-700">
                     <div className="flex justify-between">
@@ -141,22 +169,22 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
                     <div className="flex justify-between items-center">
                       <span className="text-gray-500">Account Number</span>
                       <div className="flex items-center">
-                        <span className="font-medium uppercase">{bankAccount.accountNumber}</span>
+                        <span className="font-medium uppercase font-mono">{bankAccount.accountNumber}</span>
                         <CopyButton textToCopy={bankAccount.accountNumber} />
                       </div>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-gray-500">IFSC Code</span>
                       <div className="flex items-center">
-                        <span className="font-medium uppercase">{bankAccount.ifscCode}</span>
+                        <span className="font-medium uppercase font-mono">{bankAccount.ifscCode}</span>
                         <CopyButton textToCopy={bankAccount.ifscCode} />
                       </div>
                     </div>
                     {bankAccount.swiftCode && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-500">SWIFT Code</span>
+                      <div className="flex justify-between items-center bg-blue-50/60 p-2 rounded border border-blue-100 mt-1">
+                        <span className="text-blue-900 font-semibold">SWIFT Code (FIRC)</span>
                         <div className="flex items-center">
-                          <span className="font-medium uppercase">{bankAccount.swiftCode}</span>
+                          <span className="font-medium uppercase font-mono text-blue-950">{bankAccount.swiftCode}</span>
                           <CopyButton textToCopy={bankAccount.swiftCode} />
                         </div>
                       </div>
@@ -193,12 +221,12 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
                   </div>
                 )}
                 
-                {proposal.tax > 0 && (
-                  <div className="flex justify-between items-center text-gray-600">
-                    <span>Total Tax</span>
-                    <span className="font-medium text-gray-900">{formatCurrency(proposal.tax)}</span>
-                  </div>
-                )}
+                <div className="flex justify-between items-center text-gray-600">
+                  <span>IGST / Tax</span>
+                  <span className="font-medium text-gray-900">
+                    {isUSD ? "0% (Nil - LUT Zero-Rated Export)" : formatCurrency(proposal.tax)}
+                  </span>
+                </div>
                 
                 {proposal.roundOff !== 0 && (
                   <div className="flex justify-between items-center text-gray-500 text-xs">
@@ -211,6 +239,21 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
                   <span className="text-base font-bold text-gray-900">Grand Total</span>
                   <span className="text-xl font-bold text-blue-700">{formatCurrency(proposal.grandTotal)}</span>
                 </div>
+
+                {isUSD && (
+                  <div className="border-t border-dashed border-gray-300 pt-3 mt-3 text-xs text-gray-600 space-y-1">
+                    <div className="flex justify-between font-semibold text-gray-900">
+                      <span>INR Equivalent (RBI Rate):</span>
+                      <span>₹{inrEquivalent.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] text-gray-500 pt-0.5">
+                      <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:underline">
+                        Rates by Exchange Rate API
+                      </a>
+                      <span>Conversion Rate: ₹{exRate.toFixed(2)} / USD</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -345,7 +345,7 @@ export async function createServicePackage(data: ServicePackageSchema) {
             );
         }
 
-        const { name, description, serviceId, items, features } = validatedData.data
+        const { name, description, serviceId, items, features, sacCode } = validatedData.data
 
         const totalPrice = items.reduce(
             (sum, item) => sum + item.unitPrice * item.quantity,
@@ -362,6 +362,7 @@ export async function createServicePackage(data: ServicePackageSchema) {
                 serviceId,
                 totalPrice,
                 totalPriceUSD,
+                sacCode: sacCode || "9983",
                 items: {
                     create: items.map((item, index) => ({
                         name: item.name,
@@ -369,6 +370,7 @@ export async function createServicePackage(data: ServicePackageSchema) {
                         quantity: item.quantity,
                         unitPrice: item.unitPrice,
                         unitPriceUSD: item.unitPriceUSD,
+                        sacCode: item.sacCode || sacCode || "9983",
                         unit: item.unit,
                         billingCycle: item.billingCycle,
                         sortOrder: index,
@@ -432,7 +434,8 @@ export async function editServicePackage(
             items,
             features,
             isActive,
-            isPopular
+            isPopular,
+            sacCode
         } = validatedData.data;
 
         const totalPrice = items.reduce(
@@ -474,6 +477,7 @@ export async function editServicePackage(
                 existingPackage.serviceId !== serviceId ||
                 existingPackage.isActive !== isActive ||
                 existingPackage.isPopular !== isPopular ||
+                existingPackage.sacCode !== sacCode ||
                 existingPackage.totalPrice.toNumber() !== totalPrice ||
                 existingPackage.totalPriceUSD.toNumber() !== totalPriceUSD;
 
@@ -486,6 +490,7 @@ export async function editServicePackage(
                         serviceId,
                         isActive,
                         isPopular,
+                        sacCode: sacCode || "9983",
                         totalPrice,
                         totalPriceUSD,
                     },
@@ -548,6 +553,7 @@ export async function editServicePackage(
                         existingItem.quantity !== item.quantity ||
                         existingItem.unitPrice.toNumber() !== item.unitPrice ||
                         existingItem.unitPriceUSD.toNumber() !== item.unitPriceUSD ||
+                        existingItem.sacCode !== item.sacCode ||
                         existingItem.unit !== item.unit ||
                         existingItem.billingCycle !== item.billingCycle ||
                         existingItem.sortOrder !== index;
@@ -564,6 +570,7 @@ export async function editServicePackage(
                             quantity: item.quantity,
                             unitPrice: item.unitPrice,
                             unitPriceUSD: item.unitPriceUSD,
+                            sacCode: item.sacCode || sacCode || "9983",
                             unit: item.unit,
                             billingCycle: item.billingCycle,
                             sortOrder: index,
@@ -595,6 +602,7 @@ export async function editServicePackage(
                         quantity: item.quantity,
                         unitPrice: item.unitPrice,
                         unitPriceUSD: item.unitPriceUSD,
+                        sacCode: item.sacCode || sacCode || "9983",
                         unit: item.unit,
                         billingCycle: item.billingCycle,
                         sortOrder: item.sortOrder,

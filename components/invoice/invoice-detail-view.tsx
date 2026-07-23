@@ -18,7 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { ArrowLeftIcon, CreditCardIcon, CheckCircle2Icon, Loader2Icon, DownloadIcon, MailIcon, MessageCircleIcon, PencilIcon, Trash2Icon, HistoryIcon } from "lucide-react";
+import { ArrowLeftIcon, CreditCardIcon, CheckCircle2Icon, Loader2Icon, DownloadIcon, MailIcon, MessageCircleIcon, PencilIcon, Trash2Icon, HistoryIcon, LandmarkIcon } from "lucide-react";
 import Link from "next/link";
 import { PaymentMethodType } from "@/lib/schemas/invoice-schema";
 
@@ -344,35 +344,40 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
       )}
 
       {/* Printable Invoice Card */}
-      <Card id="invoice-printable-card" className={`bg-card ${isPdfMode ? "p-6 space-y-5 border-none shadow-none bg-white" : "p-6 md:p-10 space-y-8 shadow-sm border"}`}>
-        <div className="flex justify-between items-start gap-6 border-b pb-4">
+      <Card id="invoice-printable-card" className={`bg-card font-[family-name:var(--font-invoice)] p-5 md:p-6 space-y-3 shadow-sm border ${isPdfMode ? "p-5 space-y-3 border-none shadow-none bg-white" : ""}`}>
+        <div className="flex justify-between items-start gap-6 border-b pb-2">
           <div className="flex items-start gap-4">
             {companyLogoUrl && (
               <img
                 src={companyLogoUrl}
                 alt="Company Logo"
                 crossOrigin="anonymous"
-                className="h-16 max-w-[180px] object-contain rounded-md"
+                className="h-12 max-w-[150px] object-contain rounded-md"
               />
             )}
             <div>
-              <h2 className="text-xl font-bold text-gray-900">{invoice.company?.legalName || invoice.company?.displayName || "Bindzo8 CRM"}</h2>
-              <p className="text-sm text-muted-foreground whitespace-pre-line">{invoice.company?.address}</p>
-              {invoice.company?.gstNumber && <p className="text-sm text-muted-foreground">GST: {invoice.company.gstNumber}</p>}
-              {invoice.company?.email && <p className="text-sm text-muted-foreground">Email: {invoice.company.email}</p>}
+              <h2 className="text-lg font-bold text-gray-900 leading-tight">{invoice.company?.legalName || invoice.company?.displayName || "Bindzo8 CRM"}</h2>
+              <p className="text-xs text-muted-foreground whitespace-pre-line leading-normal">{invoice.company?.address}</p>
+              <div className="text-[11px] text-muted-foreground mt-0.5 font-mono flex items-center gap-3 flex-wrap">
+                {invoice.company?.gstNumber && <div>GSTIN: {invoice.company.gstNumber}</div>}
+                {invoice.company?.iecCode && <div>IEC: {invoice.company.iecCode}</div>}
+                {invoice.company?.email && <div>Email: {invoice.company.email}</div>}
+              </div>
             </div>
           </div>
 
           <div className="text-left md:text-right">
-            <h2 className="text-2xl font-bold tracking-tight text-gray-900">INVOICE</h2>
-            <p className="text-sm font-medium text-foreground">
+            <h2 className="text-lg font-bold tracking-tight text-gray-900 leading-tight">
+              {invoice.currency === "USD" ? "EXPORT COMMERCIAL INVOICE" : "INVOICE"}
+            </h2>
+            <p className="text-xs font-medium text-foreground">
               INV-{String(invoice.invoiceNumber).padStart(4, "0")}
             </p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-[11px] text-muted-foreground">
               Issued: {new Date(invoice.createdAt).toLocaleDateString("en-IN")}
             </p>
             {invoice.dueDate && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[11px] text-muted-foreground">
                 Due: {new Date(invoice.dueDate).toLocaleDateString("en-IN")}
               </p>
             )}
@@ -380,98 +385,135 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
         </div>
 
         {/* Client & Bank Details */}
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-2 gap-4">
           <div>
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Billed To</h3>
-            <div className="font-semibold text-base">{invoice.customerDisplayName}</div>
+            <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Billed To (Importer)</h3>
+            <div className="font-semibold text-sm leading-snug">{invoice.customerDisplayName}</div>
             {invoice.customerCompanyName && (
-              <div className="text-sm text-muted-foreground">{invoice.customerCompanyName}</div>
+              <div className="text-xs text-muted-foreground">{invoice.customerCompanyName}</div>
             )}
-            <div className="text-sm text-muted-foreground mt-1">
-              {invoice.customer.primaryContactEmail && <div>{invoice.customer.primaryContactEmail}</div>}
-              {invoice.customer.primaryContactPhone && (
-                <div className="font-mono text-sm font-medium tracking-normal mt-0.5">{invoice.customer.primaryContactPhone}</div>
+            <div className="text-xs text-muted-foreground mt-0.5 space-y-0.5">
+              {invoice.customer?.primaryContactEmail && <div>{invoice.customer.primaryContactEmail}</div>}
+              {invoice.customer?.primaryContactPhone && (
+                <div className="font-mono text-xs font-medium tracking-normal">{invoice.customer.primaryContactPhone}</div>
+              )}
+              {invoice.customer?.taxId && (
+                <div className="font-mono text-[11px] font-medium text-gray-700">Client Tax ID / EIN: {invoice.customer.taxId}</div>
               )}
             </div>
           </div>
 
-          {invoice.bankAccount && (
-            <div>
-              <h3 className="text-xs font-semibold text-muted-foreground tracking-wider mb-2 uppercase">Payment Details</h3>
-              <div className="text-sm font-medium uppercase">{invoice.bankAccount.bankName}</div>
-              <div className="text-sm text-muted-foreground">Account Name: <span className="uppercase">{invoice.bankAccount.accountName}</span></div>
-              <div className="text-sm text-muted-foreground">Account No: <span className="uppercase font-mono">{invoice.bankAccount.accountNumber}</span></div>
-              <div className="text-sm text-muted-foreground">IFSC: <span className="uppercase font-mono">{invoice.bankAccount.ifscCode}</span></div>
+          {invoice.currency === "USD" && (
+            <div className="text-xs space-y-0.5 self-start">
+              <div className="font-semibold text-[11px] uppercase tracking-wider text-muted-foreground">
+                Export Compliance (LUT Route)
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[11px] text-muted-foreground">
+                <div><span className="font-semibold font-sans text-foreground">LUT ARN:</span> {invoice.company?.lutNumber || "Active LUT"}</div>
+                <div><span className="font-semibold font-sans text-foreground">IEC Code:</span> {invoice.company?.iecCode || "10-digit IEC"}</div>
+                <div><span className="font-semibold font-sans text-foreground">GSTIN:</span> {invoice.company?.gstNumber || "15-digit GST"}</div>
+                <div><span className="font-semibold font-sans text-foreground">Place of Supply:</span> {invoice.placeOfSupply || "Foreign Country"}</div>
+              </div>
             </div>
           )}
         </div>
 
         {/* Line Items Table */}
-        <div className="border rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="border rounded-md overflow-hidden">
+          <table className="w-full text-xs">
             <thead className="bg-muted text-muted-foreground">
               <tr>
-                <th className="text-left p-3 font-medium">Item & Description</th>
-                <th className="text-center p-3 font-medium">Qty</th>
-                <th className="text-right p-3 font-medium">Rate</th>
-                <th className="text-right p-3 font-medium">Tax %</th>
-                <th className="text-right p-3 font-medium">Amount</th>
+                <th className="text-left py-1.5 px-2.5 font-medium">Item & Description</th>
+                <th className="text-center py-1.5 px-2.5 font-medium">Qty</th>
+                <th className="text-right py-1.5 px-2.5 font-medium">Rate</th>
+                <th className="text-right py-1.5 px-2.5 font-medium">SAC / Tax %</th>
+                <th className="text-right py-1.5 px-2.5 font-medium">Amount</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {invoice.lineItems.map((item: any) => (
                 <tr key={item.id}>
-                  <td className="p-3">
-                    <div className="flex items-center gap-2 flex-wrap">
+                  <td className="py-1.5 px-2.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="font-medium text-foreground">{item.name}</span>
-                      {(item.servicePackage?.service?.name || item.servicePackage?.name) && (
-                        <span className="inline-block text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                          {item.servicePackage?.service?.name || item.servicePackage?.name}
+                      {item.servicePackage && (
+                        <span className="inline-block text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                          {item.servicePackage.service?.name && item.servicePackage.name
+                            ? `${item.servicePackage.service.name} • ${item.servicePackage.name}`
+                            : item.servicePackage.service?.name || item.servicePackage.name}
                         </span>
                       )}
                       {item.billingCycle && (
-                        <span className="inline-block text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200">
+                        <span className="inline-block text-[9px] font-bold uppercase tracking-wide px-1 py-0.2 rounded bg-gray-100 text-gray-700 border border-gray-200">
                           {item.billingCycle.replace("_", " ")}
                         </span>
                       )}
                     </div>
                     {item.description && (
-                      <div className="text-xs text-muted-foreground mt-0.5">{item.description}</div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5">{item.description}</div>
                     )}
                   </td>
-                  <td className="p-3 text-center">{item.quantity} {item.unit}</td>
-                  <td className="p-3 text-right">{symbol}{item.unitPrice.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
-                  <td className="p-3 text-right">{item.taxRate}%</td>
-                  <td className="p-3 text-right font-medium">{symbol}{item.total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                  <td className="py-1.5 px-2.5 text-center">{item.quantity} {item.unit}</td>
+                  <td className="py-1.5 px-2.5 text-right">{symbol}{item.unitPrice.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                  <td className="py-1.5 px-2.5 text-right">
+                    <div className="text-[11px] font-mono font-medium text-gray-700">SAC: {item.sacCode || "9983"}</div>
+                    <div className="text-[9px] text-muted-foreground">{invoice.currency === "USD" ? "0% (Nil)" : `${item.taxRate}%`}</div>
+                  </td>
+                  <td className="py-1.5 px-2.5 text-right font-medium">{symbol}{item.total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
                 </tr>
               ))}
             </tbody>
+            {invoice.currency === "USD" && (
+              <tfoot>
+                <tr className="border-t bg-muted/20">
+                  <td colSpan={5} className="py-1 px-2.5 text-center text-[11px] text-muted-foreground font-medium italic">
+                    &ldquo;Supply meant for export under LUT without payment of Integrated Tax&rdquo;
+                  </td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
 
         {/* Totals & Payments */}
-        <div className="flex justify-between items-start gap-6 pt-4 border-t">
-          <div className="space-y-2 text-sm text-muted-foreground max-w-md">
+        <div className="flex justify-between items-start gap-4 pt-2.5 border-t">
+          <div className="space-y-2 text-xs max-w-md">
             {invoice.notes && (
-              <div>
+              <div className="text-muted-foreground">
                 <span className="font-medium text-foreground">Notes: </span> {invoice.notes}
               </div>
             )}
             {invoice.terms && (
-              <div>
+              <div className="text-muted-foreground">
                 <span className="font-medium text-foreground">Terms: </span> {invoice.terms}
+              </div>
+            )}
+
+            {invoice.bankAccount && (
+              <div className="space-y-0.5 text-[11px] text-muted-foreground pt-0.5">
+                <div className="font-semibold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1 mb-0.5">
+                  <LandmarkIcon className="h-3 w-3 text-foreground" />
+                  <span>Payment Details</span>
+                </div>
+                <div className="font-semibold text-foreground uppercase">{invoice.bankAccount.bankName}</div>
+                <div>Account Name: <span className="font-medium text-foreground uppercase">{invoice.bankAccount.accountName}</span></div>
+                <div>Account No: <span className="font-mono font-medium text-foreground">{invoice.bankAccount.accountNumber}</span></div>
+                <div>IFSC: <span className="font-mono font-medium text-foreground uppercase">{invoice.bankAccount.ifscCode}</span></div>
+                {invoice.bankAccount.swiftCode && (
+                  <div>SWIFT Code (FIRC): <span className="font-mono font-semibold text-foreground">{invoice.bankAccount.swiftCode}</span></div>
+                )}
               </div>
             )}
           </div>
 
-          <div className="w-full md:w-72 space-y-2 text-sm">
+          <div className="w-full md:w-64 space-y-1.5 text-xs">
             <div className="flex justify-between text-muted-foreground">
               <span>Subtotal</span>
               <span>{symbol}{invoice.subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
             </div>
             <div className="flex justify-between text-muted-foreground">
-              <span>Tax Amount</span>
-              <span>{symbol}{invoice.tax.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+              <span>IGST / Tax</span>
+              <span>{invoice.currency === "USD" ? "0% (Nil)" : `${symbol}${invoice.tax.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`}</span>
             </div>
             {invoice.discount > 0 && (
               <div className="flex justify-between text-gray-700">
@@ -479,11 +521,32 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
                 <span>-{symbol}{invoice.discount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
               </div>
             )}
-            <div className="flex justify-between font-bold text-base pt-2 border-t text-gray-900">
+            <div className="flex justify-between font-bold text-sm pt-1.5 border-t text-gray-900">
               <span>Grand Total</span>
               <span>{symbol}{invoice.grandTotal.toLocaleString("en-IN")}</span>
             </div>
-            <div className="flex justify-between text-gray-900 font-medium">
+
+            {invoice.currency === "USD" && (
+              <div className="border-t border-dashed border-gray-300 pt-1 mt-1 text-[11px] text-gray-600 space-y-0.5">
+                <div className="flex justify-between font-semibold text-gray-900">
+                  <span>INR Equivalent (RBI Rate):</span>
+                  <span>₹{(invoice.grandTotal * (invoice.exchangeRate || 83.5)).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between text-[10px] text-muted-foreground">
+                  <a
+                    href="https://www.exchangerate-api.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:underline text-blue-600"
+                  >
+                    Rates by Exchange Rate API
+                  </a>
+                  <span>Rate: ₹{(invoice.exchangeRate || 83.5).toFixed(2)} / USD</span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-between text-gray-900 font-medium pt-2 border-t">
               <span>Paid</span>
               <span>{symbol}{invoice.amountPaid.toLocaleString("en-IN")}</span>
             </div>

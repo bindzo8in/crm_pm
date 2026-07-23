@@ -15,6 +15,7 @@ export type ServicePackageSearchResult = {
   description: string | null;
   totalPrice: number;
   totalPriceUSD: number;
+  sacCode?: string | null;
   items: Array<{
     id: string;
     name: string;
@@ -22,6 +23,7 @@ export type ServicePackageSearchResult = {
     quantity: number;
     unitPrice: number;
     unitPriceUSD: number;
+    sacCode?: string | null;
     unit: string;
     billingCycle: "ONE_TIME" | "MONTHLY" | "QUARTERLY" | "HALF_YEARLY" | "YEARLY";
   }>;

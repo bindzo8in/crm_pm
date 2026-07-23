@@ -41,6 +41,8 @@ export function CompanyProfileForm({ defaultValues }: { defaultValues?: any }) {
             gstNumber: defaultValues?.gstNumber || "",
             panNumber: defaultValues?.panNumber || "",
             cinNumber: defaultValues?.cinNumber || "",
+            iecCode: defaultValues?.iecCode || "",
+            lutNumber: defaultValues?.lutNumber || "",
 
             address: defaultValues?.address || "",
             city: defaultValues?.city || "",
@@ -263,6 +265,30 @@ export function CompanyProfileForm({ defaultValues }: { defaultValues?: any }) {
                         <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full md:col-span-2">
                             <FieldLabel htmlFor="cinNumber">CIN Number</FieldLabel>
                             <Input {...field} value={field.value || ""} id="cinNumber" />
+                            {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                        </Field>
+                    )}
+                />
+
+                <Controller
+                    name="iecCode"
+                    control={form.control}
+                    render={({ field, fieldState }) => (
+                        <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full md:col-span-3">
+                            <FieldLabel htmlFor="iecCode">IEC Code (Import Export Code)</FieldLabel>
+                            <Input {...field} value={field.value || ""} id="iecCode" placeholder="10-digit IEC Code" />
+                            {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                        </Field>
+                    )}
+                />
+
+                <Controller
+                    name="lutNumber"
+                    control={form.control}
+                    render={({ field, fieldState }) => (
+                        <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full md:col-span-3">
+                            <FieldLabel htmlFor="lutNumber">LUT Application Ref No. (ARN)</FieldLabel>
+                            <Input {...field} value={field.value || ""} id="lutNumber" placeholder="e.g. AD270324001234E" />
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                         </Field>
                     )}

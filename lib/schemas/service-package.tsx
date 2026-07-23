@@ -22,6 +22,8 @@ export const packageItemSchema = z.object({
     .number()
     .min(0, "Unit price USD must be positive"),
 
+  sacCode: z.string().optional(),
+
   unit: z.string().nonempty("Unit is required"),
 
   billingCycle: z.enum(BillingCycle),
@@ -51,6 +53,8 @@ export const servicePackageSchema = z.object({
     .min(2, "Package name is required"),
 
   description: z.string().optional(),
+
+  sacCode: z.string().optional(),
 
   isPopular: z.boolean(),
 

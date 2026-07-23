@@ -454,6 +454,7 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                                             quantity: 1,
                                             unitPrice: 0,
                                             unitPriceUSD: 0,
+                                            sacCode: "9983",
                                             unit: "",
                                             billingCycle: "MONTHLY",
                                             sortOrder: itemFields.length,

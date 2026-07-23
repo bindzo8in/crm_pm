@@ -16,6 +16,8 @@ export const companySchema = z.object({
   gstNumber: z.string().optional().nullable(),
   panNumber: z.string().optional().nullable(),
   cinNumber: z.string().optional().nullable(),
+  iecCode: z.string().optional().nullable(),
+  lutNumber: z.string().optional().nullable(),
 
   address: z.string().min(1, "Address is required"),
   city: z.string().min(1, "City is required"),

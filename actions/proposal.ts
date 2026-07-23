@@ -1,5 +1,6 @@
 "use server"
 
+import { Prisma } from "@/app/generated/prisma/client";
 import { ProposalWhereInput } from "@/app/generated/prisma/models";
 import { errorResponse, successResponse } from "@/lib/action-response";
 import { auth } from "@/lib/auth";
@@ -43,7 +44,7 @@ export async function createProposal(proposal: ProposalSchema) {
             );
         }
 
-        const { customerDisplayName, customerCompanyName, title, customerId, validUntil, notes } = validatedData.data
+        const { customerDisplayName, customerCompanyName, title, customerId, validUntil, currency, exchangeRate, placeOfSupply, notes } = validatedData.data
 
         const validityDays = {
             "07_Days": 7,
@@ -66,7 +67,9 @@ export async function createProposal(proposal: ProposalSchema) {
                 title: title || "",
                 notes,
                 validUntil: validUntilDate,
-                currency: "INR",
+                currency: currency || "INR",
+                exchangeRate: exchangeRate !== undefined && exchangeRate !== null ? new Prisma.Decimal(exchangeRate) : new Prisma.Decimal(83.50),
+                placeOfSupply: placeOfSupply || null,
                 status: "DRAFT",
             }
         })
@@ -181,6 +184,9 @@ export async function updateProposal(id: string, data: ProposalSchema) {
                 title: restData.title || "",
                 notes: restData.notes,
                 validUntil: validUntilDate,
+                ...(restData.currency ? { currency: restData.currency } : {}),
+                ...(restData.exchangeRate !== undefined ? { exchangeRate: restData.exchangeRate !== null ? new Prisma.Decimal(restData.exchangeRate) : null } : {}),
+                ...(restData.placeOfSupply !== undefined ? { placeOfSupply: restData.placeOfSupply } : {}),
             }
         });
 
