@@ -1,8 +1,8 @@
 "use server";
 
 import { ActionResponse, successResponse } from "@/lib/action-response";
-import countriesData from "@/data/countries.json";
-import statesData from "@/data/states.json";
+import countriesData from "../data/countries.json";
+import statesData from "../data/states.json";
 
 export interface LocationItem {
   id: number;
