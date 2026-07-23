@@ -391,6 +391,18 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                                 />
 
                                 <Controller
+                                    name="sacCode"
+                                    control={control}
+                                    render={({ field, fieldState }) => (
+                                        <Field data-invalid={fieldState.invalid} className="gap-1.5">
+                                            <FieldLabel htmlFor="sacCode">HSN / SAC Code</FieldLabel>
+                                            <Input {...field} value={field.value || "9983"} id="sacCode" placeholder="e.g. 9983" className="max-w-xs font-mono" />
+                                            {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                                        </Field>
+                                    )}
+                                />
+
+                                <Controller
                                     name="description"
                                     control={control}
                                     render={({ field, fieldState }) => (

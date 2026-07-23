@@ -269,7 +269,11 @@ export async function importServicePackageToProposal(data: ImportServicePackageS
 
       if (servicePackage.items.length > 0) {
         const lineItemsData = servicePackage.items.map((item, idx) => {
-          const unitPriceNum = isUSD ? item.unitPriceUSD.toNumber() : item.unitPrice.toNumber();
+          const usdVal = item.unitPriceUSD.toNumber();
+          const inrVal = item.unitPrice.toNumber();
+          const unitPriceNum = isUSD
+            ? (usdVal > 0 ? usdVal : Number((inrVal / 83.5).toFixed(2)))
+            : inrVal;
           const totalNum = unitPriceNum * item.quantity;
           return {
             proposalServiceId: createdService.id,

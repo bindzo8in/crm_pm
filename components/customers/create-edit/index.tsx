@@ -30,6 +30,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CreateCustomer, UpdateCustomer } from "@/actions/customer";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { LocationAutocomplete } from "@/components/ui/location-autocomplete";
+import { useEffect, useState } from "react";
 import { PhoneInput } from "@/components/reui/phone-input";
 import { Customer } from "@/app/generated/prisma/client";
 
@@ -418,15 +420,13 @@ export function CustomerForm({ defaultValues, error }: { defaultValues?: Custome
                             className="gap-1 col-span-full"
                         >
                             <FieldLabel htmlFor="state">State </FieldLabel>
-                            <Input
-                                {...field}
+                            <LocationAutocomplete
+                                type="state"
                                 id="state"
-                                type="text"
-                                onChange={(e) => {
-                                    field.onChange(e.target.value);
-                                }}
-                                aria-invalid={fieldState.invalid}
-                                placeholder="Enter state"
+                                value={field.value || ""}
+                                onChange={field.onChange}
+                                countryCode={form.watch("country")}
+                                placeholder="Start typing state name (e.g. Tamil Nadu)..."
                             />
 
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
@@ -443,15 +443,12 @@ export function CustomerForm({ defaultValues, error }: { defaultValues?: Custome
                             className="gap-1 col-span-full"
                         >
                             <FieldLabel htmlFor="country">Country </FieldLabel>
-                            <Input
-                                {...field}
+                            <LocationAutocomplete
+                                type="country"
                                 id="country"
-                                type="text"
-                                onChange={(e) => {
-                                    field.onChange(e.target.value);
-                                }}
-                                aria-invalid={fieldState.invalid}
-                                placeholder="Enter country"
+                                value={field.value || ""}
+                                onChange={field.onChange}
+                                placeholder="Start typing country name (e.g. India)..."
                             />
 
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
@@ -582,15 +579,13 @@ export function CustomerForm({ defaultValues, error }: { defaultValues?: Custome
                             className="gap-1 col-span-full"
                         >
                             <FieldLabel htmlFor="billingState">Billing State </FieldLabel>
-                            <Input
-                                {...field}
+                            <LocationAutocomplete
+                                type="state"
                                 id="billingState"
-                                type="text"
-                                onChange={(e) => {
-                                    field.onChange(e.target.value);
-                                }}
-                                aria-invalid={fieldState.invalid}
-                                placeholder="Enter billing state"
+                                value={field.value || ""}
+                                onChange={field.onChange}
+                                countryCode={form.watch("billingCountry") || form.watch("country")}
+                                placeholder="Start typing billing state name..."
                             />
 
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
@@ -607,15 +602,12 @@ export function CustomerForm({ defaultValues, error }: { defaultValues?: Custome
                             className="gap-1 col-span-full"
                         >
                             <FieldLabel htmlFor="billingCountry">Billing Country </FieldLabel>
-                            <Input
-                                {...field}
+                            <LocationAutocomplete
+                                type="country"
                                 id="billingCountry"
-                                type="text"
-                                onChange={(e) => {
-                                    field.onChange(e.target.value);
-                                }}
-                                aria-invalid={fieldState.invalid}
-                                placeholder="Enter billing country"
+                                value={field.value || ""}
+                                onChange={field.onChange}
+                                placeholder="Start typing billing country name..."
                             />
 
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}

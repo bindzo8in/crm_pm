@@ -235,7 +235,7 @@ model ServicePackage {
 
   totalPrice    Decimal @default(0) @db.Decimal(12, 2)
   totalPriceUSD Decimal @default(0) @db.Decimal(12, 2)
-  sacCode       String? @default("9983")
+  sacCode       String? @default("9983") // HSN / SAC Code
 
   items    ServicePackageItem[]
   features PackageFeature[]
@@ -823,5 +823,31 @@ model ExchangeRateCache {
   targetCurrency String   @default("INR")
   rate           Decimal  @db.Decimal(10, 4)
   updatedAt      DateTime @updatedAt
+}
+
+model Country {
+  id        Int     @id
+  name      String
+  iso2      String
+  iso3      String?
+  phonecode String?
+  currency  String?
+  emoji     String?
+  states    State[]
+
+  @@index([name])
+  @@index([iso2])
+}
+
+model State {
+  id          Int     @id
+  name        String
+  countryId   Int
+  countryCode String
+  country     Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+
+  @@index([name])
+  @@index([countryId])
+  @@index([countryCode])
 }
 

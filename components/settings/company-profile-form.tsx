@@ -19,6 +19,7 @@ import { UpdateCompany } from "@/actions/company";
 import { toast } from "sonner";
 import { PhoneInput } from "@/components/reui/phone-input";
 import { ImageUpload } from "@/components/ui/image-upload";
+import { LocationAutocomplete } from "@/components/ui/location-autocomplete";
 
 export function CompanyProfileForm({ defaultValues }: { defaultValues?: any }) {
     const queryClient = useQueryClient();
@@ -333,7 +334,14 @@ export function CompanyProfileForm({ defaultValues }: { defaultValues?: any }) {
                     render={({ field, fieldState }) => (
                         <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full md:col-span-3">
                             <FieldLabel htmlFor="state">State</FieldLabel>
-                            <Input {...field} id="state" />
+                            <LocationAutocomplete
+                                type="state"
+                                id="state"
+                                value={field.value || ""}
+                                onChange={field.onChange}
+                                countryCode={form.watch("country")}
+                                placeholder="Start typing state name (e.g. Tamil Nadu)..."
+                            />
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                         </Field>
                     )}
@@ -345,7 +353,13 @@ export function CompanyProfileForm({ defaultValues }: { defaultValues?: any }) {
                     render={({ field, fieldState }) => (
                         <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full md:col-span-3">
                             <FieldLabel htmlFor="country">Country</FieldLabel>
-                            <Input {...field} id="country" />
+                            <LocationAutocomplete
+                                type="country"
+                                id="country"
+                                value={field.value || ""}
+                                onChange={field.onChange}
+                                placeholder="Start typing country name (e.g. India)..."
+                            />
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                         </Field>
                     )}

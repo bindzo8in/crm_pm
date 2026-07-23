@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PlusIcon, Trash2Icon, ArrowLeftIcon, SaveIcon, Loader2Icon, RefreshCwIcon } from "lucide-react";
 import Link from "next/link";
 import { InvoiceLineItemInput } from "@/lib/schemas/invoice-schema";
+import { LocationAutocomplete } from "@/components/ui/location-autocomplete";
 
 export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
   const router = useRouter();
@@ -31,38 +32,40 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
   const [dueDate, setDueDate] = useState(
     initialData?.dueDate ? new Date(initialData.dueDate).toISOString().slice(0, 10) : ""
   );
-  const [notes, setNotes] = useState(initialData?.notes || "");
-  const [terms, setTerms] = useState(initialData?.terms || "");
+  const [notes, setNotes] = useState(
+    initialData?.notes ?? "Thank you for choosing our services. Please reach out if you have any questions regarding this invoice."
+  );
+  const [terms, setTerms] = useState(initialData?.terms ?? "Due on Receipt");
   const [bankAccountId, setBankAccountId] = useState(initialData?.bankAccountId || "");
   const [discount, setDiscount] = useState(initialData?.discount || 0);
 
   const [lineItems, setLineItems] = useState<any[]>(
     initialData?.lineItems && initialData.lineItems.length > 0
       ? initialData.lineItems.map((li: any) => ({
-          id: li.id,
-          servicePackageId: li.servicePackageId || null,
-          serviceName: li.servicePackage?.service?.name || li.servicePackage?.name || null,
-          name: li.name,
-          description: li.description || "",
-          quantity: li.quantity,
-          unit: li.unit || "item",
-          unitPrice: li.unitPrice,
-          taxRate: initialData?.currency === "USD" ? 0 : (li.taxRate || 18),
-          sacCode: li.sacCode || "9983",
-          billingCycle: li.billingCycle || "ONE_TIME",
-        }))
+        id: li.id,
+        servicePackageId: li.servicePackageId || null,
+        serviceName: li.servicePackage?.service?.name || li.servicePackage?.name || null,
+        name: li.name,
+        description: li.description || "",
+        quantity: li.quantity,
+        unit: li.unit || "item",
+        unitPrice: li.unitPrice,
+        taxRate: initialData?.currency === "USD" ? 0 : (li.taxRate || 18),
+        sacCode: li.sacCode || "9983",
+        billingCycle: li.billingCycle || "ONE_TIME",
+      }))
       : [
-          {
-            name: "",
-            description: "",
-            quantity: 1,
-            unit: "item",
-            unitPrice: 0,
-            taxRate: 18,
-            sacCode: "9983",
-            billingCycle: "ONE_TIME",
-          },
-        ]
+        {
+          name: "",
+          description: "",
+          quantity: 1,
+          unit: "item",
+          unitPrice: 0,
+          taxRate: 18,
+          sacCode: "9983",
+          billingCycle: "ONE_TIME",
+        },
+      ]
   );
 
   useEffect(() => {
@@ -98,18 +101,26 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
   };
 
   const handleAddPackage = (pkg: ServicePackageSearchResult) => {
-    const newItems = pkg.items.map((item) => ({
-      servicePackageId: pkg.id,
-      serviceName: pkg.serviceName ? `${pkg.serviceName} • ${pkg.name}` : pkg.name,
-      name: item.name,
-      description: item.description || pkg.description || "",
-      quantity: item.quantity,
-      unit: item.unit,
-      unitPrice: currency === "USD" && item.unitPriceUSD > 0 ? item.unitPriceUSD : item.unitPrice,
-      taxRate: currency === "USD" ? 0 : 18,
-      sacCode: item.sacCode || pkg.sacCode || "9983",
-      billingCycle: item.billingCycle,
-    }));
+    const newItems = pkg.items.map((item) => {
+      const inrPrice = item.unitPrice;
+      const usdPrice = item.unitPriceUSD && item.unitPriceUSD > 0
+        ? item.unitPriceUSD
+        : Number((item.unitPrice / (exchangeRate || 83.5)).toFixed(2));
+      const priceToUse = currency === "USD" ? usdPrice : inrPrice;
+
+      return {
+        servicePackageId: pkg.id,
+        serviceName: pkg.serviceName || null,
+        name: item.name && item.name.toLowerCase() !== "package" ? item.name : (pkg.serviceName ? `${pkg.serviceName} - ${pkg.name}` : pkg.name),
+        description: item.description || pkg.description || "",
+        quantity: item.quantity,
+        unit: item.unit,
+        unitPrice: priceToUse,
+        taxRate: currency === "USD" ? 0 : 18,
+        sacCode: item.sacCode || pkg.sacCode || "9983",
+        billingCycle: item.billingCycle,
+      };
+    });
 
     if (lineItems.length === 1 && !lineItems[0].name.trim()) {
       setLineItems(newItems);
@@ -199,13 +210,46 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
     }
   };
 
+  const hasFormData = () => {
+    const hasLineItemsData =
+      lineItems.some(
+        (item) => item.name.trim() !== "" || item.unitPrice > 0 || (item.description && item.description.trim() !== "")
+      ) || lineItems.length > 1;
+
+    const hasHeaderData = customerId !== "" || title.trim() !== "" || placeOfSupply.trim() !== "";
+
+    return hasLineItemsData || hasHeaderData;
+  };
+
   const handleCurrencyChange = (val: string) => {
+    if (val === currency) return;
+
+    if (hasFormData()) {
+      const confirmed = window.confirm(
+        "Changing currency mode will reset your form line items and data. Do you want to proceed?"
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
     setCurrency(val);
+    setDiscount(0);
+    setLineItems([
+      {
+        name: "",
+        description: "",
+        quantity: 1,
+        unit: "item",
+        unitPrice: 0,
+        taxRate: val === "USD" ? 0 : 18,
+        sacCode: "9983",
+        billingCycle: "ONE_TIME",
+      },
+    ]);
+
     if (val === "USD") {
-      setLineItems((prev) => prev.map((item) => ({ ...item, taxRate: 0 })));
       handleFetchRate();
-    } else {
-      setLineItems((prev) => prev.map((item) => ({ ...item, taxRate: item.taxRate === 0 ? 18 : item.taxRate })));
     }
   };
 
@@ -248,12 +292,12 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
         </div>
       </div>
 
-      <Card>
+      <Card className="overflow-visible relative z-20">
         <CardHeader>
           <CardTitle>Invoice Details</CardTitle>
           <CardDescription>Select customer and basic invoice parameters</CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-visible">
           <div className="space-y-2">
             <label className="text-sm font-medium">Customer *</label>
             <Select value={customerId} onValueChange={setCustomerId}>
@@ -334,10 +378,11 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Place of Supply (Destination Country) *</label>
-                <Input
-                  placeholder="e.g. United States or State Code 96"
+                <LocationAutocomplete
+                  type="country"
                   value={placeOfSupply}
-                  onChange={(e) => setPlaceOfSupply(e.target.value)}
+                  onChange={setPlaceOfSupply}
+                  placeholder="Start typing destination country (e.g. United States)..."
                 />
               </div>
             </>
@@ -345,7 +390,7 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="relative z-10">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Line Items</CardTitle>
@@ -361,7 +406,7 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
             <div className="col-span-2">Billing Cycle</div>
             <div className="col-span-1 text-center">Qty</div>
             <div className="col-span-2 text-right">Unit Price ({currency === "USD" ? "$" : "₹"})</div>
-            <div className="col-span-2 text-center">SAC Code</div>
+            <div className="col-span-2 text-center">HSN / SAC</div>
             <div className="col-span-2 text-right">Tax Rate</div>
           </div>
 

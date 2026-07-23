@@ -4,6 +4,7 @@ import { ActionResponse, successResponse } from "@/lib/action-response";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@/app/generated/prisma/client";
 import { getErrorMessage } from "@/lib/schemas/prisma-utils";
+import { env } from "@/lib/env";
 
 export interface ExchangeRateResult {
   rate: number;
@@ -40,7 +41,12 @@ export async function getLiveExchangeRate(
     }
 
     // 2. Fetch fresh rate from external API if stale (>24h) or missing
-    const response = await fetch(`https://open.er-api.com/v6/latest/${base}`, {
+    const apiKey = env.EXCHANGE_RATE_API_KEY;
+    const apiUrl = apiKey
+      ? `https://v6.exchangerate-api.com/v6/${apiKey}/latest/${base}`
+      : `https://open.er-api.com/v6/latest/${base}`;
+
+    const response = await fetch(apiUrl, {
       next: { revalidate: 86400 },
     });
 
