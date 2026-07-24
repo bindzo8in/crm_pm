@@ -43,4 +43,6 @@ next-env.d.ts
 /app/generated/prisma
 
 #data
-/data
+/data/*
+!/data/countries.json
+!/data/states.json
