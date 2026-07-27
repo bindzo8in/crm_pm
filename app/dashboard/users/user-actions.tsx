@@ -13,8 +13,10 @@ import {
     Copy,
     CopyCheck,
     UserKey,
+    Building2,
 } from "lucide-react";
 import { ChangeRoleDialog } from "./change-role-dialog";
+import { ChangeDepartmentDialog } from "./change-department-dialog";
 import type { UserWithRole } from "better-auth/plugins/admin";
 import { useSession } from "@/lib/auth-client";
 import { UserRole } from "@/app/generated/prisma/enums";
@@ -23,6 +25,7 @@ export const UserActions = ({ user }: { user: UserWithRole }) => {
     const { data: session } = useSession();
     const [copied, setCopied] = useState(false);
     const [roleDialogOpen, setRoleDialogOpen] = useState(false);
+    const [deptDialogOpen, setDeptDialogOpen] = useState(false);
 
     const onCopy = async () => {
         await navigator.clipboard.writeText(user.id);
@@ -39,6 +42,10 @@ export const UserActions = ({ user }: { user: UserWithRole }) => {
         currentUserRole === UserRole.SUPER_ADMIN ||
         user.role !== UserRole.SUPER_ADMIN;
     const isMe = user.id === session?.user.id
+
+    const canAssignDepartment =
+        currentUserRole === UserRole.SUPER_ADMIN ||
+        (currentUserRole === UserRole.ADMIN && user.role !== UserRole.SUPER_ADMIN);
 
     return (
         <>
@@ -62,6 +69,16 @@ export const UserActions = ({ user }: { user: UserWithRole }) => {
 
                     <DropdownMenuItem
                         onSelect={() => {
+                            setDeptDialogOpen(true);
+                        }}
+                        disabled={!canAssignDepartment}
+                    >
+                        <Building2 />
+                        Assign Department
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                        onSelect={() => {
                             setRoleDialogOpen(true);
                         }}
                         disabled={!canManageRole || isMe}
@@ -75,6 +92,14 @@ export const UserActions = ({ user }: { user: UserWithRole }) => {
             <ChangeRoleDialog
                 open={roleDialogOpen}
                 onOpenChange={setRoleDialogOpen}
+                user={user}
+                currentUserRole={currentUserRole}
+                currentUserId={session?.user.id ?? ""}
+            />
+
+            <ChangeDepartmentDialog
+                open={deptDialogOpen}
+                onOpenChange={setDeptDialogOpen}
                 user={user}
                 currentUserRole={currentUserRole}
                 currentUserId={session?.user.id ?? ""}

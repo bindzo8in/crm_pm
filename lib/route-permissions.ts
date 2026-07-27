@@ -37,6 +37,10 @@ export const routePermissions: RoutePermission[] = [
     path: "/dashboard/attendance",
     roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF]
   },
+  {
+    path: "/attendance",
+    roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF]
+  },
 
   // Accessible only by SUPER_ADMIN and ADMIN (STAFF denied)
   {

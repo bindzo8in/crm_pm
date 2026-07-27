@@ -869,32 +869,45 @@ enum WorkMode {
 }
 
 model AttendanceRecord {
-  id             String           @id @default(cuid())
-  userId         String
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date           DateTime         @db.Date
-  clockIn        DateTime
-  clockOut       DateTime?
-  status         AttendanceStatus @default(PRESENT)
-  workMode       WorkMode         @default(OFFICE)
-  ipAddress      String?
-  userAgent      String?
-  deviceInfo     String?
-  latitude       Float?
-  longitude      Float?
-  locationName   String?
-  selfieUrl      String?
-  selfiePublicId String?
-  notes          String?
-  earlyLeave     Boolean          @default(false)
-  breaks         AttendanceBreak[]
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  id                   String               @id @default(cuid())
+  userId               String
+  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date                 DateTime             @db.Date
+  clockIn              DateTime
+  clockOut             DateTime?
+  status               AttendanceStatus     @default(PRESENT)
+  workMode             WorkMode             @default(OFFICE)
+  department           Department?
+  ipAddress            String?
+  userAgent            String?
+  deviceInfo           String?
+  latitude             Float?
+  longitude            Float?
+  locationName         String?
+  selfieUrl            String?
+  selfiePublicId       String?
+  notes                String?
+  earlyLeave           Boolean              @default(false)
+  lateMinutes          Int                  @default(0)
+  earlyLeaveMinutes    Int                  @default(0)
+  workMinutes          Int                  @default(0)
+  breakMinutes         Int                  @default(0)
+  overtimeMinutes      Int                  @default(0)
+  regularized          Boolean              @default(false)
+  regularizedBy        String?
+  regularizationReason String?
+  isAutoCheckedOut     Boolean              @default(false)
+  distanceFromOffice   Int?
+  breaks               AttendanceBreak[]
+  auditLogs            AttendanceAuditLog[]
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
 
   @@unique([userId, date])
   @@index([userId])
   @@index([date])
   @@index([status])
+  @@index([department])
   @@map("attendance_record")
 }
 
@@ -912,12 +925,35 @@ model AttendanceBreak {
 }
 
 model AttendanceSettings {
-  id                 String   @id @default(cuid())
-  expectedClockIn    String   @default("09:00") // 24hr format HH:mm
-  expectedClockOut   String   @default("18:00") // 24hr format HH:mm
-  gracePeriodMinutes Int      @default(15)
-  updatedAt          DateTime @updatedAt
+  id                      String   @id @default(cuid())
+  expectedClockIn         String   @default("09:00") // 24hr format HH:mm
+  expectedClockOut        String   @default("18:00") // 24hr format HH:mm
+  gracePeriodMinutes      Int      @default(15)
+  halfDayThresholdMinutes Int      @default(240) // 4 hours late = Half Day
+  maxShiftHoursCap        Int      @default(16) // 16 hours max before auto checkout
+  allowOvernightShift     Boolean  @default(true)
+  officeLatitude          Float?
+  officeLongitude         Float?
+  officeRadiusMeters      Int      @default(500)
+  enforceOfficeGeofence   Boolean  @default(true)
+  updatedAt               DateTime @updatedAt
 
   @@map("attendance_settings")
+}
+
+model AttendanceAuditLog {
+  id                 String           @id @default(cuid())
+  attendanceRecordId String
+  attendanceRecord   AttendanceRecord @relation(fields: [attendanceRecordId], references: [id], onDelete: Cascade)
+  userId             String
+  action             String           // "CREATE", "UPDATE", "REGULARIZE", "AUTO_CHECKOUT"
+  oldValues          String?          @db.Text
+  newValues          String?          @db.Text
+  reason             String?
+  createdAt          DateTime         @default(now())
+
+  @@index([attendanceRecordId])
+  @@index([userId])
+  @@map("attendance_audit_log")
 }
 

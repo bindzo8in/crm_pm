@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed:attendance": "tsx scripts/seed-attendance.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -43,7 +44,7 @@
     "@tiptap/pm": "^3.27.1",
     "@tiptap/react": "^3.27.1",
     "@tiptap/starter-kit": "^3.27.1",
-    "better-auth": "^1.6.19",
+    "better-auth": "^1.6.25",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",

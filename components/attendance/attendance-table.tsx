@@ -8,8 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { AttendanceStatus } from "@/app/generated/prisma/enums";
+import { AttendanceStatus, Department } from "@/app/generated/prisma/enums";
 import { getAttendanceLogsAction } from "@/actions/attendance";
+import { RegularizationModal } from "./regularization-modal";
+import { AttendanceAuditViewer } from "./attendance-audit-viewer";
 import {
   LaptopIcon,
   Building2Icon,
@@ -18,6 +20,8 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   FilterIcon,
+  FileEditIcon,
+  HistoryIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -26,6 +30,7 @@ interface AttendanceTableProps {
 }
 
 export function AttendanceTable({ userRole }: AttendanceTableProps) {
+  const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN";
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -33,8 +38,12 @@ export function AttendanceTable({ userRole }: AttendanceTableProps) {
   const [totalCount, setTotalCount] = useState(0);
 
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [departmentFilter, setDepartmentFilter] = useState<string>("ALL");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
+
+  const [selectedRecordForReg, setSelectedRecordForReg] = useState<any | null>(null);
+  const [selectedRecordForAudit, setSelectedRecordForAudit] = useState<string | null>(null);
 
   const fetchLogs = async () => {
     setLoading(true);
@@ -43,6 +52,7 @@ export function AttendanceTable({ userRole }: AttendanceTableProps) {
         page,
         limit: 10,
         status: statusFilter !== "ALL" ? (statusFilter as AttendanceStatus) : undefined,
+        department: departmentFilter !== "ALL" ? (departmentFilter as Department) : undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
       });
@@ -58,16 +68,27 @@ export function AttendanceTable({ userRole }: AttendanceTableProps) {
 
   useEffect(() => {
     fetchLogs();
-  }, [page, statusFilter, startDate, endDate]);
+  }, [page, statusFilter, departmentFilter, startDate, endDate]);
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, workMinutes?: number, clockOut?: string | null) => {
     switch (status) {
       case "PRESENT":
         return <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 font-semibold">PRESENT</Badge>;
       case "LATE":
         return <Badge variant="destructive" className="font-semibold">LATE</Badge>;
       case "HALF_DAY":
-        return <Badge variant="outline" className="bg-amber-500/10 text-amber-500 border-amber-500/30 font-semibold">HALF DAY</Badge>;
+        return (
+          <div className="flex flex-col items-start gap-0.5">
+            <Badge variant="outline" className="bg-amber-500/10 text-amber-500 border-amber-500/30 font-semibold">
+              HALF DAY
+            </Badge>
+            {clockOut && workMinutes !== undefined && workMinutes > 0 && workMinutes < 240 && (
+              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                ⏱️ &lt; 4h ({Math.floor(workMinutes / 60)}h {workMinutes % 60}m)
+              </span>
+            )}
+          </div>
+        );
       case "ABSENT":
         return <Badge variant="outline" className="bg-rose-500/10 text-rose-500 border-rose-500/30 font-semibold">ABSENT</Badge>;
       default:
@@ -115,7 +136,7 @@ export function AttendanceTable({ userRole }: AttendanceTableProps) {
           </div>
 
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-            <div className="w-full sm:w-40">
+            <div className="w-full sm:w-36">
               <Select value={statusFilter} onValueChange={(val) => { setPage(1); setStatusFilter(val); }}>
                 <SelectTrigger className="rounded-xl text-xs">
                   <SelectValue placeholder="All Statuses" />
@@ -126,6 +147,24 @@ export function AttendanceTable({ userRole }: AttendanceTableProps) {
                   <SelectItem value="LATE">Late</SelectItem>
                   <SelectItem value="HALF_DAY">Half Day</SelectItem>
                   <SelectItem value="ABSENT">Absent</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="w-full sm:w-40">
+              <Select value={departmentFilter} onValueChange={(val) => { setPage(1); setDepartmentFilter(val); }}>
+                <SelectTrigger className="rounded-xl text-xs">
+                  <SelectValue placeholder="All Departments" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All Departments</SelectItem>
+                  <SelectItem value="SALES">Sales</SelectItem>
+                  <SelectItem value="DEVELOPMENT">Development</SelectItem>
+                  <SelectItem value="DESIGN">Design</SelectItem>
+                  <SelectItem value="SEO">SEO</SelectItem>
+                  <SelectItem value="MARKETING">Marketing</SelectItem>
+                  <SelectItem value="HR">HR</SelectItem>
+                  <SelectItem value="OPERATIONS">Operations</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -161,18 +200,19 @@ export function AttendanceTable({ userRole }: AttendanceTableProps) {
               <TableHead className="font-semibold">Work Mode</TableHead>
               <TableHead className="font-semibold">Status</TableHead>
               <TableHead className="font-semibold">Selfie</TableHead>
+              <TableHead className="font-semibold text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
                   Loading attendance records...
                 </TableCell>
               </TableRow>
             ) : logs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
                   No attendance records found matching your query.
                 </TableCell>
               </TableRow>
@@ -185,7 +225,14 @@ export function AttendanceTable({ userRole }: AttendanceTableProps) {
                         {record.user?.name ? record.user.name[0].toUpperCase() : "U"}
                       </div>
                       <div>
-                        <div className="text-sm font-semibold text-foreground">{record.user?.name || "Employee"}</div>
+                        <div className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                          {record.user?.name || "Employee"}
+                          {(record.department || record.user?.department) && (
+                            <Badge variant="outline" className="text-[10px] py-0 font-normal">
+                              {record.department || record.user?.department}
+                            </Badge>
+                          )}
+                        </div>
                         <div className="text-[11px] text-muted-foreground">{record.user?.email}</div>
                       </div>
                     </div>
@@ -213,8 +260,13 @@ export function AttendanceTable({ userRole }: AttendanceTableProps) {
                       {getWorkModeIcon(record.workMode)}
                       {record.workMode}
                     </Badge>
+                    {record.workMode === "OFFICE" && record.distanceFromOffice != null && (
+                      <div className="text-[10px] text-muted-foreground mt-0.5 font-medium">
+                        📍 {record.distanceFromOffice >= 1000 ? `${(record.distanceFromOffice / 1000).toFixed(2)} km` : `${record.distanceFromOffice}m`} away
+                      </div>
+                    )}
                   </TableCell>
-                  <TableCell>{getStatusBadge(record.status)}</TableCell>
+                  <TableCell>{getStatusBadge(record.status, record.workMinutes, record.clockOut)}</TableCell>
                   <TableCell>
                     {record.selfieUrl ? (
                       <Popover>
@@ -233,6 +285,30 @@ export function AttendanceTable({ userRole }: AttendanceTableProps) {
                     ) : (
                       <span className="text-xs text-muted-foreground">--</span>
                     )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      {isAdmin && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                          title="Regularize / Edit Attendance"
+                          onClick={() => setSelectedRecordForReg(record)}
+                        >
+                          <FileEditIcon className="w-4 h-4" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                        title="View Audit Trail"
+                        onClick={() => setSelectedRecordForAudit(record.id)}
+                      >
+                        <HistoryIcon className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -262,7 +338,7 @@ export function AttendanceTable({ userRole }: AttendanceTableProps) {
                     </div>
                   </div>
                 </div>
-                {getStatusBadge(record.status)}
+                {getStatusBadge(record.status, record.workMinutes, record.clockOut)}
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-xs bg-muted/30 p-2.5 rounded-xl">
@@ -338,6 +414,25 @@ export function AttendanceTable({ userRole }: AttendanceTableProps) {
             Next <ChevronRightIcon className="w-4 h-4 ml-1" />
           </Button>
         </div>
+      )}
+
+      {/* Regularization Modal */}
+      {selectedRecordForReg && (
+        <RegularizationModal
+          isOpen={!!selectedRecordForReg}
+          onClose={() => setSelectedRecordForReg(null)}
+          record={selectedRecordForReg}
+          onSuccess={fetchLogs}
+        />
+      )}
+
+      {/* Audit Trail Viewer */}
+      {selectedRecordForAudit && (
+        <AttendanceAuditViewer
+          isOpen={!!selectedRecordForAudit}
+          onClose={() => setSelectedRecordForAudit(null)}
+          recordId={selectedRecordForAudit}
+        />
       )}
     </div>
   );

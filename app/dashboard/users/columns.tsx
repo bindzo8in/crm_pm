@@ -2,6 +2,7 @@
 
 import { ColumnDef } from "@tanstack/react-table"
 import { CheckCircle, XCircle } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { UserActions } from "./user-actions"
 import { format } from "date-fns"
 import { getUsers } from "@/actions/user"
@@ -24,6 +25,15 @@ export const columns: ColumnDef<UserRow>[] = [
             <div className="flex items-center gap-x-2">
                 {row.original.role ? row.original.role : "-"}
             </div>
+        )
+    },
+    {
+        accessorKey: "department",
+        header: "Department",
+        cell: ({ row }) => (
+            <Badge variant="outline" className="text-xs">
+                {(row.original as any).department ? (row.original as any).department : "Unassigned"}
+            </Badge>
         )
     },
     {

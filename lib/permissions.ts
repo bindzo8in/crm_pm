@@ -11,6 +11,7 @@ const statement = {
         "update",
         "delete",
         "assign-role",
+        "assign-department",
     ],
 
     customers: [
@@ -88,7 +89,10 @@ const statement = {
         "read-own",
         "read-all",
         "manage",
-        "view-analytics"
+        "view-analytics",
+        "regularize",
+        "approve-regularization",
+        "view-audit-logs"
     ]
 } as const;
 
@@ -103,7 +107,7 @@ export const ac = createAccessControl(statement);
 export const superAdminRole = ac.newRole({
     ...adminAc.statements,
 
-    users: ["create", "read", "update", "delete", "assign-role"],
+    users: ["create", "read", "update", "delete", "assign-role", "assign-department"],
 
     customers: ["create", "read", "update", "delete"],
 
@@ -125,10 +129,12 @@ export const superAdminRole = ac.newRole({
 
     account: ["read", "update"],
 
-    attendance: ["clock-in", "clock-out", "read-own", "read-all", "manage", "view-analytics"]
+    attendance: ["clock-in", "clock-out", "read-own", "read-all", "manage", "view-analytics", "regularize", "approve-regularization", "view-audit-logs"]
 });
 
 export const adminRole = ac.newRole({
+    ...adminAc.statements,
+
     customers: ["create", "read", "update", "delete"],
 
     proposals: ["create", "read", "update", "delete", "send", "accept"],
@@ -145,11 +151,11 @@ export const adminRole = ac.newRole({
 
     reports: ["read"],
 
-    users: ["read"],
+    users: ["read", "update", "assign-department"],
 
     account: ["read", "update"],
 
-    attendance: ["clock-in", "clock-out", "read-own", "read-all", "manage", "view-analytics"]
+    attendance: ["clock-in", "clock-out", "read-own", "read-all", "manage", "view-analytics", "regularize", "approve-regularization", "view-audit-logs"]
 });
 
 export const staffRole = ac.newRole({
@@ -165,7 +171,7 @@ export const staffRole = ac.newRole({
 
     account: ["read", "update"],
 
-    attendance: ["clock-in", "clock-out", "read-own", "view-analytics"]
+    attendance: ["clock-in", "clock-out", "read-own", "view-analytics", "regularize"]
 });
 
 export function canManageUser(

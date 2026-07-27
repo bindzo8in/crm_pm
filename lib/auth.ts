@@ -10,10 +10,21 @@ import { ac, adminRole, staffRole, superAdminRole } from './permissions'
 
 export const auth = betterAuth({
     baseURL: env.BETTER_AUTH_URL,
+    trustedOrigins: [
+        env.NEXT_PUBLIC_SITE_URL,
+    ],
     secret: env.BETTER_AUTH_SECRET,
     database: prismaAdapter(prisma, {
         provider: "postgresql"
     }),
+    user: {
+        additionalFields: {
+            department: {
+                type: "string",
+                required: false,
+            },
+        },
+    },
     emailAndPassword: {
         enabled: true,
         autoSignIn: false,

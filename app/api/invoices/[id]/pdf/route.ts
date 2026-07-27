@@ -41,7 +41,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const baseUrl = env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const baseUrl = env.NEXT_PUBLIC_SITE_URL;
   const targetUrl = `${baseUrl}/i/${id}?pdf=1`;
 
   let executablePath: string;

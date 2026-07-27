@@ -81,7 +81,7 @@ export async function GET(
   }
 
   // Build the URL Puppeteer will navigate to.
-  const baseUrl = env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const baseUrl = env.NEXT_PUBLIC_SITE_URL;
   const targetUrl = `${baseUrl}/p/${id}?pdf=1`;
 
   let executablePath: string;

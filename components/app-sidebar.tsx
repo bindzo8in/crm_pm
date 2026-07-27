@@ -35,7 +35,7 @@ const data = {
     },
     {
       title: "Attendance",
-      url: "/dashboard/attendance",
+      url: "/attendance",
       icon: (
         <ClockIcon />
       ),

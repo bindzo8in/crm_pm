@@ -1,8 +1,9 @@
 "use client";
 
 import React from "react";
-import { ClockIcon, HistoryIcon, BarChart3Icon } from "lucide-react";
+import { ClockIcon, HistoryIcon, BarChart3Icon, UserIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 
 export type AttendanceTab = "kiosk" | "history" | "analytics";
 
@@ -45,6 +46,17 @@ export function MobileAttendanceNav({ activeTab, onSelectTab }: MobileAttendance
           </button>
         );
       })}
+
+      {/* Direct link to Attendance Profile for mobile */}
+      <Link
+        href="/attendance/profile"
+        className="flex flex-col items-center justify-center w-full py-1 text-xs font-semibold text-muted-foreground hover:text-foreground transition-all duration-200"
+      >
+        <div className="p-1.5 rounded-full mb-1 transition-all bg-transparent">
+          <UserIcon className="w-5 h-5" />
+        </div>
+        <span>Profile</span>
+      </Link>
     </div>
   );
 }

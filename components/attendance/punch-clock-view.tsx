@@ -79,12 +79,15 @@ export function PunchClockView({ initialRecord, settings, onRefresh }: PunchCloc
     }
   }, [coords.lat]);
 
+  const [debounced, setDebounced] = useState(false);
+
   const activeRecord = initialRecord;
   const isClockedIn = !!activeRecord && !activeRecord.clockOut;
   const openBreak = activeRecord?.breaks?.find((b: any) => !b.breakEnd);
   const isOnBreak = !!openBreak;
 
   const handleClockIn = async () => {
+    if (debounced || loading) return;
     if (!selfie?.url) {
       setIsCameraOpen(true);
       toast.info("Please capture a live selfie to complete clock-in.");
@@ -92,6 +95,9 @@ export function PunchClockView({ initialRecord, settings, onRefresh }: PunchCloc
     }
 
     setLoading(true);
+    setDebounced(true);
+    setTimeout(() => setDebounced(false), 3000);
+
     try {
       const res = await clockInAction({
         workMode: selectedWorkMode,
@@ -117,7 +123,11 @@ export function PunchClockView({ initialRecord, settings, onRefresh }: PunchCloc
   };
 
   const handleClockOut = async () => {
+    if (debounced || loading) return;
     setLoading(true);
+    setDebounced(true);
+    setTimeout(() => setDebounced(false), 3000);
+
     try {
       const res = await clockOutAction({
         notes: notes || undefined,
@@ -138,7 +148,10 @@ export function PunchClockView({ initialRecord, settings, onRefresh }: PunchCloc
   };
 
   const handleToggleBreak = async () => {
+    if (debounced || loading) return;
     setLoading(true);
+    setDebounced(true);
+    setTimeout(() => setDebounced(false), 3000);
     try {
       if (isOnBreak) {
         const res = await endBreakAction({ breakId: openBreak.id });
@@ -223,6 +236,12 @@ export function PunchClockView({ initialRecord, settings, onRefresh }: PunchCloc
               {activeRecord?.status === "LATE" && (
                 <Badge variant="destructive" className="px-2.5 py-1 rounded-full text-xs font-semibold">
                   LATE
+                </Badge>
+              )}
+
+              {activeRecord?.status === "HALF_DAY" && (
+                <Badge variant="outline" className="bg-amber-500/10 text-amber-500 border-amber-500/30 px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1">
+                  <AlertCircleIcon className="w-3 h-3 text-amber-500" /> HALF DAY (&lt; 4h)
                 </Badge>
               )}
             </div>
@@ -387,19 +406,68 @@ export function PunchClockView({ initialRecord, settings, onRefresh }: PunchCloc
             </CardContent>
           </Card>
 
-          {/* Location & Device Info Footer */}
-          <Card className="border border-border/60 bg-card shadow-lg rounded-3xl p-4 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <MapPinIcon className="w-4 h-4 text-primary" />
-              <span>
-                {coords.lat && coords.lng
-                  ? `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`
-                  : "Location logged"}
-              </span>
+          {/* Location & Geofence Distance Footer */}
+          <Card className="border border-border/60 bg-card shadow-lg rounded-3xl p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <MapPinIcon className="w-4 h-4 text-primary" />
+                <span>
+                  {coords.lat && coords.lng
+                    ? `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`
+                    : "Fetching GPS location..."}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-500">
+                <ShieldCheckIcon className="w-4 h-4" /> Geofence Protected
+              </div>
             </div>
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-500">
-              <ShieldCheckIcon className="w-4 h-4" /> Secure Session
-            </div>
+
+            {/* Office Distance Indicator if WorkMode is OFFICE */}
+            {selectedWorkMode === WorkMode.OFFICE && (
+              <div className="pt-2 border-t border-border/40 text-xs flex items-center justify-between">
+                <span className="text-muted-foreground font-medium">Office Proximity:</span>
+                {coords.lat && coords.lng && settings?.officeLatitude != null && settings?.officeLongitude != null ? (() => {
+                  const R = 6371000;
+                  const dLat = ((settings.officeLatitude - coords.lat!) * Math.PI) / 180;
+                  const dLon = ((settings.officeLongitude - coords.lng!) * Math.PI) / 180;
+                  const a =
+                    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                    Math.cos((coords.lat! * Math.PI) / 180) *
+                      Math.cos((settings.officeLatitude * Math.PI) / 180) *
+                      Math.sin(dLon / 2) *
+                      Math.sin(dLon / 2);
+                  const dist = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+                  const maxRadius = settings.officeRadiusMeters ?? 500;
+                  const isInRange = dist <= maxRadius;
+                  const distLabel = dist >= 1000 ? `${(dist / 1000).toFixed(2)} km` : `${dist}m`;
+
+                  return (
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "px-2.5 py-0.5 rounded-full text-[11px] font-semibold flex items-center gap-1",
+                        isInRange
+                          ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                          : "bg-rose-500/10 text-rose-600 border-rose-500/30"
+                      )}
+                    >
+                      {isInRange ? (
+                        <CheckCircleIcon className="w-3 h-3 text-emerald-500" />
+                      ) : (
+                        <AlertCircleIcon className="w-3 h-3 text-rose-500" />
+                      )}
+                      {distLabel} away (Limit: {maxRadius}m)
+                    </Badge>
+                  );
+                })() : (
+                  <span className="text-muted-foreground text-[11px] italic">
+                    {settings?.officeLatitude == null
+                      ? "Office coordinates not set by admin"
+                      : "Waiting for GPS coordinates..."}
+                  </span>
+                )}
+              </div>
+            )}
           </Card>
         </div>
       </div>

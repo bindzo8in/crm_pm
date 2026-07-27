@@ -1,6 +1,6 @@
 "use server";
 
-import { UserRole } from "@/app/generated/prisma/enums";
+import { UserRole, WorkMode } from "@/app/generated/prisma/enums";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { userAgent } from "next/server";
@@ -15,6 +15,10 @@ import {
   EndBreakInput,
   attendanceFilterSchema,
   AttendanceFilterInput,
+  regularizeAttendanceSchema,
+  RegularizeAttendanceInput,
+  updateAttendanceSettingsSchema,
+  UpdateAttendanceSettingsInput,
 } from "@/lib/schemas/attendance-schema";
 import { headers } from "next/headers";
 
@@ -37,6 +41,25 @@ function getTodayDateOnly(dateInput: Date = new Date()): Date {
   return d;
 }
 
+function calculateDistanceMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371000; // Earth radius in meters
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c);
+}
+
 export async function getAttendanceSettings() {
   try {
     let settings = await prisma.attendanceSettings.findFirst();
@@ -46,6 +69,13 @@ export async function getAttendanceSettings() {
           expectedClockIn: "09:00",
           expectedClockOut: "18:00",
           gracePeriodMinutes: 15,
+          halfDayThresholdMinutes: 240,
+          maxShiftHoursCap: 16,
+          allowOvernightShift: true,
+          officeLatitude: null,
+          officeLongitude: null,
+          officeRadiusMeters: 500,
+          enforceOfficeGeofence: true,
         },
       });
     }
@@ -57,7 +87,61 @@ export async function getAttendanceSettings() {
       expectedClockIn: "09:00",
       expectedClockOut: "18:00",
       gracePeriodMinutes: 15,
+      halfDayThresholdMinutes: 240,
+      maxShiftHoursCap: 16,
+      allowOvernightShift: true,
+      officeLatitude: null,
+      officeLongitude: null,
+      officeRadiusMeters: 500,
+      enforceOfficeGeofence: true,
     };
+  }
+}
+
+/**
+ * Checks for orphaned open sessions and auto-closes them if open longer than maxShiftHoursCap.
+ */
+async function processOrphanedSessions(userId: string) {
+  try {
+    const settings = await getAttendanceSettings();
+    const maxHours = settings?.maxShiftHoursCap || 16;
+    const cutoffDate = new Date(Date.now() - maxHours * 60 * 60 * 1000);
+
+    const orphanedRecords = await prisma.attendanceRecord.findMany({
+      where: {
+        userId,
+        clockOut: null,
+        clockIn: { lte: cutoffDate },
+      },
+    });
+
+    for (const record of orphanedRecords) {
+      const autoClockOut = new Date(record.clockIn.getTime() + maxHours * 60 * 60 * 1000);
+      const totalShiftMinutes = maxHours * 60;
+
+      await prisma.attendanceRecord.update({
+        where: { id: record.id },
+        data: {
+          clockOut: autoClockOut,
+          isAutoCheckedOut: true,
+          workMinutes: totalShiftMinutes,
+          notes: `${record.notes ? record.notes + " | " : ""}Auto checked-out after ${maxHours} hours cap.`,
+        },
+      });
+
+      await prisma.attendanceAuditLog.create({
+        data: {
+          attendanceRecordId: record.id,
+          userId,
+          action: "AUTO_CHECKOUT",
+          oldValues: JSON.stringify({ clockOut: null, isAutoCheckedOut: false }),
+          newValues: JSON.stringify({ clockOut: autoClockOut, isAutoCheckedOut: true }),
+          reason: `System automatically closed session after reaching ${maxHours}-hour shift cap.`,
+        },
+      });
+    }
+  } catch (err) {
+    console.error("Failed to process orphaned attendance sessions:", err);
   }
 }
 
@@ -66,8 +150,12 @@ export async function clockInAction(input: ClockInInput) {
     const { session, reqHeaders } = await getAuthenticatedUser();
     const validated = clockInSchema.parse(input);
 
+    // Run auto-checkout check for open orphaned sessions
+    await processOrphanedSessions(session.user.id);
+
     const today = getTodayDateOnly();
 
+    // Prevent duplicate clock-ins for today
     const existingRecord = await prisma.attendanceRecord.findFirst({
       where: {
         userId: session.user.id,
@@ -85,7 +173,6 @@ export async function clockInAction(input: ClockInInput) {
       reqHeaders.get("x-real-ip") ||
       undefined;
 
-    // Use Next.js native userAgent helper
     const parsedUserAgent = userAgent({ headers: reqHeaders });
     const deviceType = parsedUserAgent.device.type || "desktop";
     const osName = parsedUserAgent.os.name || "";
@@ -96,11 +183,70 @@ export async function clockInAction(input: ClockInInput) {
     const settings = await getAttendanceSettings();
     const now = new Date();
 
-    const [expHour, expMinute] = (settings?.expectedClockIn || "09:00").split(":").map(Number);
-    const cutoffTime = new Date(now);
-    cutoffTime.setHours(expHour, expMinute + (settings?.gracePeriodMinutes || 15), 0, 0);
+    // Validate Office Location & Distance if workMode is OFFICE
+    let distanceFromOffice: number | null = null;
+    if (validated.workMode === WorkMode.OFFICE) {
+      if (settings?.enforceOfficeGeofence && (validated.latitude == null || validated.longitude == null)) {
+        return {
+          success: false,
+          error: "GPS location is required for Office work mode clock-in. Please allow location access.",
+        };
+      }
 
-    const status = now > cutoffTime ? "LATE" : "PRESENT";
+      if (
+        validated.latitude != null &&
+        validated.longitude != null &&
+        settings?.officeLatitude != null &&
+        settings?.officeLongitude != null
+      ) {
+        distanceFromOffice = calculateDistanceMeters(
+          validated.latitude,
+          validated.longitude,
+          settings.officeLatitude,
+          settings.officeLongitude
+        );
+
+        if (settings.enforceOfficeGeofence && distanceFromOffice > settings.officeRadiusMeters) {
+          const distanceStr =
+            distanceFromOffice >= 1000
+              ? `${(distanceFromOffice / 1000).toFixed(2)} km`
+              : `${distanceFromOffice} meters`;
+          const radiusStr =
+            settings.officeRadiusMeters >= 1000
+              ? `${(settings.officeRadiusMeters / 1000).toFixed(2)} km`
+              : `${settings.officeRadiusMeters} meters`;
+
+          return {
+            success: false,
+            error: `You are ${distanceStr} away from the office. Office clock-in requires being within ${radiusStr} of office location.`,
+          };
+        }
+      }
+    }
+
+    // Shift start cutoff math
+    const [expHour, expMinute] = (settings?.expectedClockIn || "09:00").split(":").map(Number);
+    const expectedStartTime = new Date(now);
+    expectedStartTime.setHours(expHour, expMinute, 0, 0);
+
+    const graceTime = new Date(expectedStartTime.getTime() + (settings?.gracePeriodMinutes || 15) * 60 * 1000);
+    const halfDayTime = new Date(expectedStartTime.getTime() + (settings?.halfDayThresholdMinutes || 240) * 60 * 1000);
+
+    let status: "PRESENT" | "LATE" | "HALF_DAY" = "PRESENT";
+    let lateMinutes = 0;
+
+    if (now > graceTime && now <= halfDayTime) {
+      status = "LATE";
+      lateMinutes = Math.round((now.getTime() - expectedStartTime.getTime()) / (1000 * 60));
+    } else if (now > halfDayTime) {
+      status = "HALF_DAY";
+      lateMinutes = Math.round((now.getTime() - expectedStartTime.getTime()) / (1000 * 60));
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { department: true },
+    });
 
     const record = await prisma.attendanceRecord.create({
       data: {
@@ -109,15 +255,29 @@ export async function clockInAction(input: ClockInInput) {
         clockIn: now,
         status,
         workMode: validated.workMode,
+        department: user?.department || null,
         ipAddress,
         userAgent: rawUserAgent,
         deviceInfo,
         latitude: validated.latitude ?? null,
         longitude: validated.longitude ?? null,
+        distanceFromOffice,
         locationName: validated.locationName ?? null,
         selfieUrl: validated.selfieUrl ?? null,
         selfiePublicId: validated.selfiePublicId ?? null,
         notes: validated.notes ?? null,
+        lateMinutes,
+      },
+    });
+
+    // Create Audit Log
+    await prisma.attendanceAuditLog.create({
+      data: {
+        attendanceRecordId: record.id,
+        userId: session.user.id,
+        action: "CREATE",
+        newValues: JSON.stringify({ clockIn: now, status, workMode: validated.workMode }),
+        reason: "Initial Clock-In recorded.",
       },
     });
 
@@ -150,31 +310,80 @@ export async function clockOutAction(input: ClockOutInput) {
       return { success: false, error: "No active clock-in session found for today." };
     }
 
+    // End open break if active
+    let breakMinutes = activeRecord.breakMinutes;
     const openBreak = activeRecord.breaks.find((b) => !b.breakEnd);
+    const now = new Date();
+
     if (openBreak) {
       await prisma.attendanceBreak.update({
         where: { id: openBreak.id },
-        data: { breakEnd: new Date() },
+        data: { breakEnd: now },
       });
+      breakMinutes += Math.round((now.getTime() - openBreak.breakStart.getTime()) / (1000 * 60));
     }
 
-    const now = new Date();
     const settings = await getAttendanceSettings();
 
+    // Early leave & work duration math
     const [expHour, expMin] = (settings?.expectedClockOut || "18:00").split(":").map(Number);
     const expectedOutTime = new Date(now);
     expectedOutTime.setHours(expHour, expMin, 0, 0);
 
     const earlyLeave = now < expectedOutTime;
+    const earlyLeaveMinutes = earlyLeave
+      ? Math.round((expectedOutTime.getTime() - now.getTime()) / (1000 * 60))
+      : 0;
+
+    const totalShiftMinutes = Math.round((now.getTime() - activeRecord.clockIn.getTime()) / (1000 * 60));
+    const netWorkMinutes = Math.max(0, totalShiftMinutes - breakMinutes);
+
+    // Evaluate Half-Day status: Minimum 4 hours (240 mins) of work time required
+    const minHalfDayMinutes = settings?.halfDayThresholdMinutes || 240;
+    let finalStatus = activeRecord.status;
+    let halfDayNote = "";
+    if (netWorkMinutes < minHalfDayMinutes) {
+      finalStatus = "HALF_DAY";
+      const hrs = Math.floor(netWorkMinutes / 60);
+      const mins = netWorkMinutes % 60;
+      halfDayNote = `Shift duration under 4 hours (${hrs}h ${mins}m logged). Marked as Half Day.`;
+    }
+
+    // Combine existing notes, user notes, and system half day note
+    let updatedNotes = activeRecord.notes || "";
+    if (validated.notes) {
+      updatedNotes = updatedNotes ? `${updatedNotes} | ${validated.notes}` : validated.notes;
+    }
+    if (halfDayNote && !updatedNotes.includes("Marked as Half Day")) {
+      updatedNotes = updatedNotes ? `${updatedNotes} | ${halfDayNote}` : halfDayNote;
+    }
+
+    // Overtime math (if net work minutes exceed 8 hours = 480 mins)
+    const overtimeMinutes = Math.max(0, netWorkMinutes - 480);
 
     const record = await prisma.attendanceRecord.update({
       where: { id: activeRecord.id },
       data: {
         clockOut: now,
+        status: finalStatus,
         earlyLeave,
-        notes: validated.notes
-          ? `${activeRecord.notes ? activeRecord.notes + " | " : ""}${validated.notes}`
-          : activeRecord.notes,
+        earlyLeaveMinutes,
+        workMinutes: netWorkMinutes,
+        breakMinutes,
+        overtimeMinutes,
+        notes: updatedNotes || null,
+      },
+    });
+
+    // Create Audit Log
+    await prisma.attendanceAuditLog.create({
+      data: {
+        attendanceRecordId: record.id,
+        userId: session.user.id,
+        action: "UPDATE",
+        oldValues: JSON.stringify({ clockOut: null }),
+        newValues: JSON.stringify({ clockOut: now, workMinutes: netWorkMinutes, earlyLeaveMinutes }),
+        reason: "Shift completed and clocked out.",
       },
     });
 
@@ -258,10 +467,20 @@ export async function endBreakAction(input: EndBreakInput) {
       return { success: false, error: "No active break to end." };
     }
 
+    const now = new Date();
     await prisma.attendanceBreak.update({
       where: { id: openBreak.id },
       data: {
-        breakEnd: new Date(),
+        breakEnd: now,
+      },
+    });
+
+    // Update cumulative break minutes
+    const breakDurationMinutes = Math.round((now.getTime() - openBreak.breakStart.getTime()) / (1000 * 60));
+    await prisma.attendanceRecord.update({
+      where: { id: activeRecord.id },
+      data: {
+        breakMinutes: activeRecord.breakMinutes + breakDurationMinutes,
       },
     });
 
@@ -278,6 +497,9 @@ export async function getTodayAttendanceAction() {
     if (!session?.user) {
       return { success: false, record: null, settings: null, userRole: "STAFF", error: "Unauthorized" };
     }
+
+    // Auto-checkout orphaned sessions first
+    await processOrphanedSessions(session.user.id);
 
     const today = getTodayDateOnly();
 
@@ -329,6 +551,10 @@ export async function getAttendanceLogsAction(input: Partial<AttendanceFilterInp
 
     if (parsed.status) {
       whereClause.status = parsed.status;
+    }
+
+    if (parsed.department) {
+      whereClause.department = parsed.department;
     }
 
     if (parsed.startDate || parsed.endDate) {
@@ -385,7 +611,7 @@ export async function getAttendanceLogsAction(input: Partial<AttendanceFilterInp
   }
 }
 
-export async function getAttendanceAnalyticsAction(filters: { startDate?: string; endDate?: string }) {
+export async function getAttendanceAnalyticsAction(filters: { startDate?: string; endDate?: string; department?: string }) {
   try {
     const { session } = await getAuthenticatedUser();
 
@@ -394,6 +620,10 @@ export async function getAttendanceAnalyticsAction(filters: { startDate?: string
 
     if (isStaff) {
       whereClause.userId = session.user.id;
+    }
+
+    if (filters.department) {
+      whereClause.department = filters.department;
     }
 
     if (filters.startDate || filters.endDate) {
@@ -418,7 +648,7 @@ export async function getAttendanceAnalyticsAction(filters: { startDate?: string
     let presentCount = 0;
     let lateCount = 0;
     let halfDayCount = 0;
-    let totalHours = 0;
+    let totalWorkMinutesSum = 0;
 
     const chartMap: Record<string, { date: string; present: number; late: number; hours: number }> = {};
 
@@ -427,17 +657,8 @@ export async function getAttendanceAnalyticsAction(filters: { startDate?: string
       if (rec.status === "LATE") lateCount++;
       if (rec.status === "HALF_DAY") halfDayCount++;
 
-      let durationMs = 0;
-      if (rec.clockIn && rec.clockOut) {
-        durationMs = new Date(rec.clockOut).getTime() - new Date(rec.clockIn).getTime();
-        for (const b of rec.breaks) {
-          if (b.breakStart && b.breakEnd) {
-            durationMs -= (new Date(b.breakEnd).getTime() - new Date(b.breakStart).getTime());
-          }
-        }
-      }
-      const hours = Math.max(0, Math.round((durationMs / (1000 * 60 * 60)) * 10) / 10);
-      totalHours += hours;
+      const hours = Math.round((rec.workMinutes / 60) * 10) / 10;
+      totalWorkMinutesSum += rec.workMinutes;
 
       const dateKey = new Date(rec.date).toISOString().split("T")[0];
       if (!chartMap[dateKey]) {
@@ -457,7 +678,7 @@ export async function getAttendanceAnalyticsAction(filters: { startDate?: string
       presentCount,
       lateCount,
       halfDayCount,
-      totalHours: Math.round(totalHours * 10) / 10,
+      totalHours: Math.round((totalWorkMinutesSum / 60) * 10) / 10,
       punctualityRate,
       chartData,
     };
@@ -477,11 +698,95 @@ export async function getAttendanceAnalyticsAction(filters: { startDate?: string
   }
 }
 
-export async function updateAttendanceSettingsAction(input: {
-  expectedClockIn: string;
-  expectedClockOut: string;
-  gracePeriodMinutes: number;
-}) {
+export async function regularizeAttendanceAction(input: RegularizeAttendanceInput) {
+  try {
+    const { session } = await getAuthenticatedUser();
+    const validated = regularizeAttendanceSchema.parse(input);
+
+    const record = await prisma.attendanceRecord.findUnique({
+      where: { id: validated.attendanceRecordId },
+    });
+
+    if (!record) {
+      return { success: false, error: "Attendance record not found." };
+    }
+
+    // Role check: Only ADMIN and SUPER_ADMIN can regularize / edit attendance records
+    if (session.user.role !== UserRole.ADMIN && session.user.role !== UserRole.SUPER_ADMIN) {
+      return { success: false, error: "Only administrators can edit or regularize attendance records." };
+    }
+
+    const newClockIn = new Date(validated.clockIn);
+    const newClockOut = validated.clockOut ? new Date(validated.clockOut) : null;
+
+    let workMinutes = 0;
+    if (newClockIn && newClockOut) {
+      workMinutes = Math.max(0, Math.round((newClockOut.getTime() - newClockIn.getTime()) / (1000 * 60)) - record.breakMinutes);
+    }
+
+    const updatedRecord = await prisma.attendanceRecord.update({
+      where: { id: record.id },
+      data: {
+        clockIn: newClockIn,
+        clockOut: newClockOut,
+        workMinutes,
+        regularized: true,
+        regularizedBy: session.user.id,
+        regularizationReason: validated.reason,
+        notes: `${record.notes ? record.notes + " | " : ""}Regularized: ${validated.reason}`,
+      },
+    });
+
+    // Create Audit Log
+    await prisma.attendanceAuditLog.create({
+      data: {
+        attendanceRecordId: record.id,
+        userId: session.user.id,
+        action: "REGULARIZE",
+        oldValues: JSON.stringify({ clockIn: record.clockIn, clockOut: record.clockOut }),
+        newValues: JSON.stringify({ clockIn: newClockIn, clockOut: newClockOut, workMinutes }),
+        reason: validated.reason,
+      },
+    });
+
+    return { success: true, record: JSON.parse(JSON.stringify(updatedRecord)) };
+  } catch (error: any) {
+    console.error("Error in regularizeAttendanceAction:", error);
+    return { success: false, error: error.message || "Failed to regularize attendance" };
+  }
+}
+
+export async function getAttendanceAuditLogsAction(attendanceRecordId: string) {
+  try {
+    const { session } = await getAuthenticatedUser();
+
+    const record = await prisma.attendanceRecord.findUnique({
+      where: { id: attendanceRecordId },
+      select: { userId: true },
+    });
+
+    if (!record) {
+      return { success: false, logs: [], error: "Attendance record not found." };
+    }
+
+    const isStaff = session.user.role === UserRole.STAFF;
+    if (isStaff && record.userId !== session.user.id) {
+      return { success: false, logs: [], error: "You can only view audit logs for your own attendance record." };
+    }
+
+    const logs = await prisma.attendanceAuditLog.findMany({
+      where: { attendanceRecordId },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return { success: true, logs: JSON.parse(JSON.stringify(logs)) };
+  } catch (error: any) {
+    console.error("Error in getAttendanceAuditLogsAction:", error);
+    return { success: false, logs: [], error: error.message || "Failed to fetch audit logs" };
+  }
+}
+
+export async function updateAttendanceSettingsAction(input: UpdateAttendanceSettingsInput) {
   try {
     const { session } = await getAuthenticatedUser();
 
@@ -489,17 +794,18 @@ export async function updateAttendanceSettingsAction(input: {
       return { success: false, error: "Only admins can update attendance settings." };
     }
 
+    const validated = updateAttendanceSettingsSchema.parse(input);
     const existing = await prisma.attendanceSettings.findFirst();
 
     let settings;
     if (existing) {
       settings = await prisma.attendanceSettings.update({
         where: { id: existing.id },
-        data: input,
+        data: validated,
       });
     } else {
       settings = await prisma.attendanceSettings.create({
-        data: input,
+        data: validated,
       });
     }
 

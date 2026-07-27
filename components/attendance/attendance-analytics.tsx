@@ -26,14 +26,21 @@ import {
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Department } from "@/app/generated/prisma/enums";
+
 export function AttendanceAnalytics() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [departmentFilter, setDepartmentFilter] = useState<string>("ALL");
 
   useEffect(() => {
     const fetchAnalytics = async () => {
+      setLoading(true);
       try {
-        const res = await getAttendanceAnalyticsAction({});
+        const res = await getAttendanceAnalyticsAction({
+          department: departmentFilter !== "ALL" ? (departmentFilter as Department) : undefined,
+        });
         if (res && res.success) {
           setData(res);
         }
@@ -44,18 +51,42 @@ export function AttendanceAnalytics() {
       }
     };
     fetchAnalytics();
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="py-16 text-center text-muted-foreground text-sm font-medium">
-        Calculating attendance metrics & report graphs...
-      </div>
-    );
-  }
+  }, [departmentFilter]);
 
   return (
     <div className="space-y-6 pb-24 md:pb-6">
+      {/* Header with Department Selector */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-card border border-border/60 p-4 md:p-6 rounded-3xl shadow-sm">
+        <div>
+          <h2 className="text-lg font-bold">Analytics & Report Overview</h2>
+          <p className="text-xs text-muted-foreground">Punctuality metrics and daily time-series shift tracking</p>
+        </div>
+
+        <div className="w-full sm:w-48">
+          <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+            <SelectTrigger className="rounded-xl text-xs">
+              <SelectValue placeholder="All Departments" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All Departments</SelectItem>
+              <SelectItem value="SALES">Sales</SelectItem>
+              <SelectItem value="DEVELOPMENT">Development</SelectItem>
+              <SelectItem value="DESIGN">Design</SelectItem>
+              <SelectItem value="SEO">SEO</SelectItem>
+              <SelectItem value="MARKETING">Marketing</SelectItem>
+              <SelectItem value="HR">HR</SelectItem>
+              <SelectItem value="OPERATIONS">Operations</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="py-16 text-center text-muted-foreground text-sm font-medium">
+          Calculating attendance metrics & report graphs...
+        </div>
+      ) : (
+        <>
       {/* Metric Cards Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {/* Punctuality Rate */}
@@ -206,6 +237,8 @@ export function AttendanceAnalytics() {
           </CardContent>
         </Card>
       </div>
+        </>
+      )}
     </div>
   );
 }
