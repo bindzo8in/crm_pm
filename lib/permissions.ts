@@ -80,6 +80,15 @@ const statement = {
     account: [
         "read",
         "update"
+    ],
+
+    attendance: [
+        "clock-in",
+        "clock-out",
+        "read-own",
+        "read-all",
+        "manage",
+        "view-analytics"
     ]
 } as const;
 
@@ -114,7 +123,9 @@ export const superAdminRole = ac.newRole({
 
     settings: ["read", "update"],
 
-    account: ["read", "update"]
+    account: ["read", "update"],
+
+    attendance: ["clock-in", "clock-out", "read-own", "read-all", "manage", "view-analytics"]
 });
 
 export const adminRole = ac.newRole({
@@ -136,7 +147,9 @@ export const adminRole = ac.newRole({
 
     users: ["read"],
 
-    account: ["read", "update"]
+    account: ["read", "update"],
+
+    attendance: ["clock-in", "clock-out", "read-own", "read-all", "manage", "view-analytics"]
 });
 
 export const staffRole = ac.newRole({
@@ -150,7 +163,9 @@ export const staffRole = ac.newRole({
 
     tasks: ["read", "update"],
 
-    account: ["read", "update"]
+    account: ["read", "update"],
+
+    attendance: ["clock-in", "clock-out", "read-own", "view-analytics"]
 });
 
 export function canManageUser(

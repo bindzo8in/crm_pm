@@ -51,6 +51,7 @@ model User {
   proposals          Proposal[]
   createdInvoices    Invoice[]
   invoiceActivities  InvoiceActivity[]
+  attendanceRecords  AttendanceRecord[]
 
   @@unique([email])
   @@map("user")
@@ -849,5 +850,74 @@ model State {
   @@index([name])
   @@index([countryId])
   @@index([countryCode])
+}
+
+// ------------------- Attendance System Models -------------------
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  HALF_DAY
+  ABSENT
+  ON_LEAVE
+}
+
+enum WorkMode {
+  OFFICE
+  REMOTE
+  HYBRID
+}
+
+model AttendanceRecord {
+  id             String           @id @default(cuid())
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date           DateTime         @db.Date
+  clockIn        DateTime
+  clockOut       DateTime?
+  status         AttendanceStatus @default(PRESENT)
+  workMode       WorkMode         @default(OFFICE)
+  ipAddress      String?
+  userAgent      String?
+  deviceInfo     String?
+  latitude       Float?
+  longitude      Float?
+  locationName   String?
+  selfieUrl      String?
+  selfiePublicId String?
+  notes          String?
+  earlyLeave     Boolean          @default(false)
+  breaks         AttendanceBreak[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId])
+  @@index([date])
+  @@index([status])
+  @@map("attendance_record")
+}
+
+model AttendanceBreak {
+  id                 String           @id @default(cuid())
+  attendanceRecordId String
+  attendanceRecord   AttendanceRecord @relation(fields: [attendanceRecordId], references: [id], onDelete: Cascade)
+  breakStart         DateTime
+  breakEnd           DateTime?
+  type               String           @default("LUNCH")
+  createdAt          DateTime         @default(now())
+
+  @@index([attendanceRecordId])
+  @@map("attendance_break")
+}
+
+model AttendanceSettings {
+  id                 String   @id @default(cuid())
+  expectedClockIn    String   @default("09:00") // 24hr format HH:mm
+  expectedClockOut   String   @default("18:00") // 24hr format HH:mm
+  gracePeriodMinutes Int      @default(15)
+  updatedAt          DateTime @updatedAt
+
+  @@map("attendance_settings")
 }
 
