@@ -19,7 +19,18 @@ export default async function AttendancePage() {
     redirect("/sign-in");
   }
 
-  const { record, settings, userRole } = await getTodayAttendanceAction();
+  let record = null;
+  let settings = null;
+  let userRole = (session.user.role as string) || "STAFF";
+
+  try {
+    const res = await getTodayAttendanceAction();
+    record = res.record;
+    settings = res.settings;
+    userRole = res.userRole;
+  } catch (error) {
+    console.error("Failed to load today's attendance record:", error);
+  }
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto">

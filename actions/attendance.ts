@@ -117,7 +117,7 @@ export async function clockInAction(input: ClockInInput) {
     },
   });
 
-  return { success: true, record };
+  return { success: true, record: JSON.parse(JSON.stringify(record)) };
 }
 
 export async function clockOutAction(input: ClockOutInput) {
@@ -170,7 +170,7 @@ export async function clockOutAction(input: ClockOutInput) {
     },
   });
 
-  return { success: true, record };
+  return { success: true, record: JSON.parse(JSON.stringify(record)) };
 }
 
 export async function startBreakAction(input: StartBreakInput) {
@@ -207,7 +207,7 @@ export async function startBreakAction(input: StartBreakInput) {
     },
   });
 
-  return { success: true, break: newBreak };
+  return { success: true, break: JSON.parse(JSON.stringify(newBreak)) };
 }
 
 export async function endBreakAction(input: EndBreakInput) {
@@ -269,8 +269,8 @@ export async function getTodayAttendanceAction() {
   const settings = await getAttendanceSettings();
 
   return {
-    record,
-    settings,
+    record: record ? JSON.parse(JSON.stringify(record)) : null,
+    settings: settings ? JSON.parse(JSON.stringify(settings)) : null,
     userRole: session.user.role as UserRole,
   };
 }
@@ -327,7 +327,7 @@ export async function getAttendanceLogsAction(input: Partial<AttendanceFilterInp
   ]);
 
   return {
-    records,
+    records: JSON.parse(JSON.stringify(records)),
     totalCount,
     totalPages: Math.ceil(totalCount / parsed.limit),
     currentPage: parsed.page,
