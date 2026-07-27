@@ -34,7 +34,9 @@ export function AttendanceAnalytics() {
     const fetchAnalytics = async () => {
       try {
         const res = await getAttendanceAnalyticsAction({});
-        setData(res);
+        if (res && res.success) {
+          setData(res);
+        }
       } catch (err: any) {
         toast.error(err.message || "Failed to load attendance analytics");
       } finally {

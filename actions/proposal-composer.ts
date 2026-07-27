@@ -41,7 +41,7 @@ async function checkPermission(permission: "read" | "create" | "update" | "delet
   return { success: true, session };
 }
 
-export async function getProposalComposerData(proposalId: string) {
+export async function getProposalComposerData(proposalId: string, options?: { forceRebuild?: boolean }) {
   try {
     const perm = await checkPermission("read");
     if (!perm.success || !perm.session) return errorResponse(perm.error || "Unauthorized");
@@ -223,7 +223,7 @@ export async function getProposalComposerData(proposalId: string) {
 
     // =========================================================================
     // Dynamic Sync: Fetch appropriate Terms & Conditions and structured Features
-    // and merge if duplicate found by id into existing FEATURES & TERMS blocks
+    // and merge into FEATURES & TERMS blocks
     // =========================================================================
     const proposalServices = await prisma.proposalService.findMany({
       where: { proposalId },
@@ -235,7 +235,6 @@ export async function getProposalComposerData(proposalId: string) {
         packageName: true,
       },
     });
-    const serviceIds = proposalServices.map((s) => s.serviceId).filter((id): id is string => Boolean(id));
     const packageIds = proposalServices.map((s) => s.packageId).filter((id): id is string => Boolean(id));
 
     // 1. Fetch appropriate Terms & Conditions
@@ -332,20 +331,23 @@ export async function getProposalComposerData(proposalId: string) {
 
     // 3. Update FEATURES block if needed
     const featuresBlock = blocks.find((b) => b.type === "FEATURES");
-    if (featuresBlock && totalMergedFeaturesCount > 0) {
+    if (featuresBlock) {
       const contentStr = JSON.stringify(featuresBlock.content || {});
-      // Consider the block stale/needing rebuild if:
-      // 1. It contains the original placeholder text
-      // 2. It contains old generated headings we've since removed
-      // 3. It has service group content but NO pageBreak nodes (pre-per-page-architecture)
       const hasPageBreaks = contentStr.includes('"type":"pageBreak"');
       const hasOldHeadings = contentStr.includes('Project Scope') || contentStr.includes('Key Features');
       const isDefaultPlaceholder = contentStr.includes("Our solution is architected") || hasOldHeadings || !hasPageBreaks;
 
+      const currentActiveTitles = featureGroups.map((g) => g.title.toLowerCase());
+      const shouldRebuild =
+        options?.forceRebuild ||
+        isDefaultPlaceholder ||
+        totalMergedFeaturesCount === 0 ||
+        (currentActiveTitles.length > 0 && !currentActiveTitles.some((t) => contentStr.toLowerCase().includes(t)));
+
       let needsUpdate = false;
       let newNodes: Array<Record<string, unknown>> = [];
 
-      if (isDefaultPlaceholder) {
+      if (shouldRebuild) {
         needsUpdate = true;
         newNodes = [];
 
@@ -448,7 +450,7 @@ export async function getProposalComposerData(proposalId: string) {
           where: { id: featuresBlock.id },
           data: { 
             content: updatedContent,
-            title: "Service Features" // Set block title instead of empty string
+            title: "Service Features"
           },
         });
         featuresBlock.content = updatedContent;
@@ -457,20 +459,23 @@ export async function getProposalComposerData(proposalId: string) {
 
     // 4. Update TERMS block if needed
     const termsBlock = blocks.find((b) => b.type === "TERMS");
-    if (termsBlock && mergedTerms.length > 0) {
+    if (termsBlock) {
       const contentStr = JSON.stringify(termsBlock.content || {});
-      // Consider the terms block stale/needing rebuild if:
-      // 1. It contains the original placeholder text
-      // 2. It contains old generated headings we've since removed
-      // 3. It has terms content but NO pageBreak nodes (pre-per-page-architecture)
       const hasTermsPageBreaks = contentStr.includes('"type":"pageBreak"');
       const hasOldTermsHeadings = contentStr.includes('Commercial') || contentStr.includes('Legal Terms');
       const isDefaultPlaceholder = contentStr.includes("Validity: This proposal is valid as per the timeframe specified") || hasOldTermsHeadings || !hasTermsPageBreaks;
 
+      const currentActiveTermTitles = mergedTerms.map((t) => t.title.toLowerCase());
+      const shouldRebuildTerms =
+        options?.forceRebuild ||
+        isDefaultPlaceholder ||
+        mergedTerms.length === 0 ||
+        (currentActiveTermTitles.length > 0 && !currentActiveTermTitles.some((t) => contentStr.toLowerCase().includes(t)));
+
       let needsUpdate = false;
       let newNodes: Array<Record<string, unknown>> = [];
 
-      if (isDefaultPlaceholder) {
+      if (shouldRebuildTerms) {
         needsUpdate = true;
         newNodes = [];
 
@@ -524,7 +529,7 @@ export async function getProposalComposerData(proposalId: string) {
           where: { id: termsBlock.id },
           data: {
             content: updatedContent,
-            title: "", // Clear generic block title; each term's heading is its own page title
+            title: "",
           },
         });
         termsBlock.content = updatedContent;
@@ -541,12 +546,12 @@ export async function getProposalComposerData(proposalId: string) {
   }
 }
 
-export async function syncProposalComposerTermsAndFeatures(proposalId: string) {
+export async function syncProposalComposerTermsAndFeatures(proposalId: string, forceRebuild: boolean = true) {
   try {
     const perm = await checkPermission("update");
     if (!perm.success) return errorResponse(perm.error!);
 
-    const res = await getProposalComposerData(proposalId);
+    const res = await getProposalComposerData(proposalId, { forceRebuild });
     if (!res.success) return errorResponse(res.message || "Failed to sync");
 
     return successResponse("Successfully synced terms and features from services/packages", res.data);

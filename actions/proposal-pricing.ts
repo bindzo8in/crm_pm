@@ -18,6 +18,7 @@ import {
 } from "@/lib/schemas/proposal-pricing-schema";
 import { headers } from "next/headers";
 import { Prisma } from "@/app/generated/prisma/client";
+import { syncProposalComposerTermsAndFeatures } from "@/actions/proposal-composer";
 
 async function checkPermission(permission: "read" | "create" | "update" | "delete") {
   const session = await auth.api.getSession({
@@ -304,6 +305,12 @@ export async function importServicePackageToProposal(data: ImportServicePackageS
       return createdService;
     });
 
+    try {
+      await syncProposalComposerTermsAndFeatures(proposalId, true);
+    } catch (e) {
+      console.error("Composer auto-sync warning:", e);
+    }
+
     return successResponse("Package imported into proposal successfully", { id: result.id });
   } catch (error) {
     if (process.env.NODE_ENV === "development") console.error(error);
@@ -478,6 +485,12 @@ export async function deleteProposalService(serviceId: string, proposalId: strin
       await recalculateAndSaveTotals(proposalId, tx);
     });
 
+    try {
+      await syncProposalComposerTermsAndFeatures(proposalId, true);
+    } catch (e) {
+      console.error("Composer auto-sync warning:", e);
+    }
+
     return successResponse("Service section deleted successfully");
   } catch (error) {
     if (process.env.NODE_ENV === "development") console.error(error);
@@ -510,6 +523,12 @@ export async function updateProposalService(
         description: validated.data.description?.trim() ?? null,
       },
     });
+
+    try {
+      await syncProposalComposerTermsAndFeatures(proposalId, true);
+    } catch (e) {
+      console.error("Composer auto-sync warning:", e);
+    }
 
     return successResponse("Service section updated successfully");
   } catch (error) {
@@ -558,6 +577,12 @@ export async function reorderProposalServices(
         });
       }
     });
+
+    try {
+      await syncProposalComposerTermsAndFeatures(proposalId, true);
+    } catch (e) {
+      console.error("Composer auto-sync warning:", e);
+    }
 
     return successResponse("Services reordered successfully");
   } catch (error) {

@@ -10,6 +10,7 @@ import { ProposalQuerySchema, proposalSchema, ProposalSchema } from "@/lib/schem
 import { addDays } from "date-fns";
 import { headers } from "next/headers";
 import { sendProposalLinkEmail } from "@/lib/email";
+import { syncProposalComposerTermsAndFeatures } from "@/actions/proposal-composer";
 
 export async function createProposal(proposal: ProposalSchema) {
     try {
@@ -189,6 +190,12 @@ export async function updateProposal(id: string, data: ProposalSchema) {
                 ...(restData.placeOfSupply !== undefined ? { placeOfSupply: restData.placeOfSupply } : {}),
             }
         });
+
+        try {
+            await syncProposalComposerTermsAndFeatures(id, true);
+        } catch (e) {
+            console.error("Composer auto-sync warning:", e);
+        }
 
         return successResponse<{ id: string }>("Proposal updated successfully", {
             id: updatedProposal.id

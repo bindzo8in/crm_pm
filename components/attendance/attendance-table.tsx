@@ -46,9 +46,9 @@ export function AttendanceTable({ userRole }: AttendanceTableProps) {
         startDate: startDate || undefined,
         endDate: endDate || undefined,
       });
-      setLogs(res.records);
-      setTotalPages(res.totalPages);
-      setTotalCount(res.totalCount);
+      setLogs(res?.records || []);
+      setTotalPages(res?.totalPages || 1);
+      setTotalCount(res?.totalCount || 0);
     } catch (err: any) {
       toast.error(err.message || "Failed to fetch attendance logs");
     } finally {

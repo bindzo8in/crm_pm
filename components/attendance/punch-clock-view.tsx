@@ -93,7 +93,7 @@ export function PunchClockView({ initialRecord, settings, onRefresh }: PunchCloc
 
     setLoading(true);
     try {
-      await clockInAction({
+      const res = await clockInAction({
         workMode: selectedWorkMode,
         latitude: coords.lat,
         longitude: coords.lng,
@@ -101,6 +101,12 @@ export function PunchClockView({ initialRecord, settings, onRefresh }: PunchCloc
         selfiePublicId: selfie.publicId,
         notes: notes || undefined,
       });
+
+      if (!res.success) {
+        toast.error(res.error || "Failed to clock in");
+        return;
+      }
+
       toast.success("Clocked in successfully!");
       onRefresh();
     } catch (err: any) {
@@ -113,9 +119,15 @@ export function PunchClockView({ initialRecord, settings, onRefresh }: PunchCloc
   const handleClockOut = async () => {
     setLoading(true);
     try {
-      await clockOutAction({
+      const res = await clockOutAction({
         notes: notes || undefined,
       });
+
+      if (!res.success) {
+        toast.error(res.error || "Failed to clock out");
+        return;
+      }
+
       toast.success("Clocked out successfully!");
       onRefresh();
     } catch (err: any) {
@@ -129,10 +141,18 @@ export function PunchClockView({ initialRecord, settings, onRefresh }: PunchCloc
     setLoading(true);
     try {
       if (isOnBreak) {
-        await endBreakAction({ breakId: openBreak.id });
+        const res = await endBreakAction({ breakId: openBreak.id });
+        if (!res.success) {
+          toast.error(res.error || "Failed to end break");
+          return;
+        }
         toast.success("Resumed work from break!");
       } else {
-        await startBreakAction({ type: "LUNCH" });
+        const res = await startBreakAction({ type: "LUNCH" });
+        if (!res.success) {
+          toast.error(res.error || "Failed to start break");
+          return;
+        }
         toast.success("Started break session.");
       }
       onRefresh();

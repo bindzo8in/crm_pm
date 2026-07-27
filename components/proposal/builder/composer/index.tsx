@@ -32,6 +32,7 @@ import {
 
 import {
   getProposalComposerData,
+  syncProposalComposerTermsAndFeatures,
   createProposalBlock,
   updateProposalBlock,
   reorderProposalBlocks,
@@ -139,6 +140,24 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
   }, [loadData]);
+
+  const handleSync = async () => {
+    setRefreshing(true);
+    try {
+      const res = await syncProposalComposerTermsAndFeatures(proposalId, true);
+      if (res.success && res.data) {
+        setProposal(res.data.proposal);
+        setBlocks(res.data.blocks || []);
+        toast.success("Synced terms, features & pricing with document blocks!");
+      } else {
+        toast.error(res.message || "Failed to sync document blocks");
+      }
+    } catch {
+      toast.error("Error syncing proposal document");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const handleAddBlock = async (type: "CUSTOM" | "PAGE_BREAK" | "TIMELINE", title?: string) => {
     setIsAdding(true);
@@ -356,7 +375,7 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => loadData(true)}
+            onClick={handleSync}
             disabled={refreshing}
             className="h-8 gap-1.5 text-xs"
             title="Sync terms, features & blocks from server"
