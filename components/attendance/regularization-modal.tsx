@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { regularizeAttendanceAction } from "@/actions/attendance";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FileEditIcon, RefreshCwIcon, CheckCircle2Icon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -24,6 +24,7 @@ export function RegularizationModal({ isOpen, onClose, record, onSuccess }: Regu
   const [clockOut, setClockOut] = useState<string>(
     record?.clockOut ? new Date(record.clockOut).toISOString().slice(0, 16) : ""
   );
+  const [status, setStatus] = useState<string>(record?.status || "PRESENT");
   const [reason, setReason] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
@@ -36,12 +37,19 @@ export function RegularizationModal({ isOpen, onClose, record, onSuccess }: Regu
 
     setLoading(true);
     try {
-      const res = await regularizeAttendanceAction({
-        attendanceRecordId: record.id,
-        clockIn,
-        clockOut: clockOut || undefined,
-        reason,
+      const response = await fetch("/api/attendance/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          attendanceRecordId: record.id,
+          clockIn,
+          clockOut: clockOut || undefined,
+          status,
+          reason,
+        }),
       });
+
+      const res = await response.json();
 
       if (!res.success) {
         toast.error(res.error || "Failed to submit regularization");
@@ -90,6 +98,21 @@ export function RegularizationModal({ isOpen, onClose, record, onSuccess }: Regu
               onChange={(e) => setClockOut(e.target.value)}
               className="rounded-xl text-xs"
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">Status</Label>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger className="rounded-xl text-xs">
+                <SelectValue placeholder="Select Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="PRESENT">Present</SelectItem>
+                <SelectItem value="LATE">Late</SelectItem>
+                <SelectItem value="HALF_DAY">Half Day</SelectItem>
+                <SelectItem value="ABSENT">Absent</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-1.5">

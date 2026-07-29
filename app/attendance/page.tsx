@@ -107,6 +107,7 @@ export default async function AttendancePage() {
           initialRecord={record}
           settings={settings}
           userRole={userRole}
+          userDepartment={user.department || ""}
         />
       </main>
     </div>

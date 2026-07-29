@@ -19,6 +19,8 @@ import {
   RegularizeAttendanceInput,
   updateAttendanceSettingsSchema,
   UpdateAttendanceSettingsInput,
+  editAttendanceSchema,
+  EditAttendanceInput,
 } from "@/lib/schemas/attendance-schema";
 import { headers } from "next/headers";
 
@@ -167,6 +169,15 @@ export async function clockInAction(input: ClockInInput) {
       return { success: false, error: "You have already clocked in for today." };
     }
 
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { department: true, workMode: true },
+    });
+
+    if (!user) {
+      return { success: false, error: "User not found." };
+    }
+
     const rawUserAgent = reqHeaders.get("user-agent") || undefined;
     const ipAddress =
       reqHeaders.get("x-forwarded-for")?.split(",")[0] ||
@@ -185,7 +196,7 @@ export async function clockInAction(input: ClockInInput) {
 
     // Validate Office Location & Distance if workMode is OFFICE
     let distanceFromOffice: number | null = null;
-    if (validated.workMode === WorkMode.OFFICE) {
+    if (user.workMode === WorkMode.OFFICE) {
       if (settings?.enforceOfficeGeofence && (validated.latitude == null || validated.longitude == null)) {
         return {
           success: false,
@@ -243,19 +254,14 @@ export async function clockInAction(input: ClockInInput) {
       lateMinutes = Math.round((now.getTime() - expectedStartTime.getTime()) / (1000 * 60));
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { department: true },
-    });
-
     const record = await prisma.attendanceRecord.create({
       data: {
         userId: session.user.id,
         date: today,
         clockIn: now,
         status,
-        workMode: validated.workMode,
-        department: user?.department || null,
+        workMode: user.workMode,
+        department: user?.department,
         ipAddress,
         userAgent: rawUserAgent,
         deviceInfo,
@@ -515,6 +521,11 @@ export async function getTodayAttendanceAction() {
       },
     });
 
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { workMode: true },
+    });
+
     const settings = await getAttendanceSettings();
 
     return {
@@ -522,6 +533,7 @@ export async function getTodayAttendanceAction() {
       record: record ? JSON.parse(JSON.stringify(record)) : null,
       settings: settings ? JSON.parse(JSON.stringify(settings)) : null,
       userRole: (session.user.role as UserRole) || UserRole.STAFF,
+      userWorkMode: user?.workMode || WorkMode.OFFICE,
     };
   } catch (error: any) {
     console.error("Error in getTodayAttendanceAction:", error);
@@ -815,3 +827,67 @@ export async function updateAttendanceSettingsAction(input: UpdateAttendanceSett
     return { success: false, error: error.message || "Failed to update settings" };
   }
 }
+
+export async function editAttendanceAction(input: EditAttendanceInput) {
+  try {
+    const { session } = await getAuthenticatedUser();
+    const validated = editAttendanceSchema.parse(input);
+
+    const record = await prisma.attendanceRecord.findUnique({
+      where: { id: validated.attendanceRecordId },
+    });
+
+    if (!record) {
+      return { success: false, error: "Attendance record not found." };
+    }
+
+    const isSuperAdmin = session.user.role === UserRole.SUPER_ADMIN;
+    const isAdmin = session.user.role === UserRole.ADMIN;
+    const isHrStaff = session.user.role === UserRole.STAFF && session.user.department === 'HR';
+
+    if (!isSuperAdmin && !isAdmin && !isHrStaff) {
+      return { success: false, error: "Only admins or HR staff can edit attendance records." };
+    }
+
+    const newClockIn = new Date(validated.clockIn);
+    const newClockOut = validated.clockOut ? new Date(validated.clockOut) : null;
+    const newStatus = validated.status || record.status;
+
+    let workMinutes = 0;
+    if (newClockIn && newClockOut) {
+      workMinutes = Math.max(0, Math.round((newClockOut.getTime() - newClockIn.getTime()) / (1000 * 60)) - record.breakMinutes);
+    }
+
+    const updatedRecord = await prisma.attendanceRecord.update({
+      where: { id: record.id },
+      data: {
+        clockIn: newClockIn,
+        clockOut: newClockOut,
+        status: newStatus,
+        workMinutes,
+        isManuallyEdited: true,
+        notes: `${record.notes ? record.notes + " | " : ""}Edited: ${validated.reason}`,
+      },
+    });
+
+    // Create Audit Log with editor details
+    await prisma.attendanceAuditLog.create({
+      data: {
+        attendanceRecordId: record.id,
+        userId: record.userId, // The person whose record it is
+        editorId: session.user.id,
+        editorRole: session.user.role,
+        action: "UPDATE",
+        oldValues: JSON.stringify({ clockIn: record.clockIn, clockOut: record.clockOut, status: record.status }),
+        newValues: JSON.stringify({ clockIn: newClockIn, clockOut: newClockOut, status: newStatus, workMinutes }),
+        reason: validated.reason,
+      },
+    });
+
+    return { success: true, record: JSON.parse(JSON.stringify(updatedRecord)) };
+  } catch (error: any) {
+    console.error("Error in editAttendanceAction:", error);
+    return { success: false, error: error.message || "Failed to edit attendance" };
+  }
+}
+

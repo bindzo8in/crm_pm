@@ -1,6 +1,6 @@
 "use server";
 
-import { UserRole, Department } from "@/app/generated/prisma/enums";
+import { UserRole, Department, WorkMode } from "@/app/generated/prisma/enums";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { headers } from "next/headers";
@@ -46,19 +46,43 @@ export async function getUsers({
   const userIds = authUsers.users.map((u) => u.id);
   const prismaUsers = await prisma.user.findMany({
     where: { id: { in: userIds } },
-    select: { id: true, department: true },
+    select: { 
+      id: true, 
+      department: true, 
+      workMode: true,
+      employeeNo: true,
+      designation: true,
+      bankName: true,
+      bankAccountNo: true,
+      panNo: true,
+      costCenter: true,
+      uanNo: true,
+      pfNo: true
+    },
   });
 
-  const deptMap = new Map(prismaUsers.map((u) => [u.id, u.department]));
+  const prismaUserMap = new Map(prismaUsers.map((u) => [u.id, u]));
 
-  const usersWithDept = authUsers.users.map((u) => ({
-    ...u,
-    department: deptMap.get(u.id) || null,
-  }));
+  const usersWithExtra = authUsers.users.map((u) => {
+    const pUser = prismaUserMap.get(u.id);
+    return {
+      ...u,
+      department: pUser?.department || null,
+      workMode: pUser?.workMode || WorkMode.OFFICE,
+      employeeNo: pUser?.employeeNo || null,
+      designation: pUser?.designation || null,
+      bankName: pUser?.bankName || null,
+      bankAccountNo: pUser?.bankAccountNo || null,
+      panNo: pUser?.panNo || null,
+      costCenter: pUser?.costCenter || null,
+      uanNo: pUser?.uanNo || null,
+      pfNo: pUser?.pfNo || null,
+    };
+  });
 
   return {
     ...authUsers,
-    users: usersWithDept,
+    users: usersWithExtra,
   };
 }
 
@@ -163,6 +187,105 @@ export async function assignUserDepartment(
   await prisma.user.update({
     where: { id: userId },
     data: { department },
+  });
+
+  return {
+    success: true,
+  };
+}
+
+export async function assignUserWorkMode(
+  userId: string,
+  workMode: WorkMode
+) {
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  if (!session) {
+    throw new Error("Unauthorized");
+  }
+
+  const actorRole = session.user.role as UserRole;
+  if (actorRole !== UserRole.SUPER_ADMIN && actorRole !== UserRole.ADMIN) {
+    throw new Error("Only admins can assign user work mode.");
+  }
+
+  const targetUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      role: true,
+    },
+  });
+
+  if (!targetUser) {
+    throw new Error("User not found");
+  }
+
+  const targetRole = targetUser.role;
+
+  // Cannot modify user with same or higher role
+  if (roleLevel[actorRole] <= roleLevel[targetRole]) {
+    throw new Error("You cannot modify this user's work mode");
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { workMode },
+  });
+
+  return {
+    success: true,
+  };
+}
+
+export async function updateUserPayrollDetails(
+  userId: string,
+  data: {
+    employeeNo?: string | null;
+    designation?: string | null;
+    bankName?: string | null;
+    bankAccountNo?: string | null;
+    panNo?: string | null;
+    costCenter?: string | null;
+    uanNo?: string | null;
+    pfNo?: string | null;
+  }
+) {
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  if (!session) {
+    throw new Error("Unauthorized");
+  }
+
+  const actorRole = session.user.role as UserRole;
+  if (actorRole !== UserRole.SUPER_ADMIN && actorRole !== UserRole.ADMIN) {
+    throw new Error("Only admins can update user payroll details.");
+  }
+
+  const targetUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      role: true,
+    },
+  });
+
+  if (!targetUser) {
+    throw new Error("User not found");
+  }
+
+  const targetRole = targetUser.role;
+
+  // Cannot modify user with same or higher role
+  if (roleLevel[actorRole] <= roleLevel[targetRole]) {
+    throw new Error("You cannot modify this user's payroll details");
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data,
   });
 
   return {

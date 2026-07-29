@@ -15,7 +15,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, ChartBarIcon, FolderIcon, UsersIcon, CameraIcon, FileTextIcon, Settings2Icon, CircleHelpIcon, SearchIcon, DatabaseIcon, FileChartColumnIcon, FileIcon, CommandIcon, BookUser, BoxIcon, HandshakeIcon, ScrollText, TableIcon, ReceiptText, ClockIcon } from "lucide-react"
+import { LayoutDashboardIcon, ChartBarIcon, FolderIcon, UsersIcon, CameraIcon, FileTextIcon, Settings2Icon, CircleHelpIcon, SearchIcon, DatabaseIcon, FileChartColumnIcon, FileIcon, CommandIcon, BookUser, BoxIcon, HandshakeIcon, ScrollText, TableIcon, ReceiptText, ClockIcon, CalendarHeart, CalendarOff, WalletIcon } from "lucide-react"
 import { env } from "@/lib/env"
 
 const data = {
@@ -38,6 +38,20 @@ const data = {
       url: "/attendance",
       icon: (
         <ClockIcon />
+      ),
+    },
+    {
+      title: "Leaves",
+      url: "/dashboard/leaves",
+      icon: (
+        <CalendarOff />
+      ),
+    },
+    {
+      title: "Holidays",
+      url: "/dashboard/holidays",
+      icon: (
+        <CalendarHeart />
       ),
     },
     {
@@ -101,6 +115,13 @@ const data = {
         <ChartBarIcon
         />
       ),
+    },
+    {
+      title: "Salary",
+      url: "/dashboard/salary",
+      icon: (
+        <WalletIcon />
+      )
     },
     {
       title: "Invoice",

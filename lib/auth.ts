@@ -7,11 +7,30 @@ import { sendResetPasswordEmail, sendVerificationEmail } from "./email";
 import { env } from "./env";
 import { UserRole } from "@/app/generated/prisma/enums";
 import { ac, adminRole, staffRole, superAdminRole } from './permissions'
+import { expo } from "@better-auth/expo";
 
+const canLog = process.env.NODE_ENV === "development"
 export const auth = betterAuth({
     baseURL: env.BETTER_AUTH_URL,
+    logger: {
+        disable: !canLog,
+        disableColors: !canLog,
+        level: "debug",
+        log: (level, message, ...args) => {
+            // Custom logging implementation
+            console.log(`[${level}] ${message}`, ...args);
+        }
+    },
     trustedOrigins: [
         env.NEXT_PUBLIC_SITE_URL,
+        "b8pulse://",
+
+        // Development mode - Expo's exp:// scheme with local IP ranges
+        ...(process.env.NODE_ENV === "development" ? [
+            "exp://",                      // Trust all Expo URLs (prefix matching)
+            "exp://**",                    // Trust all Expo URLs (wildcard matching)
+            "exp://192.168.*.*:*/**",      // Trust 192.168.x.x IP range with any port and path
+        ] : [])
     ],
     secret: env.BETTER_AUTH_SECRET,
     database: prismaAdapter(prisma, {
@@ -24,6 +43,14 @@ export const auth = betterAuth({
                 required: false,
             },
         },
+    },
+    session: {
+        additionalFields: {
+            department: {
+                type: "string",
+                required: false,
+            },
+        }
     },
     emailAndPassword: {
         enabled: true,
@@ -72,7 +99,8 @@ export const auth = betterAuth({
                 [UserRole.STAFF]: staffRole,
             }
 
-        })
-        , nextCookies()// make sure this is the last plugin in the array
+        }),
+        expo(),
+        nextCookies()// make sure this is the last plugin in the array
     ]
 });

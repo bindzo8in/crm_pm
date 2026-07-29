@@ -14,9 +14,10 @@ interface AttendanceClientHubProps {
   initialRecord: any;
   settings: any;
   userRole: string;
+  userDepartment: string;
 }
 
-export function AttendanceClientHub({ initialRecord, settings, userRole }: AttendanceClientHubProps) {
+export function AttendanceClientHub({ initialRecord, settings, userRole, userDepartment }: AttendanceClientHubProps) {
   const [activeTab, setActiveTab] = useState<AttendanceTab>("kiosk");
   const [record, setRecord] = useState(initialRecord);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -100,7 +101,7 @@ export function AttendanceClientHub({ initialRecord, settings, userRole }: Atten
         )}
 
         {activeTab === "history" && (
-          <AttendanceTable userRole={userRole} />
+          <AttendanceTable userRole={userRole} userDepartment={userDepartment} />
         )}
 
         {activeTab === "analytics" && (

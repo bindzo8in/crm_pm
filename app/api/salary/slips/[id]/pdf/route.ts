@@ -2,6 +2,7 @@ import chromium from "@sparticuz/chromium-min";
 import puppeteer from "puppeteer-core";
 import { NextRequest } from "next/server";
 import { env } from "@/lib/env";
+import { cookies } from "next/headers";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -42,7 +43,7 @@ export async function GET(
 ) {
   const { id } = await params;
   const baseUrl = env.NEXT_PUBLIC_SITE_URL;
-  const targetUrl = `${baseUrl}/i/${id}?pdf=1`;
+  const targetUrl = `${baseUrl}/s/${id}?pdf=1`;
 
   let executablePath: string;
   let browser;
@@ -83,9 +84,14 @@ export async function GET(
 
     const page = await browser.newPage();
 
-    // Bypass Microsoft Dev Tunnels warning page
+    // Forward the current user's cookies to the Puppeteer browser
+    const cookieStore = await cookies();
+    const cookieString = cookieStore.getAll().map(c => `${c.name}=${c.value}`).join('; ');
+
+    // Bypass Microsoft Dev Tunnels warning page and pass auth cookies
     await page.setExtraHTTPHeaders({
-      "X-Tunnel-Skip-AntiPhishing-Page": "true"
+      "X-Tunnel-Skip-AntiPhishing-Page": "true",
+      "Cookie": cookieString
     });
 
     await page.setViewport({ width: 900, height: 1200, deviceScaleFactor: 2 });
@@ -110,7 +116,7 @@ export async function GET(
           margin: 0 !important;
           background: white !important;
         }
-        #invoice-printable-card {
+        #salary-printable-card {
           padding: 1rem !important;
           border: none !important;
           box-shadow: none !important;
@@ -132,7 +138,7 @@ export async function GET(
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="invoice-${id}.pdf"`,
+        "Content-Disposition": `attachment; filename="salary-slip-${id}.pdf"`,
         "Cache-Control": "no-store",
       },
     });

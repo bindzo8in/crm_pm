@@ -3,11 +3,11 @@ import "./lib/env";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["puppeteer-core", "@sparticuz/chromium-min"],
-    experimental: {
+  allowedDevOrigins: ['192.168.1.5'],
+  experimental: {
     serverActions: {
       allowedOrigins: [
-        "localhost:3000",
-        "*.inc1.devtunnels.ms",
+        "jh5lsv74-3000.inc1.devtunnels.ms",
       ],
     },
   },

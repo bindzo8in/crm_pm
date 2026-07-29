@@ -27,10 +27,11 @@ import { toast } from "sonner";
 
 interface AttendanceTableProps {
   userRole: string;
+  userDepartment?: string;
 }
 
-export function AttendanceTable({ userRole }: AttendanceTableProps) {
-  const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN";
+export function AttendanceTable({ userRole, userDepartment }: AttendanceTableProps) {
+  const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN" || userDepartment === "HR";
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -254,6 +255,11 @@ export function AttendanceTable({ userRole }: AttendanceTableProps) {
                   </TableCell>
                   <TableCell className="text-xs font-medium">
                     {formatDuration(record.clockIn, record.clockOut, record.breaks)}
+                    {record.isManuallyEdited && (
+                      <div className="mt-1">
+                        <Badge variant="outline" className="text-[9px] bg-amber-500/10 text-amber-600 border-amber-500/30">Manual Entry</Badge>
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="text-xs">
                     <Badge variant="outline" className="flex items-center w-fit text-[11px]">
@@ -364,6 +370,9 @@ export function AttendanceTable({ userRole }: AttendanceTableProps) {
                   <span>{record.workMode}</span>
                   <span>•</span>
                   <span>{formatDuration(record.clockIn, record.clockOut, record.breaks)}</span>
+                  {record.isManuallyEdited && (
+                    <Badge variant="outline" className="text-[9px] bg-amber-500/10 text-amber-600 border-amber-500/30 ml-1">Manual</Badge>
+                  )}
                 </div>
 
                 {record.selfieUrl && (

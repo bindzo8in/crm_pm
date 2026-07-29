@@ -38,6 +38,10 @@ export const routePermissions: RoutePermission[] = [
     roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF]
   },
   {
+    path: "/dashboard/leaves",
+    roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF]
+  },
+  {
     path: "/attendance",
     roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF]
   },
@@ -57,6 +61,10 @@ export const routePermissions: RoutePermission[] = [
   },
   {
     path: "/dashboard/users",
+    roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN],
+  },
+  {
+    path: "/dashboard/holidays",
     roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN],
   },
 

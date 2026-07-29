@@ -66,3 +66,13 @@ export const updateAttendanceSettingsSchema = z.object({
 });
 
 export type UpdateAttendanceSettingsInput = z.infer<typeof updateAttendanceSettingsSchema>;
+
+export const editAttendanceSchema = z.object({
+  attendanceRecordId: z.string().min(1, "Record ID is required"),
+  clockIn: z.string().min(1, "Clock In time is required"),
+  clockOut: z.string().optional().nullable(),
+  status: z.nativeEnum(AttendanceStatus).optional(),
+  reason: z.string().min(5, "Please provide a valid reason (min 5 chars)"),
+});
+
+export type EditAttendanceInput = z.infer<typeof editAttendanceSchema>;

@@ -14,18 +14,23 @@ import {
     CopyCheck,
     UserKey,
     Building2,
+    ReceiptIndianRupee,
 } from "lucide-react";
 import { ChangeRoleDialog } from "./change-role-dialog";
 import { ChangeDepartmentDialog } from "./change-department-dialog";
+import { ChangeWorkModeDialog } from "./change-work-mode-dialog";
+import { EditPayrollDetailsDialog } from "./edit-payroll-details-dialog";
 import type { UserWithRole } from "better-auth/plugins/admin";
 import { useSession } from "@/lib/auth-client";
-import { UserRole } from "@/app/generated/prisma/enums";
+import { UserRole, Department } from "@/app/generated/prisma/enums";
 
 export const UserActions = ({ user }: { user: UserWithRole }) => {
     const { data: session } = useSession();
     const [copied, setCopied] = useState(false);
     const [roleDialogOpen, setRoleDialogOpen] = useState(false);
     const [deptDialogOpen, setDeptDialogOpen] = useState(false);
+    const [workModeDialogOpen, setWorkModeDialogOpen] = useState(false);
+    const [payrollDialogOpen, setPayrollDialogOpen] = useState(false);
 
     const onCopy = async () => {
         await navigator.clipboard.writeText(user.id);
@@ -46,6 +51,11 @@ export const UserActions = ({ user }: { user: UserWithRole }) => {
     const canAssignDepartment =
         currentUserRole === UserRole.SUPER_ADMIN ||
         (currentUserRole === UserRole.ADMIN && user.role !== UserRole.SUPER_ADMIN);
+        
+    const canEditPayroll = 
+        currentUserRole === UserRole.SUPER_ADMIN || 
+        currentUserRole === UserRole.ADMIN || 
+        (currentUserRole === UserRole.STAFF && (session?.user as any)?.department === Department.HR);
 
     return (
         <>
@@ -79,12 +89,32 @@ export const UserActions = ({ user }: { user: UserWithRole }) => {
 
                     <DropdownMenuItem
                         onSelect={() => {
+                            setWorkModeDialogOpen(true);
+                        }}
+                        disabled={!canAssignDepartment}
+                    >
+                        <Building2 />
+                        Change Work Mode
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                        onSelect={() => {
                             setRoleDialogOpen(true);
                         }}
                         disabled={!canManageRole || isMe}
                     >
                         <UserKey />
                         Change Role
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                        onSelect={() => {
+                            setPayrollDialogOpen(true);
+                        }}
+                        disabled={!canEditPayroll}
+                    >
+                        <ReceiptIndianRupee />
+                        Edit Payroll Details
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
@@ -100,9 +130,23 @@ export const UserActions = ({ user }: { user: UserWithRole }) => {
             <ChangeDepartmentDialog
                 open={deptDialogOpen}
                 onOpenChange={setDeptDialogOpen}
-                user={user}
+                user={user as any}
                 currentUserRole={currentUserRole}
                 currentUserId={session?.user.id ?? ""}
+            />
+
+            <ChangeWorkModeDialog
+                open={workModeDialogOpen}
+                onOpenChange={setWorkModeDialogOpen}
+                user={user as any}
+                currentUserRole={currentUserRole}
+                currentUserId={session?.user.id ?? ""}
+            />
+
+            <EditPayrollDetailsDialog
+                open={payrollDialogOpen}
+                onOpenChange={setPayrollDialogOpen}
+                user={user as any}
             />
         </>
     );

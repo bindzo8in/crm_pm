@@ -133,6 +133,11 @@ export async function GET(
       console.error(`[BROWSER ERROR] ${err.toString()}`);
     });
 
+    // Bypass Microsoft Dev Tunnels warning page
+    await page.setExtraHTTPHeaders({
+      "X-Tunnel-Skip-AntiPhishing-Page": "true"
+    });
+
     console.log(`[PDF] Setting viewport...`);
     // Set a large viewport to prevent a vertical scrollbar from reducing the 
     // available width. This eliminates the horizontal overflow that causes 

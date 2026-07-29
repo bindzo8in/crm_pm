@@ -37,6 +37,15 @@ export const columns: ColumnDef<UserRow>[] = [
         )
     },
     {
+        accessorKey: "workMode",
+        header: "Work Mode",
+        cell: ({ row }) => (
+            <Badge variant="secondary" className="text-xs">
+                {(row.original as any).workMode ? (row.original as any).workMode : "OFFICE"}
+            </Badge>
+        )
+    },
+    {
         accessorKey: "emailVerified",
         header: "Email Verified",
         cell: ({ row }) => (
