@@ -177,17 +177,21 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
   };
 
   const clientEmail = invoice?.customer?.primaryContactEmail;
+  const clientPhone = invoice?.customer?.primaryContactPhone;
   const customerGstin = invoice?.customer?.gstNumber || (invoice?.customer as any)?.taxId || null;
-  const customerAddress = [
-    invoice?.customer?.billingAddressLine1 || invoice?.customer?.addressLine1,
-    invoice?.customer?.billingAddressLine2 || invoice?.customer?.addressLine2,
+  const clientName = invoice?.customerDisplayName || invoice?.customerCompanyName || invoice?.customer?.companyName || invoice?.customer?.displayName || "Customer";
+  const customerAddressLines = [
+    [
+      invoice?.customer?.billingAddressLine1 || invoice?.customer?.addressLine1,
+      invoice?.customer?.billingAddressLine2 || invoice?.customer?.addressLine2,
+    ].filter(Boolean).join(", "),
     [
       invoice?.customer?.billingCity || invoice?.customer?.city,
       invoice?.customer?.billingState || invoice?.customer?.state,
       invoice?.customer?.billingPostalCode || invoice?.customer?.postalCode,
+      invoice?.customer?.billingCountry || invoice?.customer?.country,
     ].filter(Boolean).join(", "),
-    invoice?.customer?.billingCountry || invoice?.customer?.country,
-  ].filter(Boolean);
+  ].filter(Boolean).slice(0, 2);
 
   const handleWhatsAppShare = async () => {
     const url = `${window.location.origin}/i/${invoiceId}`;
@@ -464,30 +468,20 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
         {/* Client & Bank Details */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <h3 className="text-[11px] font-bold text-gray-900 uppercase tracking-wider mb-0.5">Billed To (Importer)</h3>
-            <div className="font-bold text-sm leading-snug text-gray-900">{invoice.customerDisplayName}</div>
-            {invoice.customerCompanyName && (
-              <div className="text-xs font-semibold text-gray-800">{invoice.customerCompanyName}</div>
-            )}
-            <div className="text-xs font-medium text-gray-800 mt-0.5 space-y-0.5 font-[family-name:var(--font-invoice)]">
-              {invoice.customer?.primaryContactEmail && <div>{invoice.customer.primaryContactEmail}</div>}
-              {invoice.customer?.primaryContactPhone && (
-                <div className="font-mono text-xs font-semibold tracking-normal text-gray-900">{invoice.customer.primaryContactPhone}</div>
-              )}
-              {customerAddress.length > 0 && (
-                <div className="mt-1 text-gray-700">
-                  <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 leading-relaxed font-[family-name:var(--font-invoice)]">
-                    {customerAddress.map((line, index) => (
-                      <span key={`${line}-${index}`}>
-                        {line}
-                        {index < customerAddress.length - 1 && <span className="ml-1">,</span>}
-                      </span>
-                    ))}
-                  </div>
+            <h3 className="text-[11px] font-bold text-gray-900 uppercase tracking-wider mb-0.5">Billed To</h3>
+            <div className="font-bold text-sm leading-snug text-gray-900">{clientName}</div>
+            <div className="text-xs font-medium text-gray-800 mt-1 space-y-0.5 font-[family-name:var(--font-invoice)]">
+              {customerAddressLines.length > 0 && (
+                <div className="text-gray-700 leading-relaxed">
+                  {customerAddressLines.map((line, index) => (
+                    <div key={`${line}-${index}`}>{line}</div>
+                  ))}
                 </div>
               )}
+              {clientPhone && <div>Phone: {clientPhone}</div>}
+              {clientEmail && <div>Email: {clientEmail}</div>}
               {customerGstin && (
-                <div className="font-mono text-[11px] font-semibold text-gray-900 uppercase font-[family-name:var(--font-invoice)]">GSTIN: {customerGstin}</div>
+                <div className="font-mono text-[11px] font-semibold text-gray-900 uppercase">GST: {customerGstin}</div>
               )}
             </div>
           </div>
