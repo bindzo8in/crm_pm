@@ -177,6 +177,17 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
   };
 
   const clientEmail = invoice?.customer?.primaryContactEmail;
+  const customerGstin = invoice?.customer?.gstNumber || (invoice?.customer as any)?.taxId || null;
+  const customerAddress = [
+    invoice?.customer?.billingAddressLine1 || invoice?.customer?.addressLine1,
+    invoice?.customer?.billingAddressLine2 || invoice?.customer?.addressLine2,
+    [
+      invoice?.customer?.billingCity || invoice?.customer?.city,
+      invoice?.customer?.billingState || invoice?.customer?.state,
+      invoice?.customer?.billingPostalCode || invoice?.customer?.postalCode,
+    ].filter(Boolean).join(", "),
+    invoice?.customer?.billingCountry || invoice?.customer?.country,
+  ].filter(Boolean);
 
   const handleWhatsAppShare = async () => {
     const url = `${window.location.origin}/i/${invoiceId}`;
@@ -458,13 +469,25 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
             {invoice.customerCompanyName && (
               <div className="text-xs font-semibold text-gray-800">{invoice.customerCompanyName}</div>
             )}
-            <div className="text-xs font-medium text-gray-800 mt-0.5 space-y-0.5">
+            <div className="text-xs font-medium text-gray-800 mt-0.5 space-y-0.5 font-[family-name:var(--font-invoice)]">
               {invoice.customer?.primaryContactEmail && <div>{invoice.customer.primaryContactEmail}</div>}
               {invoice.customer?.primaryContactPhone && (
                 <div className="font-mono text-xs font-semibold tracking-normal text-gray-900">{invoice.customer.primaryContactPhone}</div>
               )}
-              {invoice.customer?.taxId && (
-                <div className="font-mono text-[11px] font-semibold text-gray-900">Client Tax ID / EIN: {invoice.customer.taxId}</div>
+              {customerAddress.length > 0 && (
+                <div className="mt-1 text-gray-700">
+                  <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 leading-relaxed font-[family-name:var(--font-invoice)]">
+                    {customerAddress.map((line, index) => (
+                      <span key={`${line}-${index}`}>
+                        {line}
+                        {index < customerAddress.length - 1 && <span className="ml-1">,</span>}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {customerGstin && (
+                <div className="font-mono text-[11px] font-semibold text-gray-900 uppercase font-[family-name:var(--font-invoice)]">GSTIN: {customerGstin}</div>
               )}
             </div>
           </div>
