@@ -550,6 +550,9 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
                       {categorySubtitle && (
                         <div className="text-[11px] font-semibold text-gray-700 mt-0.5">{categorySubtitle}</div>
                       )}
+                      {showDescription && (
+                        <div className="text-[11px] font-medium text-gray-700 mt-0.5 leading-relaxed">{item.description}</div>
+                      )}
                     </td>
                     <td className="py-2.5 px-3 text-center font-mono text-[11px] font-semibold text-gray-900 whitespace-nowrap">
                       {item.sacCode || "9983"}
