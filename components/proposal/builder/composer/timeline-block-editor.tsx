@@ -70,14 +70,18 @@ export function TimelineBlockEditor({ block, onSave }: TimelineBlockEditorProps)
   };
 
   useEffect(() => {
-    const handleGlobalSave = () => {
+    const handleGlobalSave = (e: Event) => {
+      const customEvent = e as CustomEvent<{ promises?: Promise<void>[] }>;
       if (isDirty && !isSaving) {
-        handleSave();
+        const promise = handleSave();
+        if (customEvent.detail?.promises) {
+          customEvent.detail.promises.push(promise);
+        }
       }
     };
     window.addEventListener("composer-save-all", handleGlobalSave);
     return () => window.removeEventListener("composer-save-all", handleGlobalSave);
-  }, [isDirty, isSaving]);
+  }, [isDirty, isSaving, milestones]);
 
   return (
     <div className="space-y-6">

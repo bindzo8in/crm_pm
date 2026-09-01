@@ -15,6 +15,7 @@ import {
 } from "@/lib/schemas/proposal-composer-schema";
 import { getProposalPricing } from "@/actions/proposal-pricing";
 import { headers } from "next/headers";
+import { revalidatePath } from "next/cache";
 import { ProposalBlockType, Prisma } from "@/app/generated/prisma/client";
 
 async function checkPermission(permission: "read" | "create" | "update" | "delete") {
@@ -41,7 +42,7 @@ async function checkPermission(permission: "read" | "create" | "update" | "delet
   return { success: true, session };
 }
 
-export async function getProposalComposerData(proposalId: string, options?: { forceRebuild?: boolean }) {
+export async function getProposalComposerData(proposalId: string, options?: { forceRebuild?: boolean; autoSync?: boolean }) {
   try {
     const perm = await checkPermission("read");
     if (!perm.success || !perm.session) return errorResponse(perm.error || "Unauthorized");
@@ -58,8 +59,12 @@ export async function getProposalComposerData(proposalId: string, options?: { fo
       orderBy: { sortOrder: "asc" },
     });
 
+    console.log('blocks', blocks)
+
+    let justInitialized = false;
     // If no blocks exist, initialize default 6 system blocks inside a transaction
     if (blocks.length === 0) {
+      justInitialized = true;
       const defaultBlocks = [
         {
           proposalId,
@@ -223,8 +228,9 @@ export async function getProposalComposerData(proposalId: string, options?: { fo
 
     // =========================================================================
     // Dynamic Sync: Fetch appropriate Terms & Conditions and structured Features
-    // and merge into FEATURES & TERMS blocks
+    // and merge into FEATURES & TERMS blocks (only when explicitly requested or just initialized)
     // =========================================================================
+    if (options?.forceRebuild || options?.autoSync || justInitialized) {
     const proposalServices = await prisma.proposalService.findMany({
       where: { proposalId },
       select: {
@@ -535,6 +541,7 @@ export async function getProposalComposerData(proposalId: string, options?: { fo
         termsBlock.content = updatedContent;
       }
     }
+    }
 
     return successResponse("Fetched proposal composer data", {
       proposal: pricingRes.data,
@@ -551,9 +558,10 @@ export async function syncProposalComposerTermsAndFeatures(proposalId: string, f
     const perm = await checkPermission("update");
     if (!perm.success) return errorResponse(perm.error!);
 
-    const res = await getProposalComposerData(proposalId, { forceRebuild });
+    const res = await getProposalComposerData(proposalId, { forceRebuild, autoSync: true });
     if (!res.success) return errorResponse(res.message || "Failed to sync");
 
+    revalidatePath(`/dashboard/proposals/${proposalId}`, "layout");
     return successResponse("Successfully synced terms and features from services/packages", res.data);
   } catch (error) {
     return errorResponse("Failed to sync terms and features", getErrorMessage(error));
@@ -638,6 +646,7 @@ export async function createProposalBlock(input: CreateProposalBlockInput) {
       },
     });
 
+    revalidatePath(`/dashboard/proposals/${input.proposalId}`, "layout");
     return successResponse("Block created successfully", newBlock);
   } catch (error) {
     if (process.env.NODE_ENV === "development") console.error(error);
@@ -673,6 +682,7 @@ export async function updateProposalBlock(id: string, proposalId: string, input:
       },
     });
 
+    revalidatePath(`/dashboard/proposals/${proposalId}`, "layout");
     return successResponse("Block updated successfully", updated);
   } catch (error) {
     if (process.env.NODE_ENV === "development") console.error(error);
@@ -696,6 +706,7 @@ export async function reorderProposalBlocks(input: ReorderProposalBlocksInput) {
       )
     );
 
+    revalidatePath(`/dashboard/proposals/${input.proposalId}`, "layout");
     return successResponse("Blocks reordered successfully");
   } catch (error) {
     if (process.env.NODE_ENV === "development") console.error(error);
@@ -746,6 +757,7 @@ export async function duplicateProposalBlock(id: string, proposalId: string) {
       });
     });
 
+    revalidatePath(`/dashboard/proposals/${proposalId}`, "layout");
     return successResponse("Block duplicated successfully", duplicate);
   } catch (error) {
     if (process.env.NODE_ENV === "development") console.error(error);
@@ -775,6 +787,7 @@ export async function deleteProposalBlock(id: string, proposalId: string) {
       where: { id },
     });
 
+    revalidatePath(`/dashboard/proposals/${proposalId}`, "layout");
     return successResponse("Block deleted successfully");
   } catch (error) {
     if (process.env.NODE_ENV === "development") console.error(error);
@@ -796,6 +809,7 @@ export async function toggleBlockVisibility(id: string, proposalId: string, isVi
       return errorResponse("Block not found");
     }
 
+    revalidatePath(`/dashboard/proposals/${proposalId}`, "layout");
     return successResponse(`Block is now ${isVisible ? "visible" : "hidden"}`);
   } catch (error) {
     if (process.env.NODE_ENV === "development") console.error(error);

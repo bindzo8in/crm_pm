@@ -8,6 +8,7 @@ import {
   Loader2,
   ArrowLeft,
   RefreshCw,
+  RotateCcw,
   DollarSign,
   HelpCircle,
   Eye,
@@ -105,6 +106,9 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
+
+  console.log('proposal', proposal)
+  console.log('blocks', blocks)
   const router = useRouter();
 
   const sensors = useSensors(
@@ -144,7 +148,7 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
   const handleSync = async () => {
     setRefreshing(true);
     try {
-      const res = await syncProposalComposerTermsAndFeatures(proposalId, true);
+      const res = await syncProposalComposerTermsAndFeatures(proposalId, false);
       if (res.success && res.data) {
         setProposal(res.data.proposal);
         setBlocks(res.data.blocks || []);
@@ -154,6 +158,27 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
       }
     } catch {
       toast.error("Error syncing proposal document");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleReset = async () => {
+    if (!window.confirm("Are you sure you want to reset the features and terms? This will overwrite any custom changes you've made to them.")) {
+      return;
+    }
+    setRefreshing(true);
+    try {
+      const res = await syncProposalComposerTermsAndFeatures(proposalId, true);
+      if (res.success && res.data) {
+        setProposal(res.data.proposal);
+        setBlocks(res.data.blocks || []);
+        toast.success("Reset terms & features to source table!");
+      } else {
+        toast.error(res.message || "Failed to reset document blocks");
+      }
+    } catch {
+      toast.error("Error resetting proposal document");
     } finally {
       setRefreshing(false);
     }
@@ -318,18 +343,26 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
     }
   };
 
-  const handlePreviewClick = () => {
+  const handlePreviewClick = async () => {
     setIsPreviewing(true);
+    const savePromises: Promise<void>[] = [];
+    
     // Dispatch a global event so child blocks can save their dirty state
-    window.dispatchEvent(new CustomEvent("composer-save-all"));
+    window.dispatchEvent(new CustomEvent("composer-save-all", { detail: { promises: savePromises } }));
     
     const toastId = toast.loading("Saving unsaved changes...", { duration: 500 });
     
-    // Allow time for async saves to fire off before navigating
-    setTimeout(() => {
+    try {
+      if (savePromises.length > 0) {
+        await Promise.all(savePromises);
+      }
       toast.dismiss(toastId);
       router.push(`/dashboard/proposals/${proposalId}/preview`);
-    }, 1500);
+    } catch (error) {
+      toast.dismiss(toastId);
+      toast.error("Failed to save some changes before previewing");
+      setIsPreviewing(false);
+    }
   };
 
   if (loading) {
@@ -378,10 +411,22 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
             onClick={handleSync}
             disabled={refreshing}
             className="h-8 gap-1.5 text-xs"
-            title="Sync terms, features & blocks from server"
+            title="Sync terms & features from server without overwriting edits"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
             <span>Sync</span>
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleReset}
+            disabled={refreshing}
+            className="h-8 gap-1.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/20"
+            title="Reset features and terms to match the source table (overwrites edits)"
+          >
+            <RotateCcw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            <span>Reset</span>
           </Button>
 
           <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 text-xs bg-emerald-50/50 hover:bg-emerald-100/50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">

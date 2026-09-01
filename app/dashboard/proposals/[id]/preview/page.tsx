@@ -27,6 +27,7 @@ export default async function ProposalPreviewPage({ params }: ProposalPreviewPag
       </div>
     );
   }
+  console.log('resssssdata', res.data)
 
   const { proposal, blocks } = res.data;
 
