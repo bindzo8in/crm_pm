@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@mediapipe/tasks-vision": ["./node_modules/@mediapipe/tasks-vision/vision.d.ts"]
     }
   },
   "include": [

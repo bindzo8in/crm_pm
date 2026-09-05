@@ -5,7 +5,7 @@ import { nextCookies } from "better-auth/next-js";
 import { admin } from "better-auth/plugins/admin"
 import { sendExistingUserSignupEmail, sendResetPasswordEmail, sendVerificationEmail } from "./email";
 import { env } from "./env";
-import { UserRole } from "@/app/generated/prisma/enums";
+import { UserRole, WorkMode } from "@/app/generated/prisma/enums";
 import { ac, adminRole, staffRole, superAdminRole } from './permissions'
 import { expo } from "@better-auth/expo";
 
@@ -43,6 +43,11 @@ export const auth = betterAuth({
                 type: "string",
                 required: false,
             },
+            workMode: {
+                type: "string",
+                required: false,
+                defaultValue: WorkMode.OFFICE.toString()
+            }
         },
     },
     session: {
