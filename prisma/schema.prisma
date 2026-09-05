@@ -898,8 +898,6 @@ model AttendanceRecord {
   latitude             Float?
   longitude            Float?
   locationName         String?
-  selfieUrl            String?
-  selfiePublicId       String?
   notes                String?
   earlyLeave           Boolean              @default(false)
   lateMinutes          Int                  @default(0)

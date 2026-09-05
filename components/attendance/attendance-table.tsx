@@ -271,7 +271,6 @@ export function AttendanceTable({ userRole, userDepartment }: AttendanceTablePro
               <TableHead className="font-semibold">Duration</TableHead>
               <TableHead className="font-semibold">Work Mode</TableHead>
               <TableHead className="font-semibold">Status</TableHead>
-              <TableHead className="font-semibold">Selfie</TableHead>
               <TableHead className="font-semibold text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -344,25 +343,6 @@ export function AttendanceTable({ userRole, userDepartment }: AttendanceTablePro
                     )}
                   </TableCell>
                   <TableCell>{getStatusBadge(record.status, record.workMinutes, record.clockOut)}</TableCell>
-                  <TableCell>
-                    {record.selfieUrl ? (
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button variant="ghost" size="icon" className="w-8 h-8 rounded-full overflow-hidden p-0 border border-border">
-                            <img src={record.selfieUrl} alt="Selfie" className="w-full h-full object-cover" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-64 p-3 bg-popover rounded-2xl border shadow-xl">
-                          <img src={record.selfieUrl} alt="Selfie View" className="w-full aspect-square object-cover rounded-xl mb-2" />
-                          <p className="text-[11px] text-muted-foreground text-center font-medium">
-                            Selfie verified at clock-in
-                          </p>
-                        </PopoverContent>
-                      </Popover>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">--</span>
-                    )}
-                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
                       {isAdmin && (
@@ -445,22 +425,6 @@ export function AttendanceTable({ userRole, userDepartment }: AttendanceTablePro
                     <Badge variant="outline" className="text-[9px] bg-amber-500/10 text-amber-600 border-amber-500/30 ml-1">Manual</Badge>
                   )}
                 </div>
-
-                {record.selfieUrl && (
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button size="sm" variant="outline" className="h-7 text-[11px] rounded-lg">
-                        <CameraIcon className="w-3 h-3 mr-1" /> View Selfie
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-64 p-3 bg-popover rounded-2xl border shadow-xl">
-                      <img src={record.selfieUrl} alt="Selfie View" className="w-full aspect-square object-cover rounded-xl mb-2" />
-                      <p className="text-[11px] text-muted-foreground text-center font-medium">
-                        Verified selfie snapshot
-                      </p>
-                    </PopoverContent>
-                  </Popover>
-                )}
               </div>
             </Card>
           ))
