@@ -56,7 +56,7 @@ export function AttendanceAnalytics() {
   const [endDate, setEndDate] = useState<string>(format(endOfMonth(new Date()), "yyyy-MM-dd"));
   const [departmentFilter, setDepartmentFilter] = useState<string>("ALL");
   const [employeeFilter, setEmployeeFilter] = useState<string>("ALL");
-  const [employees, setEmployees] = useState<Array<{ id: string; name: string; email: string; employeeNo?: string | null; department?: string | null }>>([]);
+  const [employees, setEmployees] = useState<Array<{ id: string; name: string; email: string; employeeId?: string | null; department?: string | null }>>([]);
 
   // Load employee list on mount
   useEffect(() => {
@@ -217,7 +217,7 @@ export function AttendanceAnalytics() {
                 <SelectItem value="ALL">👥 All Employees</SelectItem>
                 {employees.map((emp) => (
                   <SelectItem key={emp.id} value={emp.id}>
-                    {emp.name} {emp.employeeNo ? `(${emp.employeeNo})` : ""}
+                    {emp.name} {emp.employeeId ? `(${emp.employeeId})` : ""}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -643,7 +643,7 @@ export function AttendanceAnalytics() {
                         <div>
                           <p className="text-xs font-bold text-foreground">{emp.name}</p>
                           <p className="text-[10px] text-muted-foreground">
-                            {emp.employeeNo} • {emp.department}
+                            {emp.employeeId} • {emp.department}
                           </p>
                         </div>
                       </div>
@@ -689,7 +689,7 @@ export function AttendanceAnalytics() {
                         <div>
                           <p className="text-xs font-bold text-foreground">{emp.name}</p>
                           <p className="text-[10px] text-muted-foreground">
-                            {emp.employeeNo} • {emp.department}
+                            {emp.employeeId} • {emp.department}
                           </p>
                         </div>
                       </div>

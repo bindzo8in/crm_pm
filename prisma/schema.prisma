@@ -58,15 +58,14 @@ model User {
   salarySlips        SalarySlip[]
 
   // Payroll Details
-  employeeId         Int                @default(autoincrement()) @unique
-  employeeNo         String?
-  designation        String?
-  bankName           String?
-  bankAccountNo      String?
-  panNo              String?
-  costCenter         String?
-  uanNo              String?
-  pfNo               String?
+  employeeId    Int     @unique @default(autoincrement())
+  designation   String?
+  bankName      String?
+  bankAccountNo String?
+  panNo         String?
+  costCenter    String?
+  uanNo         String?
+  pfNo          String?
 
   @@unique([email])
   @@map("user")
@@ -398,12 +397,12 @@ model Proposal {
 
   status ProposalStatus @default(DRAFT)
 
-  validUntil DateTime?
-  acceptedAt DateTime?
+  validUntil      DateTime?
+  acceptedAt      DateTime?
   clientSignature Json? // { url: string, publicId: string }
 
-  currency String @default("INR")
-  exchangeRate Decimal? @default(83.50) @db.Decimal(10, 4)
+  currency      String   @default("INR")
+  exchangeRate  Decimal? @default(83.50) @db.Decimal(10, 4)
   placeOfSupply String?
 
   notes String?
@@ -538,7 +537,7 @@ model ProposalLineItem {
 
   discountValue Decimal? @db.Decimal(12, 2)
 
-  taxRate Int @default(18)
+  taxRate Int     @default(18)
   sacCode String? @default("9983")
 
   @@index([proposalServiceId])
@@ -719,15 +718,15 @@ model Invoice {
   customerDisplayName String
   customerCompanyName String?
 
-  title       String
-  notes       String?
-  terms       String?
-  status      InvoiceStatus @default(DRAFT)
-  issueDate   DateTime      @default(now())
-  dueDate     DateTime?
+  title     String
+  notes     String?
+  terms     String?
+  status    InvoiceStatus @default(DRAFT)
+  issueDate DateTime      @default(now())
+  dueDate   DateTime?
 
-  currency String @default("INR")
-  exchangeRate Decimal? @default(83.50) @db.Decimal(10, 4)
+  currency      String   @default("INR")
+  exchangeRate  Decimal? @default(83.50) @db.Decimal(10, 4)
   placeOfSupply String?
 
   subtotal   Decimal @default(0) @db.Decimal(12, 2)
@@ -762,14 +761,14 @@ model InvoiceLineItem {
   servicePackageId String?
   servicePackage   ServicePackage? @relation(fields: [servicePackageId], references: [id], onDelete: SetNull)
 
-  name        String
-  description String?
-  quantity    Int          @default(1)
-  unit        String       @default("item")
-  unitPrice   Decimal      @db.Decimal(12, 2)
-  total       Decimal      @db.Decimal(12, 2)
-  taxRate     Int          @default(18)
-  sacCode     String?      @default("9983")
+  name         String
+  description  String?
+  quantity     Int          @default(1)
+  unit         String       @default("item")
+  unitPrice    Decimal      @db.Decimal(12, 2)
+  total        Decimal      @db.Decimal(12, 2)
+  taxRate      Int          @default(18)
+  sacCode      String?      @default("9983")
   billingCycle BillingCycle @default(ONE_TIME)
 
   sortOrder Int @default(0)
@@ -941,7 +940,6 @@ model AttendanceBreak {
   @@map("attendance_break")
 }
 
-
 // ------------------- Leave & Holiday Models -------------------
 
 enum LeaveType {
@@ -959,30 +957,29 @@ enum LeaveStatus {
 }
 
 model LeaveRequest {
-  id            String      @id @default(cuid())
-  userId        String
-  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type          LeaveType
-  startDate     DateTime    @db.Date
-  endDate       DateTime    @db.Date
-  reason        String
-  status        LeaveStatus @default(PENDING)
+  id             String      @id @default(cuid())
+  userId         String
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type           LeaveType
+  startDate      DateTime    @db.Date
+  endDate        DateTime    @db.Date
+  reason         String
+  status         LeaveStatus @default(PENDING)
   managerComment String?
-  
-  // New breakdown calculation tracking fields
-  totalDays     Int         @default(0) // Total calendar block size
-  netLeaveDays  Int         @default(0) // Actual chargeable work days
-  sundayCount   Int         @default(0) // Total Sundays skipped
-  holidayCount  Int         @default(0) // Total Public Holidays skipped
 
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  // New breakdown calculation tracking fields
+  totalDays    Int @default(0) // Total calendar block size
+  netLeaveDays Int @default(0) // Actual chargeable work days
+  sundayCount  Int @default(0) // Total Sundays skipped
+  holidayCount Int @default(0) // Total Public Holidays skipped
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId])
   @@index([status])
   @@map("leave_request")
 }
-
 
 model Holiday {
   id          String   @id @default(cuid())
@@ -1020,7 +1017,7 @@ model AttendanceAuditLog {
   userId             String
   editorId           String?
   editorRole         String?
-  action             String           // "CREATE", "UPDATE", "REGULARIZE", "AUTO_CHECKOUT"
+  action             String // "CREATE", "UPDATE", "REGULARIZE", "AUTO_CHECKOUT"
   oldValues          String?          @db.Text
   newValues          String?          @db.Text
   reason             String?
@@ -1034,24 +1031,24 @@ model AttendanceAuditLog {
 // ------------------- Payroll / Salary Models -------------------
 
 model SalaryStructure {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  basicSalary     Decimal  @default(0) @db.Decimal(12, 2)
-  hra             Decimal  @default(0) @db.Decimal(12, 2) // House Rent Allowance
-  conveyance      Decimal  @default(0) @db.Decimal(12, 2)
-  medical         Decimal  @default(0) @db.Decimal(12, 2)
-  specialAllowance Decimal @default(0) @db.Decimal(12, 2)
-  
-  providentFund   Decimal  @default(0) @db.Decimal(12, 2)
-  professionalTax Decimal  @default(0) @db.Decimal(12, 2)
-  tds             Decimal  @default(0) @db.Decimal(12, 2)
-  
-  customComponents Json?   // Array of { name: string, type: 'EARNING' | 'DEDUCTION', amount: number }
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  basicSalary      Decimal @default(0) @db.Decimal(12, 2)
+  hra              Decimal @default(0) @db.Decimal(12, 2) // House Rent Allowance
+  conveyance       Decimal @default(0) @db.Decimal(12, 2)
+  medical          Decimal @default(0) @db.Decimal(12, 2)
+  specialAllowance Decimal @default(0) @db.Decimal(12, 2)
+
+  providentFund   Decimal @default(0) @db.Decimal(12, 2)
+  professionalTax Decimal @default(0) @db.Decimal(12, 2)
+  tds             Decimal @default(0) @db.Decimal(12, 2)
+
+  customComponents Json? // Array of { name: string, type: 'EARNING' | 'DEDUCTION', amount: number }
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("salary_structure")
 }
@@ -1063,49 +1060,49 @@ enum SalarySlipStatus {
 }
 
 model SalarySlip {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  month           Int      // 1 to 12
-  year            Int
-  
-  status          SalarySlipStatus @default(DRAFT)
-  
-  totalDays       Int
-  paidDays        Int
-  presentDays     Int
-  absentDays      Int
-  leaveDays       Int
-  halfDays        Int
-  
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  month Int // 1 to 12
+  year  Int
+
+  status SalarySlipStatus @default(DRAFT)
+
+  totalDays   Int
+  paidDays    Int
+  presentDays Int
+  absentDays  Int
+  leaveDays   Int
+  halfDays    Int
+
   // Breakdown for history/snapshot
-  basicSalary     Decimal  @db.Decimal(12, 2)
-  hra             Decimal  @db.Decimal(12, 2)
-  conveyance      Decimal  @db.Decimal(12, 2)
-  medical         Decimal  @db.Decimal(12, 2)
+  basicSalary      Decimal @db.Decimal(12, 2)
+  hra              Decimal @db.Decimal(12, 2)
+  conveyance       Decimal @db.Decimal(12, 2)
+  medical          Decimal @db.Decimal(12, 2)
   specialAllowance Decimal @db.Decimal(12, 2)
-  
-  providentFund   Decimal  @db.Decimal(12, 2)
-  professionalTax Decimal  @db.Decimal(12, 2)
-  tds             Decimal  @db.Decimal(12, 2)
-  
-  absentDeduction Decimal  @default(0) @db.Decimal(12, 2)
+
+  providentFund   Decimal @db.Decimal(12, 2)
+  professionalTax Decimal @db.Decimal(12, 2)
+  tds             Decimal @db.Decimal(12, 2)
+
+  absentDeduction  Decimal @default(0) @db.Decimal(12, 2)
   halfDayDeduction Decimal @default(0) @db.Decimal(12, 2)
-  
-  customComponents Json?   // Snapshot of custom components during generation
-  
-  totalEarnings   Decimal  @db.Decimal(12, 2)
-  totalDeductions Decimal  @db.Decimal(12, 2)
-  netSalary       Decimal  @db.Decimal(12, 2)
-  
-  paymentDate     DateTime?
-  paymentMethod   String?
-  referenceId     String?
-  notes           String?
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+
+  customComponents Json? // Snapshot of custom components during generation
+
+  totalEarnings   Decimal @db.Decimal(12, 2)
+  totalDeductions Decimal @db.Decimal(12, 2)
+  netSalary       Decimal @db.Decimal(12, 2)
+
+  paymentDate   DateTime?
+  paymentMethod String?
+  referenceId   String?
+  notes         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([userId, month, year])
   @@index([userId])
@@ -1113,4 +1110,3 @@ model SalarySlip {
   @@index([status])
   @@map("salary_slip")
 }
-

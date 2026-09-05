@@ -458,7 +458,7 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
                 <SelectItem value="ALL">All Employees</SelectItem>
                 {employees.map((emp) => (
                   <SelectItem key={emp.id} value={emp.id}>
-                    {emp.name} {emp.employeeNo ? `(${emp.employeeNo})` : ""}
+                    {emp.name} {emp.employeeId ? `(${emp.employeeId})` : ""}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -797,7 +797,7 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
                       <TableCell>
                         <div className="font-bold">{rec.user?.name || "N/A"}</div>
                         <div className="text-[10px] text-muted-foreground truncate max-w-[150px]">
-                          {rec.user?.employeeNo ? `${rec.user.employeeNo} • ` : ""}
+                          {rec.user?.employeeId ? `${rec.user.employeeId} • ` : ""}
                           {rec.user?.email}
                         </div>
                       </TableCell>

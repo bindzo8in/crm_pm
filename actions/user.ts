@@ -50,7 +50,7 @@ export async function getUsers({
       id: true, 
       department: true, 
       workMode: true,
-      employeeNo: true,
+      employeeId: true,
       designation: true,
       bankName: true,
       bankAccountNo: true,
@@ -69,7 +69,7 @@ export async function getUsers({
       ...u,
       department: pUser?.department || null,
       workMode: pUser?.workMode || WorkMode.OFFICE,
-      employeeNo: pUser?.employeeNo || null,
+      employeeId: pUser?.employeeId || null,
       designation: pUser?.designation || null,
       bankName: pUser?.bankName || null,
       bankAccountNo: pUser?.bankAccountNo || null,
@@ -242,7 +242,6 @@ export async function assignUserWorkMode(
 export async function updateUserPayrollDetails(
   userId: string,
   data: {
-    employeeNo?: string | null;
     designation?: string | null;
     bankName?: string | null;
     bankAccountNo?: string | null;

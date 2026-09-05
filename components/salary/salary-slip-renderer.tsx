@@ -110,7 +110,7 @@ export function SalarySlipRenderer({ slip, company, isPdfMode = false }: { slip:
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">LOP:</span><span className="font-medium">{slip.absentDays}</span></div>
         </div>
         <div className="p-2 space-y-0.5">
-          <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Employee No.:</span><span className="font-medium">{slip.user?.employeeNo || "-"}</span></div>
+          <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Employee No.:</span><span className="font-medium">{slip.user?.employeeId || "-"}</span></div>
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Bank Name:</span><span className="font-medium uppercase">{slip.user?.bankName || "-"}</span></div>
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Bank Account No.:</span><span className="font-medium">{slip.user?.bankAccountNo || "-"}</span></div>
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">PAN No.:</span><span className="font-medium">{slip.user?.panNo || "-"}</span></div>

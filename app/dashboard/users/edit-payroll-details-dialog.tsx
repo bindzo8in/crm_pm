@@ -26,7 +26,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { updateUserPayrollDetails } from "@/actions/user";
 
 const schema = z.object({
-  employeeNo: z.string().optional().nullable(),
   designation: z.string().optional().nullable(),
   bankName: z.string().optional().nullable(),
   bankAccountNo: z.string().optional().nullable(),
@@ -42,7 +41,6 @@ type EditPayrollDetailsDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   user: UserWithRole & { 
-    employeeNo?: string | null;
     designation?: string | null;
     bankName?: string | null;
     bankAccountNo?: string | null;
@@ -63,7 +61,6 @@ export function EditPayrollDetailsDialog({
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      employeeNo: user.employeeNo || "",
       designation: user.designation || "",
       bankName: user.bankName || "",
       bankAccountNo: user.bankAccountNo || "",
@@ -112,13 +109,7 @@ export function EditPayrollDetailsDialog({
 
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Field>
-              <FieldLabel>Employee No</FieldLabel>
-              <FieldContent>
-                <Input {...form.register("employeeNo")} placeholder="e.g. EMP-001" />
-              </FieldContent>
-              <FieldError className="text-destructive text-sm mt-1">{form.formState.errors.employeeNo?.message}</FieldError>
-            </Field>
+
 
             <Field>
               <FieldLabel>Designation</FieldLabel>
