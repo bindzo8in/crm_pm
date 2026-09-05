@@ -58,6 +58,8 @@ export function PunchClockView({ initialRecord, settings, onRefresh, workMode }:
     lat: initialRecord?.latitude || null,
     lng: initialRecord?.longitude || null,
   });
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -70,19 +72,45 @@ export function PunchClockView({ initialRecord, settings, onRefresh, workMode }:
   //   return () => clearInterval(timer);
   // }, []);
 
-  // Request browser geolocation on mount if not available
-  useEffect(() => {
-    if (typeof window !== "undefined" && "geolocation" in navigator && !coords.lat) {
+  const fetchLocation = () => {
+    if (typeof window !== "undefined" && "geolocation" in navigator) {
+      setIsLocating(true);
+      setLocationError(null);
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           setCoords({
             lat: pos.coords.latitude,
             lng: pos.coords.longitude,
           });
+          setIsLocating(false);
         },
-        (err) => console.log("Geolocation notice:", err.message),
-        { enableHighAccuracy: true, timeout: 10000 }
+        (err) => {
+          console.log("Geolocation error:", err.message);
+          let errorMessage = "Unable to get location.";
+          if (err.code === err.PERMISSION_DENIED) {
+            errorMessage = "Location access denied. Please enable it in browser settings.";
+            toast.error("Location permission denied. Please enable it in your browser/device settings and try again.");
+          } else if (err.code === err.POSITION_UNAVAILABLE) {
+            errorMessage = "Location information is unavailable.";
+            toast.error("Location unavailable. Make sure your device GPS is turned on.");
+          } else if (err.code === err.TIMEOUT) {
+            errorMessage = "Location request timed out.";
+            toast.error("Location request timed out. Please try again.");
+          }
+          setLocationError(errorMessage);
+          setIsLocating(false);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
+    } else {
+      setLocationError("Geolocation is not supported by this browser.");
+    }
+  };
+
+  // Request browser geolocation on mount if not available
+  useEffect(() => {
+    if (!coords.lat && !locationError && !isLocating) {
+      fetchLocation();
     }
   }, [coords.lat]);
 
@@ -401,14 +429,29 @@ const handleClockIn = async () => {
 
           {/* Location & Geofence Distance Footer */}
           <Card className="border border-border/60 bg-card shadow-lg rounded-3xl p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <MapPinIcon className="w-4 h-4 text-primary" />
-                <span>
-                  {coords.lat && coords.lng
-                    ? `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`
-                    : "Fetching GPS location..."}
-                </span>
+            <div className="flex items-start justify-between">
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <MapPinIcon className="w-4 h-4 text-primary shrink-0" />
+                  <span>
+                    {coords.lat && coords.lng
+                      ? `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`
+                      : isLocating
+                      ? "Fetching GPS location..."
+                      : locationError ? <span className="text-rose-500">{locationError}</span> : "Location unknown"}
+                  </span>
+                </div>
+                {(!coords.lat || locationError) && (
+                  <Button 
+                    variant="link" 
+                    size="sm" 
+                    onClick={fetchLocation} 
+                    disabled={isLocating}
+                    className="h-6 p-0 text-[10px] justify-start text-primary w-fit -mt-1 ml-6"
+                  >
+                    {isLocating ? "Retrying..." : "Retry Location"}
+                  </Button>
+                )}
               </div>
               <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-500">
                 <ShieldCheckIcon className="w-4 h-4" /> Geofence Protected
