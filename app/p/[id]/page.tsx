@@ -1,6 +1,6 @@
 import { getPublicProposalData } from "@/actions/public-proposal";
 import { ProposalRenderer } from "@/components/proposal/renderer/ProposalRenderer";
-import { ProposalPdfRenderer } from "@/components/proposal/renderer/ProposalPdfRenderer";
+import { ProposalPdfRenderer } from "@/components/proposal/renderer/ProposalPdfRendererWrapper";
 import { AcceptProposalButton } from "@/components/proposal/preview/AcceptProposalButton";
 import { PublicPreviewToolbar } from "@/components/proposal/preview/PublicPreviewToolbar";
 import prisma from "@/lib/prisma";
