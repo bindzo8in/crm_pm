@@ -1,0 +1,17 @@
+services:
+  web:
+    image: ghcr.io/${GHCR_IMAGE_REPO}:${IMAGE_TAG}
+    container_name: ${CONTAINER_NAME}
+    restart: unless-stopped
+
+    init: true
+
+    env_file:
+      - .env
+
+    networks:
+      - web_network
+
+networks:
+  web_network:
+    external: true
