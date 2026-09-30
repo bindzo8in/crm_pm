@@ -102,6 +102,7 @@ jobs:
             # your Dockerfile/build requires it.
             RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
             DATABASE_URL=${{ secrets.DATABASE_URL }}
+            DIRECT_URL=${{ secrets.DIRECT_URL }}
             BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}
             BETTER_AUTH_URL=${{ secrets.BETTER_AUTH_URL }}
             MAIL_FROM=${{ secrets.MAIL_FROM }}
@@ -215,6 +216,7 @@ jobs:
           # --------------------------------------------------
 
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
 
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
           BETTER_AUTH_URL: ${{ secrets.BETTER_AUTH_URL }}
@@ -251,6 +253,7 @@ jobs:
             NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET,
             NEXT_PUBLIC_APP_SCHEME,
             DATABASE_URL,
+            DIRECT_URL,
             BETTER_AUTH_SECRET,
             BETTER_AUTH_URL,
             RESEND_API_KEY,
@@ -302,6 +305,7 @@ jobs:
             NEXT_PUBLIC_APP_SCHEME=$NEXT_PUBLIC_APP_SCHEME
 
             DATABASE_URL=$DATABASE_URL
+            DIRECT_URL=$DIRECT_URL
 
             BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET
             BETTER_AUTH_URL=$BETTER_AUTH_URL
