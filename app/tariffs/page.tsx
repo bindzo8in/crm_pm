@@ -8,6 +8,8 @@ import { TariffClientGreeting } from "@/components/tariffs/tariff-client-greetin
 import { Suspense } from "react";
 import { TariffFooter } from "@/components/tariffs/tariff-footer";
 
+export const dynamic = "force-dynamic"; // Ensure the page is always rendered on the server for up-to-date data
+
 export const metadata = {
   title: "Service Tariffs | Our Packages",
 };
