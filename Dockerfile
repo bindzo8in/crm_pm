@@ -12,6 +12,7 @@ WORKDIR /app
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 RUN corepack enable && \
     corepack prepare pnpm@12.5.1 --activate
@@ -90,7 +91,21 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PATH="/app/node_modules/.bin:$PATH"
 
-RUN apk add --no-cache openssl libc6-compat
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    nspr \
+    expat \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont \
+    openssl \
+    libc6-compat
+
+# Tell Puppeteer/Chromium where to find the Alpine-installed Chromium binary
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs

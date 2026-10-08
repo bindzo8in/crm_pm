@@ -103,7 +103,7 @@ export async function GET(
       browser = await puppeteer.launch({
         executablePath,
         headless: true,
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+        args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
       });
     } else {
       // Production: download Chromium from the remote URL at runtime.

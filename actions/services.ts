@@ -9,6 +9,7 @@ import { ServicePackageQuerySchema, servicePackageSchema, ServicePackageSchema }
 import { ServiceQuerySchema, serviceSchema, ServiceSchema } from "@/lib/schemas/service-schema";
 import { headers } from "next/headers";
 import slugify from "slugify";
+import { revalidatePath } from "next/cache";
 
 export async function CreateService(data: ServiceSchema): Promise<ActionResponse> {
     try {
@@ -71,6 +72,7 @@ export async function CreateService(data: ServiceSchema): Promise<ActionResponse
                 description: validatedData.data.description,
             }
         })
+        revalidatePath("/dashboard/services", "layout");
         return successResponse("Service created successfully");
     } catch (error) {
         if (process.env.NODE_ENV === "development") {
@@ -143,6 +145,7 @@ export async function EditService(data: ServiceSchema) {
             },
         });
 
+        revalidatePath("/dashboard/services", "layout");
         return successResponse("Service updated successfully");
     } catch (error) {
         if (process.env.NODE_ENV === "development") {
@@ -309,6 +312,7 @@ export async function DeleteService(id: string) {
                 deletedAt: new Date(),
             },
         });
+        revalidatePath("/dashboard/services", "layout");
         return successResponse("Service deleted successfully");
     } catch (error) {
         if (process.env.NODE_ENV === 'development') console.log(error)
@@ -385,6 +389,7 @@ export async function createServicePackage(data: ServicePackageSchema) {
                 },
             },
         });
+        revalidatePath("/dashboard/services", "layout");
         return successResponse("Service package created successfully");
     } catch (error) {
         if (process.env.NODE_ENV === 'development') console.log(error)
@@ -673,6 +678,7 @@ export async function editServicePackage(
             timeout: 30000,
         });
 
+        revalidatePath("/dashboard/services", "layout");
         return successResponse(
             "Service package updated successfully"
         );
@@ -865,6 +871,7 @@ export async function DeleteServicePackage(id: string) {
             where: { id },
         });
 
+        revalidatePath("/dashboard/services", "layout");
         return successResponse("Service package deleted successfully");
     } catch (error) {
         if (process.env.NODE_ENV === "development") {
@@ -960,6 +967,7 @@ export async function DuplicateServicePackage(
             },
         });
 
+        revalidatePath("/dashboard/services", "layout");
         return successResponse(
             "Service package duplicated successfully"
         );
