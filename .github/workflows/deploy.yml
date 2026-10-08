@@ -124,6 +124,7 @@ jobs:
       - build-and-push
 
     strategy:
+      max-parallel: 1
       matrix:
         include:
           - client: crm-bindzo8

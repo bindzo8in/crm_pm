@@ -65,20 +65,29 @@ export async function GET(
         args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
       });
     } else {
-      const remoteExecPath = env.CHROMIUM_REMOTE_EXEC_PATH;
-      if (!remoteExecPath) {
-        return new Response(
-          JSON.stringify({ error: "CHROMIUM_REMOTE_EXEC_PATH env variable is not set." }),
-          { status: 500, headers: { "Content-Type": "application/json" } }
-        );
-      }
+      if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+        executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+        browser = await puppeteer.launch({
+          executablePath,
+          headless: true,
+          args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--single-process"],
+        });
+      } else {
+        const remoteExecPath = env.CHROMIUM_REMOTE_EXEC_PATH;
+        if (!remoteExecPath) {
+          return new Response(
+            JSON.stringify({ error: "CHROMIUM_REMOTE_EXEC_PATH env variable is not set." }),
+            { status: 500, headers: { "Content-Type": "application/json" } }
+          );
+        }
 
-      executablePath = await chromium.executablePath(remoteExecPath);
-      browser = await puppeteer.launch({
-        args: chromium.args,
-        executablePath,
-        headless: true,
-      });
+        executablePath = await chromium.executablePath(remoteExecPath);
+        browser = await puppeteer.launch({
+          args: chromium.args,
+          executablePath,
+          headless: true,
+        });
+      }
     }
 
     const page = await browser.newPage();
