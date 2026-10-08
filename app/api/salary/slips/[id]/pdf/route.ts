@@ -71,7 +71,7 @@ export async function GET(
         browser = await puppeteer.launch({
           executablePath,
           headless: true,
-          args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--single-process"],
+          args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
         });
       } else {
         const remoteExecPath = env.CHROMIUM_REMOTE_EXEC_PATH;
