@@ -70,7 +70,11 @@ export function PricingSummaryBlockViewer({ proposal }: PricingSummaryBlockViewe
               {/* Header */}
               <div className={`${colorClass} p-4 text-white text-center`}>
                 <h3 className="font-semibold text-base">
-                  {service.packageName || service.serviceName}
+                  {service.packageName
+                    ? (service.packageName.trim().toLowerCase() === service.serviceName.trim().toLowerCase()
+                        ? service.packageName
+                        : `${service.packageName} (${service.serviceName})`)
+                    : service.serviceName}
                 </h3>
               </div>
               

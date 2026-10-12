@@ -7,7 +7,7 @@
 .proposal-renderer-document {
   width: 210mm;
   background-color: white;
-  color: #111827;
+  color: #000000;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   box-sizing: border-box;
   margin: 0 auto;
@@ -173,15 +173,16 @@
 .proposal-renderer-document h4,
 .proposal-renderer-document h5,
 .proposal-renderer-document h6 {
-  color: #111827;
-  font-weight: 600;
+  color: #000000;
+  font-weight: 700;
   margin-top: 0;
   margin-bottom: 0.5em;
   line-height: 1.3;
 }
 
 .proposal-renderer-document p {
-  color: #374151;
+  color: #000000;
+  font-weight: 500;
   margin-top: 0;
   margin-bottom: 1em;
   line-height: 1.6;
@@ -235,7 +236,7 @@
 .proposal-features-title {
   font-size: 20pt;
   font-weight: 700;
-  color: #111827;
+  color: #000000;
   margin: 0;
   line-height: 1.2;
   flex: 1;
@@ -305,8 +306,8 @@
 
 .proposal-table th {
   background-color: #f3f4f6;
-  color: #374151;
-  font-weight: 600;
+  color: #000000;
+  font-weight: 700;
   text-align: left;
   padding: 10px 12px;
   border-bottom: 2px solid #e5e7eb;
@@ -315,7 +316,8 @@
 .proposal-table td {
   padding: 10px 12px;
   border-bottom: 1px solid #e5e7eb;
-  color: #4b5563;
+  color: #000000;
+  font-weight: 500;
   vertical-align: top;
 }
 
@@ -327,7 +329,8 @@
   list-style-position: outside;
   padding-left: 1.25em;
   margin-bottom: 1em;
-  color: #374151;
+  color: #000000;
+  font-weight: 500;
   font-size: 11pt;
   line-height: 1.6;
 }
@@ -337,7 +340,8 @@
   list-style-position: outside;
   padding-left: 1.25em;
   margin-bottom: 1em;
-  color: #374151;
+  color: #000000;
+  font-weight: 500;
   font-size: 11pt;
   line-height: 1.6;
 }
@@ -371,12 +375,13 @@
 }
 
 .proposal-rich-text blockquote {
-  border-left: 4px solid #e5e7eb;
+  border-left: 4px solid #000000;
   padding-left: 1em;
   margin-left: 0;
   margin-right: 0;
   font-style: italic;
-  color: #6b7280;
+  color: #000000;
+  font-weight: 500;
 }
 
 /* Rich Text Tables (TipTap) */
@@ -395,14 +400,15 @@
 
 .proposal-rich-text table th {
   background-color: #f3f4f6;
-  font-weight: 600;
+  font-weight: 700;
   text-align: left;
-  color: #374151;
+  color: #000000;
 }
 
 .proposal-rich-text table td {
   vertical-align: top;
-  color: #4b5563;
+  color: #000000;
+  font-weight: 500;
 }
 
 .proposal-rich-text table th p,

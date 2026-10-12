@@ -122,7 +122,13 @@ export function PdfRichTextRenderer({
     <>
       {pages.map((html, i) => {
         const currentService = services?.[i] ?? services?.[0];
-        const serviceName = isFeaturesBlock ? currentService?.serviceName : null;
+        const serviceName = isFeaturesBlock
+          ? (currentService?.packageName
+              ? (currentService.packageName.trim().toLowerCase() === currentService.serviceName.trim().toLowerCase()
+                  ? currentService.packageName
+                  : `${currentService.packageName} (${currentService.serviceName})`)
+              : currentService?.serviceName)
+          : null;
 
         return (
           <table

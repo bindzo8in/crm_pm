@@ -58,11 +58,13 @@ export function PricingBlockViewer({ proposal }: PricingBlockViewerProps) {
   const formatCycle = (cycle: string) => {
     switch (cycle) {
       case "MONTHLY":
-        return "/ mo";
+        return "per month";
       case "QUARTERLY":
-        return "/ qtr";
+        return "per quarter";
       case "YEARLY":
-        return "/ yr";
+        return "per year";
+      case "HALF_YEARLY":
+        return "per 6 months";
       default:
         return "";
     }
@@ -110,12 +112,10 @@ export function PricingBlockViewer({ proposal }: PricingBlockViewerProps) {
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/10 text-[11px] uppercase tracking-wider">
-                  <TableHead className="w-[20%]">Service & Package</TableHead>
-                  <TableHead className="w-[25%]">Item & Description</TableHead>
+                  <TableHead className="w-[48%]">Description</TableHead>
                   <TableHead className="text-center w-[10%]">Qty</TableHead>
-                  <TableHead className="text-right w-[12%]">Rate</TableHead>
-                  <TableHead className="text-right w-[10%]">Discount</TableHead>
-                  <TableHead className="text-right w-[8%]">Tax</TableHead>
+                  <TableHead className="text-right w-[14%]">Rate</TableHead>
+                  <TableHead className="text-right w-[13%]">Tax</TableHead>
                   <TableHead className="text-right w-[15%]">Total</TableHead>
                 </TableRow>
               </TableHeader>
@@ -127,39 +127,41 @@ export function PricingBlockViewer({ proposal }: PricingBlockViewerProps) {
                       <TableRow key={item.id} className="text-xs">
                         <TableCell className="align-top py-3">
                           <div className="space-y-0.5">
-                            <span className="font-semibold text-foreground">{service.serviceName}</span>
-                            {service.packageName && (
-                              <p className="text-[11px] text-muted-foreground line-clamp-1">
-                                Pkg: {service.packageName}
-                              </p>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-medium py-3 align-top">
-                          <div className="space-y-0.5">
-                            <span className="text-foreground">{item.name}</span>
+                            <span className="font-bold text-foreground text-sm">
+                              {service.packageName
+                                ? (service.packageName.trim().toLowerCase() === service.serviceName.trim().toLowerCase()
+                                    ? service.packageName
+                                    : `${service.packageName} (${service.serviceName})`)
+                                : service.serviceName}
+                            </span>
+                            {item.name &&
+                              item.name.trim().toLowerCase() !== service.serviceName.trim().toLowerCase() &&
+                              (!service.packageName || item.name.trim().toLowerCase() !== service.packageName.trim().toLowerCase()) && (
+                                <p className="text-xs font-medium text-foreground pt-0.5">
+                                  {item.name}
+                                </p>
+                              )}
                             {item.description && (
-                              <p className="text-[11px] text-muted-foreground line-clamp-1">
+                              <p className="text-[11px] text-foreground font-medium whitespace-pre-wrap leading-relaxed pt-0.5">
                                 {item.description}
                               </p>
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="text-center py-3 align-top">
+                        <TableCell className="text-center py-3 align-top font-medium">
                           <div className="font-mono">{item.quantity}</div>
-                          <div className="text-[10px] text-muted-foreground mt-0.5">{item.unit || "Unit"}</div>
+                          <div className="text-[10px] font-semibold text-foreground mt-0.5">{item.unit || "Unit"}</div>
+                        </TableCell>
+                        <TableCell className="text-right font-mono py-3 align-top font-semibold">
+                          <div>{formatCurrency(item.unitPrice)}</div>
+                          {item.billingCycle && formatCycle(item.billingCycle) && (
+                            <div className="text-[10px] font-medium text-foreground mt-0.5">{formatCycle(item.billingCycle)}</div>
+                          )}
                         </TableCell>
                         <TableCell className="text-right font-mono py-3 align-top">
-                          <div>{formatCurrency(item.unitPrice)}</div>
-                          <div className="text-[10px] text-muted-foreground mt-0.5">{formatCycle(item.billingCycle)}</div>
-                        </TableCell>
-                        <TableCell className="text-right font-mono py-3 align-top text-muted-foreground">
-                          {item.discountValue ? formatCurrency(item.discountValue) : "-"}
-                        </TableCell>
-                        <TableCell className="text-right font-mono py-3 align-top text-muted-foreground">
                           {item.taxRate ? `${item.taxRate}%` : "-"}
                         </TableCell>
-                        <TableCell className="text-right font-mono font-semibold text-foreground py-3 align-top">
+                        <TableCell className="text-right font-mono font-bold text-foreground py-3 align-top">
                           {formatCurrency(item.total)}
                         </TableCell>
                       </TableRow>

@@ -223,7 +223,7 @@ export async function GET(
         x: page.getWidth() - 110, // right aligned
         y: 28, // 10mm from bottom (inside the 20mm footer)
         size: 8,
-        color: rgb(0.419, 0.447, 0.501), // #6b7280 (gray-500) matching CSS
+        color: rgb(0, 0, 0), // Solid black matching CSS
       });
     }
 

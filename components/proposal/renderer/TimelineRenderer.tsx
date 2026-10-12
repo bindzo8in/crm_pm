@@ -35,18 +35,18 @@ export function TimelineRenderer({ block }: TimelineRendererProps) {
               <span className="text-xs font-bold text-blue-700">{idx + 1}</span>
             </div>
             
-            <div className="bg-gray-50 border rounded-lg p-5">
-              <h3 className="text-lg font-bold text-gray-900 mb-1">{milestone.title}</h3>
+            <div className="bg-gray-50 border border-gray-300 rounded-lg p-5">
+              <h3 className="text-lg font-bold text-black mb-1">{milestone.title}</h3>
               
               <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8 mt-4">
                 <div className="space-y-1">
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Estimated Duration</p>
-                  <p className="text-sm font-medium text-gray-800">{milestone.duration}</p>
+                  <p className="text-xs font-bold text-black uppercase tracking-wider">Estimated Duration</p>
+                  <p className="text-sm font-semibold text-black">{milestone.duration}</p>
                 </div>
                 
                 <div className="space-y-1 flex-1">
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Key Deliverables / Outcome</p>
-                  <p className="text-sm font-medium text-gray-800">{milestone.deliverable}</p>
+                  <p className="text-xs font-bold text-black uppercase tracking-wider">Key Deliverables / Outcome</p>
+                  <p className="text-sm font-semibold text-black">{milestone.deliverable}</p>
                 </div>
               </div>
             </div>

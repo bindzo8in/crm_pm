@@ -19,7 +19,7 @@ export function CoverFooter({ proposal, company, config, showPageNumber }: { pro
         <div className="w-full bg-white py-6 flex flex-col items-center">
           <div className="flex items-center w-full max-w-4xl mx-auto mb-4">
             <div className="flex-1 border-t border-gray-300"></div>
-            <span className="px-4 text-[10px] font-bold tracking-widest text-gray-600 uppercase">
+            <span className="px-4 text-[10px] font-bold tracking-widest text-black uppercase">
               Core Services
             </span>
             <div className="flex-1 border-t border-gray-300"></div>

@@ -58,10 +58,10 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
 
   const formatCycle = (cycle: string) => {
     switch (cycle) {
-      case "MONTHLY": return "/ mo";
-      case "QUARTERLY": return "/ qtr";
-      case "YEARLY": return "/ yr";
-      case "HALF_YEARLY": return "/ 6mo";
+      case "MONTHLY": return "per month";
+      case "QUARTERLY": return "per quarter";
+      case "YEARLY": return "per year";
+      case "HALF_YEARLY": return "per 6 months";
       default: return "";
     }
   };
@@ -70,7 +70,7 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
     <div className="mb-16">
 
       {services.length === 0 ? (
-        <div className="py-8 text-center text-gray-500 italic border rounded-lg bg-gray-50">
+        <div className="py-8 text-center text-black font-medium italic border rounded-lg bg-gray-50">
           No services included in this quotation.
         </div>
       ) : (
@@ -79,12 +79,10 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
             <table className="proposal-table w-full">
               <thead>
                 <tr>
-                  <th className="w-[20%]">Service & Package</th>
-                  <th className="w-[25%]">Item & Description</th>
+                  <th className="w-[48%]">Description</th>
                   <th className="text-center w-[10%]">Qty</th>
-                  <th className="text-right w-[12%]">Rate</th>
-                  <th className="text-right w-[10%]">Discount</th>
-                  <th className="text-right w-[8%]">SAC / Tax</th>
+                  <th className="text-right w-[14%]">Rate</th>
+                  <th className="text-right w-[13%]">Tax</th>
                   <th className="text-right w-[15%]">Total</th>
                 </tr>
               </thead>
@@ -95,32 +93,36 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
                     {service.items.map((item) => (
                       <tr key={item.id} className="break-inside-avoid">
                         <td className="align-top">
-                          <div className="font-semibold text-gray-900">{service.serviceName}</div>
-                          {service.packageName && (
-                            <div className="text-xs text-gray-500 mt-1">Pkg: {service.packageName}</div>
-                          )}
-                        </td>
-                        <td className="align-top">
-                          <div className="font-medium text-gray-900">{item.name}</div>
+                          <div className="font-bold text-black text-sm">
+                            {service.packageName
+                              ? (service.packageName.trim().toLowerCase() === service.serviceName.trim().toLowerCase()
+                                  ? service.packageName
+                                  : `${service.packageName} (${service.serviceName})`)
+                              : service.serviceName}
+                          </div>
+                          {item.name &&
+                            item.name.trim().toLowerCase() !== service.serviceName.trim().toLowerCase() &&
+                            (!service.packageName || item.name.trim().toLowerCase() !== service.packageName.trim().toLowerCase()) && (
+                              <div className="font-medium text-black text-xs mt-1">{item.name}</div>
+                            )}
                           {item.description && (
-                            <div className="text-xs text-gray-500 mt-1 whitespace-pre-wrap">{item.description}</div>
+                            <div className="text-xs text-black font-medium mt-1 whitespace-pre-wrap leading-relaxed">{item.description}</div>
                           )}
                         </td>
-                        <td className="text-center whitespace-nowrap align-top">
-                          {item.quantity} <span className="text-xs text-gray-500">{item.unit || "Unit"}</span>
+                        <td className="text-center whitespace-nowrap align-top text-black font-medium">
+                          {item.quantity} <span className="text-xs font-semibold text-black">{item.unit || "Unit"}</span>
                         </td>
-                        <td className="text-right whitespace-nowrap align-top">
+                        <td className="text-right whitespace-nowrap align-top text-black font-semibold">
                           {formatCurrency(item.unitPrice)}
-                          <div className="text-gray-400 text-[10px] mt-0.5">{formatCycle(item.billingCycle)}</div>
+                          {item.billingCycle && formatCycle(item.billingCycle) && (
+                            <div className="text-black font-medium text-[11px] mt-0.5">{formatCycle(item.billingCycle)}</div>
+                          )}
                         </td>
-                        <td className="text-right whitespace-nowrap align-top text-gray-600">
-                          {item.discountValue ? formatCurrency(item.discountValue) : "-"}
+                        <td className="text-right whitespace-nowrap align-top text-black">
+                          <div className="text-xs font-mono font-semibold text-black">{item.sacCode || "998361"}</div>
+                          <div className="text-[11px] font-medium text-black mt-0.5">{isUSD ? "0% (Nil)" : `${item.taxRate}%`}</div>
                         </td>
-                        <td className="text-right whitespace-nowrap align-top text-gray-600">
-                          <div className="text-xs font-mono font-medium text-gray-700">SAC: {item.sacCode || "998361"}</div>
-                          <div className="text-[10px] text-gray-500">{isUSD ? "0% (Nil)" : `${item.taxRate}%`}</div>
-                        </td>
-                        <td className="text-right font-medium whitespace-nowrap align-top">
+                        <td className="text-right font-bold text-black whitespace-nowrap align-top">
                           {formatCurrency(item.total)}
                         </td>
                       </tr>
@@ -153,47 +155,47 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-2 break-inside-avoid">
             <div>
               {bankAccount && (
-                <div className="w-full rounded-lg border bg-gray-50/50 p-6 h-full">
-                  <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 border-b pb-3">
+                <div className="w-full rounded-lg border border-gray-300 bg-gray-50/50 p-6 h-full">
+                  <h4 className="text-sm font-bold text-black uppercase tracking-wider mb-4 border-b border-gray-300 pb-3">
                     Bank Details (Inward Remittance)
                   </h4>
-                  <div className="space-y-2 text-sm text-gray-700">
+                  <div className="space-y-2 text-sm text-black">
                     <div className="flex justify-between">
-                      <span className="text-gray-500">Bank Name</span>
-                      <span className="font-medium uppercase">{bankAccount.bankName}</span>
+                      <span className="font-semibold text-black">Bank Name</span>
+                      <span className="font-bold uppercase text-black">{bankAccount.bankName}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-500">Account Name</span>
-                      <span className="font-medium uppercase">{bankAccount.accountName}</span>
+                      <span className="font-semibold text-black">Account Name</span>
+                      <span className="font-bold uppercase text-black">{bankAccount.accountName}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-gray-500">Account Number</span>
+                      <span className="font-semibold text-black">Account Number</span>
                       <div className="flex items-center">
-                        <span className="font-medium uppercase font-mono">{bankAccount.accountNumber}</span>
+                        <span className="font-bold uppercase font-mono text-black">{bankAccount.accountNumber}</span>
                         <CopyButton textToCopy={bankAccount.accountNumber} />
                       </div>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-gray-500">IFSC Code</span>
+                      <span className="font-semibold text-black">IFSC Code</span>
                       <div className="flex items-center">
-                        <span className="font-medium uppercase font-mono">{bankAccount.ifscCode}</span>
+                        <span className="font-bold uppercase font-mono text-black">{bankAccount.ifscCode}</span>
                         <CopyButton textToCopy={bankAccount.ifscCode} />
                       </div>
                     </div>
                     {bankAccount.swiftCode && (
-                      <div className="flex justify-between items-center bg-blue-50/60 p-2 rounded border border-blue-100 mt-1">
-                        <span className="text-blue-900 font-semibold">SWIFT Code (FIRC)</span>
+                      <div className="flex justify-between items-center bg-gray-100 p-2 rounded border border-gray-300 mt-1">
+                        <span className="text-black font-bold">SWIFT Code (FIRC)</span>
                         <div className="flex items-center">
-                          <span className="font-medium uppercase font-mono text-blue-950">{bankAccount.swiftCode}</span>
+                          <span className="font-bold uppercase font-mono text-black">{bankAccount.swiftCode}</span>
                           <CopyButton textToCopy={bankAccount.swiftCode} />
                         </div>
                       </div>
                     )}
                     {bankAccount.upiId && (
-                      <div className="flex justify-between items-center mt-4 border-t pt-2">
-                        <span className="text-gray-500">UPI ID</span>
+                      <div className="flex justify-between items-center mt-4 border-t border-gray-300 pt-2">
+                        <span className="font-semibold text-black">UPI ID</span>
                         <div className="flex items-center">
-                          <span className="font-medium">{bankAccount.upiId}</span>
+                          <span className="font-bold text-black">{bankAccount.upiId}</span>
                           <CopyButton textToCopy={bankAccount.upiId} />
                         </div>
                       </div>
@@ -203,51 +205,51 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
               )}
             </div>
             
-            <div className="w-full rounded-lg border bg-gray-50/50 p-6">
-              <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 border-b pb-3">
+            <div className="w-full rounded-lg border border-gray-300 bg-gray-50/50 p-6">
+              <h4 className="text-sm font-bold text-black uppercase tracking-wider mb-4 border-b border-gray-300 pb-3">
                 Financial Summary
               </h4>
               
               <div className="space-y-3 text-sm">
-                <div className="flex justify-between items-center text-gray-600">
-                  <span>Subtotal</span>
-                  <span className="font-medium text-gray-900">{formatCurrency(proposal.subtotal)}</span>
+                <div className="flex justify-between items-center text-black">
+                  <span className="font-semibold text-black">Subtotal</span>
+                  <span className="font-bold text-black">{formatCurrency(proposal.subtotal)}</span>
                 </div>
                 
                 {proposal.discount > 0 && (
-                  <div className="flex justify-between items-center text-emerald-600">
-                    <span>Total Discount</span>
-                    <span className="font-medium">-{formatCurrency(proposal.discount)}</span>
+                  <div className="flex justify-between items-center text-black">
+                    <span className="font-semibold text-black">Total Discount</span>
+                    <span className="font-bold text-black">-{formatCurrency(proposal.discount)}</span>
                   </div>
                 )}
                 
-                <div className="flex justify-between items-center text-gray-600">
-                  <span>IGST / Tax</span>
-                  <span className="font-medium text-gray-900">
+                <div className="flex justify-between items-center text-black">
+                  <span className="font-semibold text-black">IGST / Tax</span>
+                  <span className="font-bold text-black">
                     {isUSD ? "0% (Nil - LUT Zero-Rated Export)" : formatCurrency(proposal.tax)}
                   </span>
                 </div>
                 
                 {proposal.roundOff !== 0 && (
-                  <div className="flex justify-between items-center text-gray-500 text-xs">
-                    <span>Round Off</span>
-                    <span>{formatCurrency(proposal.roundOff)}</span>
+                  <div className="flex justify-between items-center text-black text-xs">
+                    <span className="font-semibold text-black">Round Off</span>
+                    <span className="font-bold text-black">{formatCurrency(proposal.roundOff)}</span>
                   </div>
                 )}
                 
-                <div className="flex justify-between items-center border-t border-gray-200 pt-4 mt-4">
-                  <span className="text-base font-bold text-gray-900">Grand Total</span>
-                  <span className="text-xl font-bold text-blue-700">{formatCurrency(proposal.grandTotal)}</span>
+                <div className="flex justify-between items-center border-t border-gray-300 pt-4 mt-4">
+                  <span className="text-base font-bold text-black">Grand Total</span>
+                  <span className="text-xl font-black text-black">{formatCurrency(proposal.grandTotal)}</span>
                 </div>
 
                 {isUSD && (
-                  <div className="border-t border-dashed border-gray-300 pt-3 mt-3 text-xs text-gray-600 space-y-1">
-                    <div className="flex justify-between font-semibold text-gray-900">
+                  <div className="border-t border-dashed border-gray-300 pt-3 mt-3 text-xs text-black space-y-1">
+                    <div className="flex justify-between font-bold text-black">
                       <span>INR Equivalent (RBI Rate):</span>
                       <span>₹{inrEquivalent.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
-                    <div className="flex justify-between items-center text-[11px] text-gray-500 pt-0.5">
-                      <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:underline">
+                    <div className="flex justify-between items-center text-[11px] text-black font-medium pt-0.5">
+                      <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener noreferrer" className="text-black font-semibold hover:underline">
                         Rates by Exchange Rate API
                       </a>
                       <span>Conversion Rate: ₹{exRate.toFixed(2)} / USD</span>

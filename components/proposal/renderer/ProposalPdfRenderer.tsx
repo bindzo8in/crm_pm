@@ -309,21 +309,22 @@ export function ProposalPdfRenderer({
       >
         <div
           style={{
-            borderTop: "1px solid #e5e7eb",
+            borderTop: "1px solid #d1d5db",
             paddingTop: "4px",
             height: "100%",
             display: "flex",
             justifyContent: "space-between",
             fontSize: "8pt",
-            color: "#6b7280",
+            color: "#000000",
+            fontWeight: "600",
             fontFamily: "Helvetica, Arial, sans-serif"
           }}
         >
           <div style={{ display: "flex", alignItems: "flex-start", gap: "6px", paddingTop: "2px" }}>
             {logoUrl && <img src={logoUrl} style={{ height: "14px" }} alt="Logo" />}
-            <span style={{ fontWeight: "bold", color: "#374151" }}>{companyName}</span>
+            <span style={{ fontWeight: "bold", color: "#000000" }}>{companyName}</span>
           </div>
-          <div style={{ paddingTop: "2px" }}>{websiteDisplay}</div>
+          <div style={{ paddingTop: "2px", color: "#000000", fontWeight: "600" }}>{websiteDisplay}</div>
         </div>
       </div>
     </div>

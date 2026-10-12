@@ -29,10 +29,10 @@ export function CoverCenter({ proposal, company, config }: { proposal: any; comp
         
         {/* Client details */}
         <div className="flex flex-col gap-1">
-          <span className="text-xs font-bold tracking-widest text-gray-400 uppercase">Prepared For</span>
-          <span className="text-2xl font-bold text-gray-800 leading-tight">{preparedFor}</span>
+          <span className="text-xs font-bold tracking-widest text-black uppercase">Prepared For</span>
+          <span className="text-2xl font-black text-black leading-tight">{preparedFor}</span>
           {proposal?.customer && (
-            <div className="text-sm font-medium text-gray-500 flex flex-col gap-0.5 mt-2">
+            <div className="text-sm font-semibold text-black flex flex-col gap-0.5 mt-2">
               {proposal.customer.addressLine1 && <span>{proposal.customer.addressLine1}{", "}</span>}
               {proposal.customer.addressLine2 && <span>{proposal.customer.addressLine2}{", "}</span>}
               {proposal.customer.city && (
@@ -41,7 +41,7 @@ export function CoverCenter({ proposal, company, config }: { proposal: any; comp
                 </span>
               )}
               {proposal.customer.country && <span>{proposal.customer.country}</span>}
-              {proposal.customer.gstNumber && <span className="font-bold text-gray-700 mt-1 uppercase">GSTIN: {proposal.customer.gstNumber}</span>}
+              {proposal.customer.gstNumber && <span className="font-bold text-black mt-1 uppercase">GSTIN: {proposal.customer.gstNumber}</span>}
             </div>
           )}
         </div>
@@ -49,19 +49,19 @@ export function CoverCenter({ proposal, company, config }: { proposal: any; comp
         {/* Meta details */}
         <div className="flex flex-col gap-4 text-right">
           <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">Quotation No</span>
-            <span className="text-lg font-bold text-gray-800">QUOT-{proposal?.proposalNumber}</span>
+            <span className="text-[10px] font-bold tracking-widest text-black uppercase">Quotation No</span>
+            <span className="text-lg font-black text-black">QUOT-{proposal?.proposalNumber}</span>
           </div>
           
           <div className="flex gap-8 justify-end">
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">Date</span>
-              <span className="text-sm font-bold text-gray-800">{dateStr}</span>
+              <span className="text-[10px] font-bold tracking-widest text-black uppercase">Date</span>
+              <span className="text-sm font-bold text-black">{dateStr}</span>
             </div>
             {validUntilStr && (
               <div className="flex flex-col gap-1">
-                <span className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">Valid Until</span>
-                <span className="text-sm font-bold text-gray-800">{validUntilStr}</span>
+                <span className="text-[10px] font-bold tracking-widest text-black uppercase">Valid Until</span>
+                <span className="text-sm font-bold text-black">{validUntilStr}</span>
               </div>
             )}
           </div>
@@ -75,13 +75,13 @@ export function CoverCenter({ proposal, company, config }: { proposal: any; comp
           {showTitle && (
             <h1 
               className="text-6xl font-black uppercase tracking-tighter leading-none mb-4"
-              style={{ color: config.primaryColor || "#1f2937" }}
+              style={{ color: config.primaryColor || "#000000" }}
             >
               {proposal?.title || "QUOTATION"}
             </h1>
           )}
           {showNotes && (
-            <p className="text-xl font-light text-gray-500 max-w-lg leading-relaxed">
+            <p className="text-xl font-medium text-black max-w-lg leading-relaxed">
               {subtitle}
             </p>
           )}
@@ -89,9 +89,9 @@ export function CoverCenter({ proposal, company, config }: { proposal: any; comp
       )}
 
       {/* Confidentiality Notice */}
-      <div className="mt-8 pt-6 border-t border-gray-100 max-w-lg">
-        <span className="text-[10px] font-bold tracking-widest text-gray-400 uppercase block mb-2">Confidential & Proprietary</span>
-        <p className="text-[10px] font-medium text-gray-400 leading-relaxed uppercase tracking-wider">
+      <div className="mt-8 pt-6 border-t border-black/20 max-w-lg">
+        <span className="text-[10px] font-bold tracking-widest text-black uppercase block mb-2">Confidential & Proprietary</span>
+        <p className="text-[10px] font-semibold text-black/90 leading-relaxed uppercase tracking-wider">
           This document contains confidential business information and trade secrets. It is intended solely for the use of the individual or entity to whom it is addressed.
         </p>
       </div>

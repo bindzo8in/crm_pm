@@ -46,28 +46,28 @@ export function CoverRenderer({ block, proposal, company }: CoverRendererProps) 
         <div className="flex-1 flex flex-col justify-center items-center w-full max-w-2xl mx-auto space-y-16">
           {(showProposalTitle || showNotes) && (
             <div className="space-y-6">
-              {showProposalTitle && <h1 className="text-5xl font-light tracking-tight text-gray-900">{proposal.title}</h1>}
-              {showNotes && <h2 className="text-xl font-medium text-gray-500 uppercase tracking-widest">{subtitle}</h2>}
+              {showProposalTitle && <h1 className="text-5xl font-bold tracking-tight text-black">{proposal.title}</h1>}
+              {showNotes && <h2 className="text-xl font-semibold text-black uppercase tracking-widest">{subtitle}</h2>}
             </div>
           )}
           
-          <div className="space-y-12 w-full pt-16 border-t border-gray-200">
+          <div className="space-y-12 w-full pt-16 border-t border-black/20">
             <div className="space-y-2">
-              <p className="text-sm font-medium text-gray-400 uppercase tracking-wider">Prepared For</p>
-              <p className="text-2xl font-semibold text-gray-800">{preparedFor}</p>
+              <p className="text-sm font-bold text-black uppercase tracking-wider">Prepared For</p>
+              <p className="text-2xl font-black text-black">{preparedFor}</p>
             </div>
             
             <div className="space-y-2">
-              <p className="text-sm font-medium text-gray-400 uppercase tracking-wider">Prepared By</p>
-              <p className="text-xl font-medium text-gray-700">{preparedBy}</p>
+              <p className="text-sm font-bold text-black uppercase tracking-wider">Prepared By</p>
+              <p className="text-xl font-bold text-black">{preparedBy}</p>
             </div>
           </div>
         </div>
         
         <div className="mt-auto pt-16 pb-8 flex flex-col items-center gap-1">
-          <p className="text-sm text-gray-500">{date}</p>
+          <p className="text-sm font-semibold text-black">{date}</p>
           {proposal.validUntil && (
-            <p className="text-xs text-gray-400">Valid Until: {new Date(proposal.validUntil).toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" })}</p>
+            <p className="text-xs font-medium text-black">Valid Until: {new Date(proposal.validUntil).toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" })}</p>
           )}
         </div>
       </div>
@@ -78,28 +78,28 @@ export function CoverRenderer({ block, proposal, company }: CoverRendererProps) 
     return (
       <div className="proposal-page-content proposal-cover-classic flex flex-col proposal-page-break-always">
         {(showProposalTitle || showNotes) && (
-          <div className="mt-16 mb-24 border-b-4 border-blue-900 pb-12">
-            {showProposalTitle && <h1 className="text-5xl font-serif font-bold text-blue-950 mb-6">{proposal.title}</h1>}
-            {showNotes && <h2 className="text-2xl font-medium text-gray-600">{subtitle}</h2>}
+          <div className="mt-16 mb-24 border-b-4 border-black pb-12">
+            {showProposalTitle && <h1 className="text-5xl font-serif font-black text-black mb-6">{proposal.title}</h1>}
+            {showNotes && <h2 className="text-2xl font-bold text-black">{subtitle}</h2>}
           </div>
         )}
         
         <div className="flex-1 grid grid-cols-2 gap-16 mt-12">
           <div className="space-y-4">
-            <h3 className="text-sm font-bold text-blue-900 uppercase tracking-widest border-b border-gray-300 pb-2">Submitted To</h3>
-            <p className="text-2xl font-semibold text-gray-900 pt-2">{preparedFor}</p>
+            <h3 className="text-sm font-bold text-black uppercase tracking-widest border-b border-black/20 pb-2">Submitted To</h3>
+            <p className="text-2xl font-black text-black pt-2">{preparedFor}</p>
           </div>
           
           <div className="space-y-4">
-            <h3 className="text-sm font-bold text-blue-900 uppercase tracking-widest border-b border-gray-300 pb-2">Submitted By</h3>
-            <p className="text-xl font-medium text-gray-800 pt-2">{preparedBy}</p>
+            <h3 className="text-sm font-bold text-black uppercase tracking-widest border-b border-black/20 pb-2">Submitted By</h3>
+            <p className="text-xl font-bold text-black pt-2">{preparedBy}</p>
           </div>
         </div>
         
         <div className="mt-auto pt-16 flex flex-col gap-1">
-          <p className="text-base font-medium text-gray-600">Date of Submission: {date}</p>
+          <p className="text-base font-semibold text-black">Date of Submission: {date}</p>
           {proposal.validUntil && (
-            <p className="text-sm text-gray-500">Valid Until: {new Date(proposal.validUntil).toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" })}</p>
+            <p className="text-sm font-medium text-black">Valid Until: {new Date(proposal.validUntil).toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" })}</p>
           )}
         </div>
       </div>
@@ -161,7 +161,7 @@ export function CoverRenderer({ block, proposal, company }: CoverRendererProps) 
               </h1>
             )}
             {showNotes && (
-              <p className="text-lg text-slate-200 font-light leading-relaxed max-w-2xl drop-shadow">
+              <p className="text-lg text-white font-medium leading-relaxed max-w-2xl drop-shadow">
                 {subtitle}
               </p>
             )}
@@ -169,27 +169,27 @@ export function CoverRenderer({ block, proposal, company }: CoverRendererProps) 
         )}
 
         {/* Details Card Overlaying Background Transition */}
-        <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 p-8 flex w-full max-w-3xl mt-auto mb-10 z-20 mx-auto text-sm">
+        <div className="bg-white rounded-2xl shadow-2xl border border-black/10 p-8 flex w-full max-w-3xl mt-auto mb-10 z-20 mx-auto text-sm">
           
-          <div className="flex-1 pr-6 border-r border-slate-100">
-            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Prepared For</h3>
+          <div className="flex-1 pr-6 border-r border-black/10">
+            <h3 className="text-[10px] font-bold text-black uppercase tracking-widest mb-4">Prepared For</h3>
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
-                <User className="w-4 h-4 text-slate-600" />
+                <User className="w-4 h-4 text-black" />
               </div>
               <div className="flex flex-col">
-                <span className="text-base font-bold text-slate-800 mb-1 leading-tight">{preparedFor}</span>
+                <span className="text-base font-black text-black mb-1 leading-tight">{preparedFor}</span>
                 
                 {/* Contact Info */}
                 {(proposal.customer?.primaryContactEmail || proposal.customer?.primaryContactPhone) && (
                   <div className="mb-2">
                     {proposal.customer?.primaryContactEmail && (
-                      <div className="text-xs font-medium text-slate-500 truncate max-w-[200px]" title={proposal.customer.primaryContactEmail}>
+                      <div className="text-xs font-semibold text-black truncate max-w-[200px]" title={proposal.customer.primaryContactEmail}>
                         {proposal.customer.primaryContactEmail}
                       </div>
                     )}
                     {proposal.customer?.primaryContactPhone && (
-                      <div className="text-xs font-medium text-slate-500">
+                      <div className="text-xs font-semibold text-black">
                         {proposal.customer.primaryContactPhone}
                       </div>
                     )}
@@ -198,7 +198,7 @@ export function CoverRenderer({ block, proposal, company }: CoverRendererProps) 
 
                 {/* Address & GSTIN */}
                 {proposal.customer && (
-                  <div className="text-xs font-medium text-slate-500 flex flex-col mt-1 space-y-0.5">
+                  <div className="text-xs font-semibold text-black flex flex-col mt-1 space-y-0.5">
                     {proposal.customer.addressLine1 && <span>{proposal.customer.addressLine1}</span>}
                     {proposal.customer.addressLine2 && <span>{proposal.customer.addressLine2}</span>}
                     {proposal.customer.city && (
@@ -208,7 +208,7 @@ export function CoverRenderer({ block, proposal, company }: CoverRendererProps) 
                     )}
                     {proposal.customer.country && <span>{proposal.customer.country}</span>}
                     {proposal.customer.gstNumber && (
-                      <span className="font-semibold text-slate-700 mt-1 uppercase">GSTIN: {proposal.customer.gstNumber}</span>
+                      <span className="font-bold text-black mt-1 uppercase">GSTIN: {proposal.customer.gstNumber}</span>
                     )}
                   </div>
                 )}
@@ -216,38 +216,38 @@ export function CoverRenderer({ block, proposal, company }: CoverRendererProps) 
             </div>
           </div>
 
-          <div className="flex-1 px-6 border-r border-slate-100">
-             <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Prepared By</h3>
+          <div className="flex-1 px-6 border-r border-black/10">
+             <h3 className="text-[10px] font-bold text-black uppercase tracking-widest mb-4">Prepared By</h3>
              <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
-                <ShieldCheck className="w-4 h-4 text-slate-600" />
+                <ShieldCheck className="w-4 h-4 text-black" />
               </div>
               <div className="flex flex-col">
-                <span className="text-base font-bold text-slate-800 mb-1">{preparedBy}</span>
-                <span className="text-xs font-medium text-slate-500">{company?.displayName || "Our Company"}</span>
+                <span className="text-base font-black text-black mb-1">{preparedBy}</span>
+                <span className="text-xs font-bold text-black">{company?.displayName || "Our Company"}</span>
               </div>
             </div>
           </div>
 
           <div className="flex-1 pl-6 flex flex-col justify-center gap-4">
              <div className="flex items-center gap-3">
-               <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center border border-slate-200">
-                 <Calendar className="w-3 h-3 text-slate-600" />
+               <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center border border-black/20">
+                 <Calendar className="w-3 h-3 text-black" />
                </div>
                <div className="flex flex-col">
-                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Date</span>
-                 <span className="text-xs font-bold text-slate-700">{date}</span>
+                 <span className="text-[9px] font-bold text-black uppercase tracking-wider">Date</span>
+                 <span className="text-xs font-black text-black">{date}</span>
                </div>
              </div>
              
              {validUntilDate && (
                <div className="flex items-center gap-3">
-                 <div className="w-8 h-8 rounded-full bg-amber-50 flex items-center justify-center border border-amber-200">
-                   <Clock className="w-3 h-3 text-amber-600" />
+                 <div className="w-8 h-8 rounded-full bg-amber-50 flex items-center justify-center border border-black/20">
+                   <Clock className="w-3 h-3 text-black" />
                  </div>
                  <div className="flex flex-col">
-                   <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Valid Until</span>
-                   <span className="text-xs font-bold text-slate-700">{validUntilDate}</span>
+                   <span className="text-[9px] font-bold text-black uppercase tracking-wider">Valid Until</span>
+                   <span className="text-xs font-black text-black">{validUntilDate}</span>
                  </div>
                </div>
              )}
