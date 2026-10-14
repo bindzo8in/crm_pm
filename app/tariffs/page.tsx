@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { format } from "date-fns";
 import { PackageOpen } from "lucide-react";
-
 import { TariffClientGreeting } from "@/components/tariffs/tariff-client-greeting";
 import { Suspense } from "react";
 import { TariffFooter } from "@/components/tariffs/tariff-footer";

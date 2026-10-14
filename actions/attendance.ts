@@ -274,6 +274,7 @@ export async function clockInAction(input: ClockInInput) {
       }
     }
 
+    console.log(distanceFromOffice, validated.latitude, validated.longitude, settings?.officeLatitude, settings?.officeLongitude);
     // Shift start cutoff math using IST time
     const [expHour, expMinute] = (settings?.expectedClockIn || "09:00").split(":").map(Number);
     const expectedStartTime = new Date(nowIST);
