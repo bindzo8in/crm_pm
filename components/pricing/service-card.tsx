@@ -9,6 +9,7 @@ import { LineItemsTable, LineItem } from "./line-items-table";
 import { deleteProposalService, updateProposalService } from "@/actions/proposal-pricing";
 import { toast } from "sonner";
 import { Trash2, Layers, Package, Loader2, ChevronDown, ChevronUp, Edit2, Check, X, GripVertical, ArrowUp, ArrowDown } from "lucide-react";
+import { Textarea } from "../ui/textarea";
 
 
 
@@ -133,7 +134,7 @@ export function ServiceSectionCard({ pricingApi,
                   className="h-8 text-sm font-bold bg-background"
                   disabled={saving}
                 />
-                <Input
+                <Textarea
                   value={editDesc}
                   onChange={(e) => setEditDesc(e.target.value)}
                   placeholder="Description (optional)"

@@ -15,7 +15,7 @@ interface MobileAttendanceNavProps {
 
 export function MobileAttendanceNav({ activeTab, onSelectTab, isManager }: MobileAttendanceNavProps) {
   const tabs = [
-    { id: "kiosk" as AttendanceTab, label: "Punch Clock", icon: ClockIcon },
+    { id: "kiosk" as AttendanceTab, label: "Punch", icon: ClockIcon },
     { id: "history" as AttendanceTab, label: "History", icon: HistoryIcon },
     { id: "analytics" as AttendanceTab, label: "Analytics", icon: BarChart3Icon },
     ...(isManager

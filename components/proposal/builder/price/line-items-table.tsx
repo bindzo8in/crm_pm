@@ -55,6 +55,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { Textarea } from "@/components/ui/textarea";
 
 export interface LineItem {
   id: string;
@@ -148,11 +149,11 @@ function SortableRow({
             placeholder="Item Name"
             className="h-8 font-medium text-xs"
           />
-          <Input
+          <Textarea
             value={editForm.description || ""}
             onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
             placeholder="Description (optional)"
-            className="h-8 text-[11px] text-muted-foreground"
+            className="h-16 text-[11px] text-muted-foreground"
           />
         </td>
         <td className="py-3 px-2 text-center">
