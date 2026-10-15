@@ -16,7 +16,6 @@ export function ForgotPasswordForm() {
   const [error, setError] = useState<string | null>(null);
   const [submittedEmail, setSubmittedEmail] =
     useState<string | null>(null);
-  const [resendAvailableAt, setResendAvailableAt] = useState<number | null>(null);
   const [cooldown, setCooldown] = useState(0);
   const [isResending, setIsResending] = useState(false);
 
@@ -32,7 +31,7 @@ export function ForgotPasswordForm() {
   const handleSubmit = form.handleSubmit(async (data: ForgotPasswordSchema) => {
     setError(null);
 
-    const { error, data: res } = await requestPasswordReset({
+    const { error } = await requestPasswordReset({
       email: data.email,
       redirectTo: `${window.location.origin}/reset-password`,
     });
@@ -48,28 +47,19 @@ export function ForgotPasswordForm() {
 
     // Success - typically returns a generic message to prevent email enumeration
     setSubmittedEmail(data.email);
-    setResendAvailableAt(Date.now() + 60_000);
+    setCooldown(60);
     form.reset();
   });
 
   useEffect(() => {
-    if (!resendAvailableAt) return;
+    if (cooldown <= 0) return;
 
-    const timer = setInterval(() => {
-      const remaining = Math.max(
-        0,
-        Math.ceil((resendAvailableAt - Date.now()) / 1000)
-      );
-
-      setCooldown(remaining);
-
-      if (remaining <= 0) {
-        clearInterval(timer);
-      }
+    const timer = setTimeout(() => {
+      setCooldown((remaining) => Math.max(remaining - 1, 0));
     }, 1000);
 
-    return () => clearInterval(timer);
-  }, [resendAvailableAt]);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
 
   const handleResend = async () => {
     if (!submittedEmail || cooldown > 0) return;
@@ -93,7 +83,7 @@ export function ForgotPasswordForm() {
         return;
       }
 
-      setResendAvailableAt(Date.now() + 60_000);
+      setCooldown(60);
     } finally {
       setIsResending(false);
     }
@@ -118,11 +108,11 @@ export function ForgotPasswordForm() {
           </p>
 
           <p className="text-muted-foreground mt-4">
-            We've sent a password reset link.
+            We&apos;ve sent a password reset link.
           </p>
 
           <p className="text-sm text-muted-foreground mt-2">
-            Didn't receive the email? Check your spam folder or resend the email after the cooldown period.
+            Didn&apos;t receive the email? Check your spam folder or resend the email after the cooldown period.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-2 mt-6 w-full">
@@ -160,8 +150,8 @@ export function ForgotPasswordForm() {
       }
       <form onSubmit={handleSubmit} className="p-2 sm:p-5 md:p-8 w-full rounded-md gap-2 border max-w-3xl mx-auto">
         <FieldGroup className="grid md:grid-cols-6 gap-4 mb-6">
-          <h1 className="mt-6 mb-1 font-extrabold text-3xl tracking-tight col-span-full">🔐 Forgot Paaword</h1>
-          <p className="tracking-wide text-muted-foreground mb-5 text-wrap text-sm col-span-full">Enter the email address associated with your account and we'll send you a password reset link.</p>
+          <h1 className="mt-6 mb-1 font-extrabold text-3xl tracking-tight col-span-full">🔐 Forgot Password</h1>
+          <p className="tracking-wide text-muted-foreground mb-5 text-wrap text-sm col-span-full">Enter the email address associated with your account and we&apos;ll send you a password reset link.</p>
 
           <Controller
             name="email"
@@ -172,7 +162,7 @@ export function ForgotPasswordForm() {
                 <Input
                   {...field}
                   id="email"
-                  type="text"
+                  type="email"
                   onChange={(e) => {
                     field.onChange(e.target.value)
                   }}

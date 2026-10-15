@@ -6,7 +6,7 @@ const optionalText = z.string().trim().optional();
 export const customerSchema = z.object({
     id: z.string().optional(),
     customerNumber: z.number().optional(),
-    displayName: z.string().trim(),
+    displayName: z.string().trim().min(1, "Display name is required"),
     companyName: optionalText,
 
     primaryContactName: optionalText,

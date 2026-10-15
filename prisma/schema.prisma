@@ -56,6 +56,7 @@ model User {
   leaveRequests      LeaveRequest[]
   salaryStructure    SalaryStructure?
   salarySlips        SalarySlip[]
+  expenses           Expense[]
 
   // Payroll Details
   employeeId    Int     @unique @default(autoincrement())
@@ -182,6 +183,7 @@ model Customer {
   customerContacts CustomerContact[]
   proposals        Proposal[]
   invoices         Invoice[]
+  expenses         Expense[]
 
   @@index([assignedToId])
   @@index([createdById])
@@ -593,6 +595,8 @@ model ProposalActivity {
 model Company {
   id String @id @default(cuid())
 
+  financialAccounts FinancialAccount[]
+
   displayName String
   legalName   String
   tagline     String?
@@ -635,6 +639,8 @@ model CompanyBankAccount {
 
   companyId String
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  financialAccounts FinancialAccount[]
 
   accountName   String
   bankName      String
@@ -789,11 +795,109 @@ enum PaymentMethod {
   OTHER
 }
 
+enum FinancialAccountType {
+  BANK
+  CASH
+}
+
+enum ExpenseStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+  REVERSED
+}
+
+model FinancialAccount {
+  id String @id @default(cuid())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  name String
+  type FinancialAccountType @default(BANK)
+
+  companyBankAccountId String?
+  companyBankAccount   CompanyBankAccount? @relation(fields: [companyBankAccountId], references: [id], onDelete: SetNull)
+
+  openingBalance     Decimal   @default(0) @db.Decimal(12, 2)
+  openingBalanceDate DateTime?
+  isActive           Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoicePayments InvoicePayment[]
+  expenses        Expense[]
+
+  @@unique([companyId, name])
+  @@unique([companyBankAccountId])
+  @@index([companyId, isActive])
+}
+
+model ExpenseCategory {
+  id String @id @default(cuid())
+
+  name        String
+  description String?
+  isActive    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  expenses Expense[]
+
+  @@unique([name])
+  @@index([isActive])
+}
+
+model Expense {
+  id String @id @default(cuid())
+
+  transactionNumber String        @unique
+  description       String
+  amount            Decimal       @db.Decimal(12, 2)
+  currency          String        @default("INR")
+  expenseDate       DateTime      @default(now())
+  paymentMethod     PaymentMethod @default(BANK_TRANSFER)
+  status            ExpenseStatus @default(PENDING)
+  referenceNumber   String?
+  notes             String?
+  receiptUrl        String?
+
+  categoryId String
+  category   ExpenseCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  financialAccountId String
+  financialAccount   FinancialAccount @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+
+  vendorName String?
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([expenseDate])
+  @@index([status])
+  @@index([categoryId])
+  @@index([financialAccountId])
+  @@index([customerId])
+  @@index([createdById])
+  @@index([deletedAt])
+}
+
 model InvoicePayment {
   id String @id @default(cuid())
 
   invoiceId String
   invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  financialAccountId String?
+  financialAccount   FinancialAccount? @relation(fields: [financialAccountId], references: [id], onDelete: SetNull)
 
   amount        Decimal       @db.Decimal(12, 2)
   paymentMethod PaymentMethod @default(BANK_TRANSFER)
@@ -804,6 +908,8 @@ model InvoicePayment {
   createdAt DateTime @default(now())
 
   @@index([invoiceId])
+  @@index([financialAccountId])
+  @@index([paymentDate])
 }
 
 enum InvoiceActivityType {
@@ -1084,6 +1190,10 @@ model SalarySlip {
   providentFund   Decimal @db.Decimal(12, 2)
   professionalTax Decimal @db.Decimal(12, 2)
   tds             Decimal @db.Decimal(12, 2)
+
+  medicalReimbursement Decimal @default(0) @db.Decimal(12, 2)
+  extraEarnings        Decimal @default(0) @db.Decimal(12, 2)
+  extraDeductions      Decimal @default(0) @db.Decimal(12, 2)
 
   absentDeduction  Decimal @default(0) @db.Decimal(12, 2)
   halfDayDeduction Decimal @default(0) @db.Decimal(12, 2)

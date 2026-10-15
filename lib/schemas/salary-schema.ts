@@ -1,5 +1,13 @@
 import { z } from "zod";
 
+export const salaryComponentSchema = z.object({
+  name: z.string().trim().min(1, "Component name is required"),
+  type: z.enum(["EARNING", "DEDUCTION"]),
+  amount: z.number().min(0),
+});
+
+export const salaryComponentsSchema = z.array(salaryComponentSchema);
+
 export const saveSalaryStructureSchema = z.object({
   userId: z.string().min(1, "User ID is required"),
   basicSalary: z.number().min(0).default(0),
@@ -10,18 +18,16 @@ export const saveSalaryStructureSchema = z.object({
   providentFund: z.number().min(0).default(0),
   professionalTax: z.number().min(0).default(0),
   tds: z.number().min(0).default(0),
-  customComponents: z
-    .array(
-      z.object({
-        name: z.string().min(1, "Component name is required"),
-        type: z.enum(["EARNING", "DEDUCTION"]),
-        amount: z.number().min(0),
-      })
-    )
-    .optional(),
+  customComponents: z.array(salaryComponentSchema).optional(),
 });
 
 export type SaveSalaryStructureInput = z.infer<typeof saveSalaryStructureSchema>;
+
+export const salarySlipsQuerySchema = z.object({
+  userId: z.string().min(1).optional(),
+  month: z.number().int().min(1).max(12).optional(),
+  year: z.number().int().min(2000).max(2100).optional(),
+});
 
 export const generateSalarySlipSchema = z.object({
   userId: z.string().min(1, "User ID is required"),
@@ -36,11 +42,26 @@ export type GenerateSalarySlipInput = z.infer<typeof generateSalarySlipSchema>;
 
 export const updateSalarySlipStatusSchema = z.object({
   slipId: z.string().min(1, "Slip ID is required"),
-  status: z.enum(["DRAFT", "GENERATED", "PAID"]),
-  paymentDate: z.string().optional(),
-  paymentMethod: z.string().optional(),
-  referenceId: z.string().optional(),
-  notes: z.string().optional(),
+  paymentDate: z.iso.date(),
+  paymentMethod: z.enum(["BANK_TRANSFER", "UPI", "CASH", "CHEQUE", "OTHER"]),
+  referenceId: z.string().trim().max(100).optional(),
+  notes: z.string().trim().max(1000).optional(),
 });
 
 export type UpdateSalarySlipStatusInput = z.infer<typeof updateSalarySlipStatusSchema>;
+
+export const updateSalarySlipAdjustmentsSchema = z.object({
+  slipId: z.string().min(1, "Slip ID is required"),
+  medicalReimbursement: z.number().min(0),
+  extraEarnings: z.number().min(0),
+  extraDeductions: z.number().min(0),
+});
+
+export type UpdateSalarySlipAdjustmentsInput = z.infer<typeof updateSalarySlipAdjustmentsSchema>;
+
+export const autoGenerateMonthlySalarySlipsSchema = z.object({
+  month: z.number().int().min(1).max(12),
+  year: z.number().int().min(2000).max(2100),
+});
+
+export type AutoGenerateMonthlySalarySlipsInput = z.infer<typeof autoGenerateMonthlySalarySlipsSchema>;

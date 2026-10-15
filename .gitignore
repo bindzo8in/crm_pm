@@ -46,3 +46,4 @@ next-env.d.ts
 /data/*
 !/data/countries.json
 !/data/states.json
+.tmp

@@ -1,0 +1,32 @@
+name: Generate Monthly Salary Slips
+
+on:
+  schedule:
+    - cron: "15 2 1 * *"
+  workflow_dispatch:
+
+jobs:
+  generate:
+    concurrency:
+      group: monthly-salary-slip-generation
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - environment: crm-bindzo8
+          - environment: crm-designhub
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.environment }}
+    steps:
+      - name: Generate previous month's salary slips
+        env:
+          APP_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+          SALARY_CRON_SECRET: ${{ secrets.SALARY_CRON_SECRET }}
+        run: |
+          test -n "$APP_URL"
+          test -n "$SALARY_CRON_SECRET"
+          curl --fail-with-body --silent --show-error \
+            --retry 3 --retry-all-errors \
+            --request POST "${APP_URL%/}/api/salary/cron" \
+            --header "Authorization: Bearer $SALARY_CRON_SECRET"

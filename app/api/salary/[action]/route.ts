@@ -4,7 +4,13 @@ import {
   saveSalaryStructureAction,
   generateSalarySlipAction,
   getSalarySlipsAction,
+  updateSalarySlipStatusAction,
+  updateSalarySlipAdjustmentsAction,
 } from "@/actions/salary";
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unexpected error.";
+}
 
 export async function GET(
   req: NextRequest,
@@ -25,16 +31,17 @@ export async function GET(
       const userId = url.searchParams.get("userId") || undefined;
       const monthStr = url.searchParams.get("month");
       const yearStr = url.searchParams.get("year");
-      const month = monthStr ? parseInt(monthStr) : undefined;
-      const year = yearStr ? parseInt(yearStr) : undefined;
+      const month = monthStr ? Number(monthStr) : undefined;
+      const year = yearStr ? Number(yearStr) : undefined;
       
       const res = await getSalarySlipsAction({ userId, month, year });
       return NextResponse.json(res);
     }
 
     return NextResponse.json({ success: false, error: "Invalid GET action" }, { status: 400 });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error) {
+    console.error("Salary API GET failed:", error);
+    return NextResponse.json({ success: false, error: errorMessage(error) }, { status: 500 });
   }
 }
 
@@ -44,23 +51,36 @@ export async function POST(
 ) {
   try {
     const { action } = await params;
-    let input = {};
+    let input: unknown;
     try {
       input = await req.json();
-    } catch (e) {}
+    } catch {
+      return NextResponse.json({ success: false, error: "A valid JSON body is required." }, { status: 400 });
+    }
 
     if (action === "structure") {
-      const res = await saveSalaryStructureAction(input as any);
+      const res = await saveSalaryStructureAction(input);
       return NextResponse.json(res);
     }
 
     if (action === "generate") {
-      const res = await generateSalarySlipAction(input as any);
+      const res = await generateSalarySlipAction(input);
+      return NextResponse.json(res);
+    }
+
+    if (action === "status") {
+      const res = await updateSalarySlipStatusAction(input);
+      return NextResponse.json(res);
+    }
+
+    if (action === "adjustments") {
+      const res = await updateSalarySlipAdjustmentsAction(input);
       return NextResponse.json(res);
     }
 
     return NextResponse.json({ success: false, error: "Invalid POST action" }, { status: 400 });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error) {
+    console.error("Salary API POST failed:", error);
+    return NextResponse.json({ success: false, error: errorMessage(error) }, { status: 500 });
   }
 }

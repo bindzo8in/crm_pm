@@ -10,7 +10,10 @@ export const env = createEnv({
     GOOGLE_CLIENT_ID: z.string().min(1),
     GOOGLE_CLIENT_SECRET: z.string().min(1),
     CHROMIUM_REMOTE_EXEC_PATH: z.string().nonempty(),
+    CLOUDINARY_API_KEY: z.string().min(1).optional(),
+    CLOUDINARY_API_SECRET: z.string().min(1).optional(),
     EXCHANGE_RATE_API_KEY: z.string().optional(),
+    SALARY_CRON_SECRET: z.string().min(32).optional(),
   },
   client: {
     NEXT_PUBLIC_APP_NAME: z.string().default("CRM"),

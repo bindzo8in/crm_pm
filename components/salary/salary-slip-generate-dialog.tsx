@@ -8,12 +8,13 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { RefreshCwIcon, CalculatorIcon } from "lucide-react";
+import type { SalaryEmployee, SalarySlipRecord } from "./types";
 
 interface SalarySlipGenerateDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  users: any[];
-  onSuccess: (slip: any) => void;
+  users: SalaryEmployee[];
+  onSuccess: (slip: SalarySlipRecord) => void;
 }
 
 export function SalarySlipGenerateDialog({ isOpen, onClose, users, onSuccess }: SalarySlipGenerateDialogProps) {
@@ -70,8 +71,8 @@ export function SalarySlipGenerateDialog({ isOpen, onClose, users, onSuccess }: 
       } else {
         toast.error(data.error || "Failed to generate slip");
       }
-    } catch (err: any) {
-      toast.error(err.message || "Failed to generate slip");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to generate slip");
     } finally {
       setLoading(false);
     }

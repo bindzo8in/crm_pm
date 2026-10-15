@@ -1,25 +1,23 @@
 "use client";
 
 import React, { useState } from "react";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { WalletIcon, FileTextIcon } from "lucide-react";
 import { SalaryStructuresTab } from "./salary-structures-tab";
 import { SalarySlipsTab } from "./salary-slips-tab";
+import type { SalaryEmployee, SalarySlipRecord } from "./types";
 
 interface SalaryDashboardHubProps {
-  users: any[];
-  initialSlips: any[];
+  users: SalaryEmployee[];
+  initialSlips: SalarySlipRecord[];
   isHrOrAdmin: boolean;
-  currentUserId: string;
 }
 
-export function SalaryDashboardHub({ users, initialSlips, isHrOrAdmin, currentUserId }: SalaryDashboardHubProps) {
+export function SalaryDashboardHub({ users, initialSlips, isHrOrAdmin }: SalaryDashboardHubProps) {
   const [activeTab, setActiveTab] = useState<"structures" | "slips">(isHrOrAdmin ? "structures" : "slips");
 
   return (
-    <div className="space-y-6">
+    <div className="w-full min-w-0 space-y-6">
       {isHrOrAdmin && (
         <div className="flex items-center gap-2 p-1.5 bg-muted/50 rounded-2xl w-fit border border-border/60 shadow-sm">
           <button
@@ -61,7 +59,6 @@ export function SalaryDashboardHub({ users, initialSlips, isHrOrAdmin, currentUs
             users={users} 
             initialSlips={initialSlips} 
             isHrOrAdmin={isHrOrAdmin}
-            currentUserId={currentUserId}
           />
         )}
       </div>

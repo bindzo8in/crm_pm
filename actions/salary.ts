@@ -4,14 +4,28 @@ import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { UserRole } from "@/app/generated/prisma/enums";
 import { headers } from "next/headers";
+import { env } from "@/lib/env";
 import {
   saveSalaryStructureSchema,
-  SaveSalaryStructureInput,
   generateSalarySlipSchema,
-  GenerateSalarySlipInput,
   updateSalarySlipStatusSchema,
-  UpdateSalarySlipStatusInput,
+  autoGenerateMonthlySalarySlipsSchema,
+  updateSalarySlipAdjustmentsSchema,
+  salaryComponentsSchema,
+  salarySlipsQuerySchema,
 } from "@/lib/schemas/salary-schema";
+
+function hasSalaryCronAuthorization(requestHeaders: Headers) {
+  const configuredSecret = env.SALARY_CRON_SECRET;
+  return Boolean(
+    configuredSecret &&
+      requestHeaders.get("authorization") === `Bearer ${configuredSecret}`
+  );
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unexpected error.";
+}
 
 async function getAuthenticatedUser() {
   const reqHeaders = await headers();
@@ -37,18 +51,18 @@ export async function getSalaryStructureAction(userId: string) {
       return { success: false, error: "Unauthorized access to salary details." };
     }
 
-    let structure = await prisma.salaryStructure.findUnique({
+    const structure = await prisma.salaryStructure.findUnique({
       where: { userId },
     });
 
     return { success: true, structure: structure ? JSON.parse(JSON.stringify(structure)) : null };
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error fetching salary structure:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error) };
   }
 }
 
-export async function saveSalaryStructureAction(input: SaveSalaryStructureInput) {
+export async function saveSalaryStructureAction(input: unknown) {
   try {
     const { session } = await getAuthenticatedUser();
     
@@ -62,7 +76,11 @@ export async function saveSalaryStructureAction(input: SaveSalaryStructureInput)
       return { success: false, error: "Only Admins and HR can update salary structures." };
     }
 
-    const validated = saveSalaryStructureSchema.parse(input);
+    const parsed = saveSalaryStructureSchema.safeParse(input);
+    if (!parsed.success) {
+      return { success: false, error: "Invalid salary structure.", details: parsed.error.issues };
+    }
+    const validated = parsed.data;
 
     const structure = await prisma.salaryStructure.upsert({
       where: { userId: validated.userId },
@@ -75,7 +93,9 @@ export async function saveSalaryStructureAction(input: SaveSalaryStructureInput)
         providentFund: validated.providentFund,
         professionalTax: validated.professionalTax,
         tds: validated.tds,
-        customComponents: validated.customComponents || [],
+        ...(validated.customComponents !== undefined
+          ? { customComponents: validated.customComponents }
+          : {}),
       },
       create: {
         userId: validated.userId,
@@ -92,9 +112,9 @@ export async function saveSalaryStructureAction(input: SaveSalaryStructureInput)
     });
 
     return { success: true, structure: JSON.parse(JSON.stringify(structure)) };
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error saving salary structure:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error) };
   }
 }
 
@@ -102,19 +122,24 @@ function getDaysInMonth(month: number, year: number) {
   return new Date(year, month, 0).getDate();
 }
 
-export async function generateSalarySlipAction(input: GenerateSalarySlipInput) {
+export async function generateSalarySlipAction(input: unknown) {
   try {
-    const { session } = await getAuthenticatedUser();
-    const isHrOrAdmin = 
-      session.user.role === UserRole.SUPER_ADMIN || 
-      session.user.role === UserRole.ADMIN || 
-      (session.user.role === UserRole.STAFF && session.user.department === 'HR');
+    const requestHeaders = await headers();
+    const session = await auth.api.getSession({ headers: requestHeaders });
+    const isHrOrAdmin =
+      session?.user.role === UserRole.SUPER_ADMIN ||
+      session?.user.role === UserRole.ADMIN ||
+      (session?.user.role === UserRole.STAFF && session.user.department === "HR");
 
-    if (!isHrOrAdmin) {
+    if (!isHrOrAdmin && !hasSalaryCronAuthorization(requestHeaders)) {
       return { success: false, error: "Only Admins and HR can generate salary slips." };
     }
 
-    const validated = generateSalarySlipSchema.parse(input);
+    const parsed = generateSalarySlipSchema.safeParse(input);
+    if (!parsed.success) {
+      return { success: false, error: "Invalid salary slip input.", details: parsed.error.issues };
+    }
+    const validated = parsed.data;
     const { userId, month, year, medicalReimbursement, extraEarnings, extraDeductions } = validated;
 
     // Check if slip already exists
@@ -190,10 +215,9 @@ export async function generateSalarySlipAction(input: GenerateSalarySlipInput) {
     // Let's assume they must work all non-weekends, but we only have what's in attendance.
     // If a day is a leave, it's tracked in totalLeaveDaysTaken.
     // Let's calculate total days not worked:
-    let missingDays = totalDaysInMonth - (presentDays + halfDays + absentDays + totalLeaveDaysTaken);
     // Usually weekends are paid. Let's just consider absentDays, halfDays (0.5), and leaves.
     
-    let allowedPaidLeaves = 1;
+    const allowedPaidLeaves = 1;
     let paidLeaveConsumed = 0;
 
     if (totalLeaveDaysTaken > 0) {
@@ -220,7 +244,11 @@ export async function generateSalarySlipAction(input: GenerateSalarySlipInput) {
     const absentDeduction = lopDays * perDayGross;
 
     // Custom Components from structure
-    const customComps = structure.customComponents as Array<{name: string, type: string, amount: number}> || [];
+    const parsedCustomComponents = salaryComponentsSchema.safeParse(structure.customComponents ?? []);
+    if (!parsedCustomComponents.success) {
+      return { success: false, error: "Salary structure contains invalid custom components." };
+    }
+    const customComps = parsedCustomComponents.data;
     let customEarnings = extraEarnings + medicalReimbursement;
     let customDeductions = extraDeductions;
 
@@ -264,12 +292,10 @@ export async function generateSalarySlipAction(input: GenerateSalarySlipInput) {
       absentDeduction,
       halfDayDeduction: 0, // already merged into absentDeduction via lopDays
       
-      customComponents: [
-        ...customComps, 
-        ...(medicalReimbursement > 0 ? [{ name: "Medical Reimbursement", type: "EARNING", amount: medicalReimbursement }] : []),
-        ...(extraEarnings > 0 ? [{ name: "Extra Earnings", type: "EARNING", amount: extraEarnings }] : []),
-        ...(extraDeductions > 0 ? [{ name: "Extra Deductions", type: "DEDUCTION", amount: extraDeductions }] : [])
-      ],
+      medicalReimbursement,
+      extraEarnings,
+      extraDeductions,
+      customComponents: customComps,
       
       totalEarnings,
       totalDeductions: totalDeductionsCalc,
@@ -289,16 +315,102 @@ export async function generateSalarySlipAction(input: GenerateSalarySlipInput) {
     }
 
     return { success: true, slip: JSON.parse(JSON.stringify(slip)) };
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error generating salary slip:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error) };
   }
 }
 
-export async function getSalarySlipsAction(filters: { userId?: string, month?: number, year?: number }) {
+export async function autoGenerateMonthlySalarySlipsAction(input: unknown) {
+  try {
+    const requestHeaders = await headers();
+    const session = await auth.api.getSession({ headers: requestHeaders });
+    const isHrOrAdmin =
+      session?.user.role === UserRole.SUPER_ADMIN ||
+      session?.user.role === UserRole.ADMIN ||
+      (session?.user.role === UserRole.STAFF && session.user.department === "HR");
+
+    if (!isHrOrAdmin && !hasSalaryCronAuthorization(requestHeaders)) {
+      return { success: false, error: "Only Admins and HR can auto-generate salary slips." };
+    }
+
+    const validated = autoGenerateMonthlySalarySlipsSchema.safeParse(input);
+    if (!validated.success) {
+      return { success: false, error: "Invalid month or year.", details: validated.error.issues };
+    }
+    const { month, year } = validated.data;
+
+    const usersWithStructures = await prisma.user.findMany({
+      where: { salaryStructure: { isNot: null } },
+      select: { id: true },
+    });
+
+    const results: Array<"generated" | "skipped" | "error"> = [];
+
+    for (const user of usersWithStructures) {
+      try {
+        const existing = await prisma.salarySlip.findUnique({
+          where: {
+            userId_month_year: { userId: user.id, month, year },
+          },
+        });
+
+        if (existing && existing.status !== "DRAFT") {
+          results.push("skipped");
+          continue;
+        }
+
+        const res = await generateSalarySlipAction({
+          userId: user.id,
+          month,
+          year,
+          medicalReimbursement: 0,
+          extraEarnings: 0,
+          extraDeductions: 0,
+        });
+
+        if (res.success) {
+          results.push("generated");
+        } else {
+          console.error("Monthly salary slip generation failed:", user.id, res.error);
+          results.push("error");
+        }
+      } catch (err) {
+        console.error(
+          "Monthly salary slip generation failed:",
+          user.id,
+          err instanceof Error ? err.message : "Unexpected error.",
+        );
+        results.push("error");
+      }
+    }
+
+    const generated = results.filter((status) => status === "generated").length;
+    const skipped = results.filter((status) => status === "skipped").length;
+    const errors = results.filter((status) => status === "error").length;
+
+    return {
+      success: errors === 0,
+      message: `Auto-generation complete: ${generated} generated, ${skipped} skipped, ${errors} errors.`,
+      generated,
+      skipped,
+      errors,
+    };
+  } catch (error) {
+    console.error("Error auto-generating salary slips:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function getSalarySlipsAction(input: unknown) {
   try {
     const { session } = await getAuthenticatedUser();
-    const isSelf = filters.userId && session.user.id === filters.userId;
+    const parsed = salarySlipsQuerySchema.safeParse(input);
+    if (!parsed.success) {
+      return { success: false, error: "Invalid salary slip filters.", details: parsed.error.issues };
+    }
+    const filters = parsed.data;
+    const isSelf = !filters.userId || session.user.id === filters.userId;
     const isHrOrAdmin = 
       session.user.role === UserRole.SUPER_ADMIN || 
       session.user.role === UserRole.ADMIN || 
@@ -308,10 +420,15 @@ export async function getSalarySlipsAction(filters: { userId?: string, month?: n
       return { success: false, error: "Unauthorized access to salary slips." };
     }
 
-    const whereClause: any = {};
-    if (filters.userId) whereClause.userId = filters.userId;
-    if (filters.month) whereClause.month = filters.month;
-    if (filters.year) whereClause.year = filters.year;
+    const whereClause = {
+      ...(isHrOrAdmin
+        ? filters.userId
+          ? { userId: filters.userId }
+          : {}
+        : { userId: session.user.id }),
+      ...(filters.month ? { month: filters.month } : {}),
+      ...(filters.year ? { year: filters.year } : {}),
+    };
 
     const slips = await prisma.salarySlip.findMany({
       where: whereClause,
@@ -325,9 +442,9 @@ export async function getSalarySlipsAction(filters: { userId?: string, month?: n
     });
 
     return { success: true, slips: JSON.parse(JSON.stringify(slips)) };
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error fetching salary slips:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error) };
   }
 }
 
@@ -338,7 +455,21 @@ export async function getSalarySlipByIdAction(slipId: string) {
     const slip = await prisma.salarySlip.findUnique({
       where: { id: slipId },
       include: {
-        user: { select: { name: true, email: true, department: true } }
+        user: {
+          select: {
+            name: true,
+            email: true,
+            department: true,
+            designation: true,
+            employeeId: true,
+            bankName: true,
+            bankAccountNo: true,
+            panNo: true,
+            costCenter: true,
+            uanNo: true,
+            pfNo: true,
+          },
+        },
       }
     });
 
@@ -357,8 +488,167 @@ export async function getSalarySlipByIdAction(slipId: string) {
     }
 
     return { success: true, slip: JSON.parse(JSON.stringify(slip)) };
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error fetching salary slip by ID:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+export async function updateSalarySlipAdjustmentsAction(input: unknown) {
+  try {
+    const { session } = await getAuthenticatedUser();
+    const isHrOrAdmin =
+      session.user.role === UserRole.SUPER_ADMIN ||
+      session.user.role === UserRole.ADMIN ||
+      (session.user.role === UserRole.STAFF && session.user.department === "HR");
+
+    if (!isHrOrAdmin) {
+      return { success: false, error: "Only Admins and HR can adjust salary slips." };
+    }
+
+    const validated = updateSalarySlipAdjustmentsSchema.safeParse(input);
+    if (!validated.success) {
+      return { success: false, error: "Invalid salary adjustments.", details: validated.error.issues };
+    }
+
+    const existing = await prisma.salarySlip.findUnique({
+      where: { id: validated.data.slipId },
+    });
+    if (!existing) {
+      return { success: false, error: "Salary slip not found." };
+    }
+    if (existing.status !== "GENERATED") {
+      return { success: false, error: "Only generated, unpaid salary slips can be adjusted." };
+    }
+
+    const parsedComponents = salaryComponentsSchema.safeParse(existing.customComponents ?? []);
+    if (!parsedComponents.success) {
+      console.error("Salary slip contains invalid custom components:", existing.id);
+      return { success: false, error: "Salary slip components could not be safely adjusted." };
+    }
+
+    const roundMoney = (amount: number) => Math.round((amount + Number.EPSILON) * 100) / 100;
+    const fixedEarnings =
+      Number(existing.basicSalary) +
+      Number(existing.hra) +
+      Number(existing.conveyance) +
+      Number(existing.medical) +
+      Number(existing.specialAllowance);
+    const customEarnings = parsedComponents.data
+      .filter((component) => component.type === "EARNING")
+      .reduce((total, component) => total + component.amount, 0);
+    const customDeductions = parsedComponents.data
+      .filter((component) => component.type === "DEDUCTION")
+      .reduce((total, component) => total + component.amount, 0);
+    const medicalReimbursement = validated.data.medicalReimbursement;
+    const extraEarnings = validated.data.extraEarnings;
+    const extraDeductions = validated.data.extraDeductions;
+    const absentDeduction = Number(existing.absentDeduction);
+    const totalEarnings = roundMoney(
+      fixedEarnings - absentDeduction + customEarnings + medicalReimbursement + extraEarnings,
+    );
+    const totalDeductions = roundMoney(
+      Number(existing.providentFund) +
+        Number(existing.professionalTax) +
+        Number(existing.tds) +
+        customDeductions +
+        extraDeductions,
+    );
+    const netSalary = roundMoney(totalEarnings - totalDeductions);
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await tx.salarySlip.updateMany({
+        where: { id: existing.id, status: "GENERATED" },
+        data: {
+          medicalReimbursement,
+          extraEarnings,
+          extraDeductions,
+          totalEarnings,
+          totalDeductions,
+          netSalary,
+        },
+      });
+
+      if (result.count !== 1) {
+        return null;
+      }
+
+      return tx.salarySlip.findUnique({
+        where: { id: existing.id },
+        include: { user: { select: { name: true, email: true, department: true } } },
+      });
+    });
+
+    if (!updated) {
+      return { success: false, error: "Salary slip was updated by another request. Refresh and try again." };
+    }
+
+    return { success: true, slip: JSON.parse(JSON.stringify(updated)) };
+  } catch (error) {
+    console.error("Error updating salary slip adjustments:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unexpected error updating salary adjustments.",
+    };
+  }
+}
+
+export async function updateSalarySlipStatusAction(input: unknown) {
+  try {
+    const { session } = await getAuthenticatedUser();
+
+    const isHrOrAdmin =
+      session.user.role === UserRole.SUPER_ADMIN ||
+      session.user.role === UserRole.ADMIN ||
+      (session.user.role === UserRole.STAFF && session.user.department === 'HR');
+
+    if (!isHrOrAdmin) {
+      return { success: false, error: "Only Admins and HR can update salary slip status." };
+    }
+
+    const validated = updateSalarySlipStatusSchema.parse(input);
+
+    const existing = await prisma.salarySlip.findUnique({
+      where: { id: validated.slipId },
+    });
+
+    if (!existing) {
+      return { success: false, error: "Salary slip not found." };
+    }
+
+    if (existing.status !== "GENERATED") {
+      return { success: false, error: "Only generated, unpaid salary slips can be marked as paid." };
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await tx.salarySlip.updateMany({
+        where: { id: validated.slipId, status: "GENERATED" },
+        data: {
+          status: "PAID",
+          paymentDate: new Date(`${validated.paymentDate}T00:00:00.000Z`),
+          paymentMethod: validated.paymentMethod,
+          referenceId: validated.referenceId || null,
+          notes: validated.notes || null,
+        },
+      });
+
+      if (result.count !== 1) {
+        return null;
+      }
+
+      return tx.salarySlip.findUnique({
+        where: { id: validated.slipId },
+        include: { user: { select: { name: true, email: true, department: true } } },
+      });
+    });
+
+    if (!updated) {
+      return { success: false, error: "Salary slip was updated by another request. Refresh and try again." };
+    }
+
+    return { success: true, slip: JSON.parse(JSON.stringify(updated)) };
+  } catch (error) {
+    console.error("Error updating salary slip status:", error);
+    return { success: false, error: getErrorMessage(error) };
   }
 }

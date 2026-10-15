@@ -63,11 +63,17 @@ export const updateInvoiceSchema = createInvoiceSchema.partial().extend({
 
 export const recordPaymentSchema = z.object({
   invoiceId: z.string().min(1, "Invoice ID is required"),
+  financialAccountId: z.string().min(1, "Financial account is required"),
   amount: z.number().positive("Payment amount must be greater than 0"),
   paymentMethod: PaymentMethodEnum.default("BANK_TRANSFER"),
   paymentDate: z.date().default(() => new Date()),
   referenceId: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
+});
+
+export const assignPaymentAccountSchema = z.object({
+  paymentId: z.string().min(1, "Payment ID is required"),
+  financialAccountId: z.string().min(1, "Financial account is required"),
 });
 
 export const invoiceQuerySchema = z.object({
@@ -85,4 +91,5 @@ export type InvoiceLineItemInput = z.infer<typeof invoiceLineItemSchema>;
 export type CreateInvoiceInput = z.infer<typeof createInvoiceSchema>;
 export type UpdateInvoiceInput = z.infer<typeof updateInvoiceSchema>;
 export type RecordPaymentInput = z.infer<typeof recordPaymentSchema>;
+export type AssignPaymentAccountInput = z.infer<typeof assignPaymentAccountSchema>;
 export type InvoiceQuerySchema = z.infer<typeof invoiceQuerySchema>;

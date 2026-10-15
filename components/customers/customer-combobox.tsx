@@ -15,7 +15,7 @@ import {
 
 import { useCustomerOptions } from "./customer-query";
 
-type CustomerOption = {
+export type CustomerOption = {
     id: string;
     customerNumber: number;
     displayName: string;
@@ -25,11 +25,13 @@ type CustomerOption = {
 
 type Props = {
     value?: string; // customerId
+    selectedCustomer?: CustomerOption | null;
     onValueChange: (customer: CustomerOption) => void;
 };
 
 export function CustomerCombobox({
     value,
+    selectedCustomer: selectedCustomerFallback,
     onValueChange,
 }: Props) {
     const [search, setSearch] = React.useState("");
@@ -39,7 +41,8 @@ export function CustomerCombobox({
     const customers = data?.data ?? [];
 
     const selectedCustomer =
-    customers.find((customer) => customer.id === value) ?? null;
+    customers.find((customer) => customer.id === value)
+        ?? (selectedCustomerFallback?.id === value ? selectedCustomerFallback : null);
 
     return (
         <Combobox

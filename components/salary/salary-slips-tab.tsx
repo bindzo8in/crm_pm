@@ -6,20 +6,24 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SalarySlipGenerateDialog } from "./salary-slip-generate-dialog";
+import { SalarySlipMarkPaidDialog } from "./salary-slip-mark-paid-dialog";
+import { SalarySlipAdjustmentsDialog } from "./salary-slip-adjustments-dialog";
 import { formatCurrency } from "@/lib/utils";
-import { FileTextIcon, PlusIcon, DownloadIcon, EyeIcon } from "lucide-react";
+import { PlusIcon, DownloadIcon, EyeIcon, DollarSignIcon, PencilIcon } from "lucide-react";
 import Link from "next/link";
+import type { SalaryEmployee, SalarySlipRecord, SalarySlipUpdate } from "./types";
 
 interface SalarySlipsTabProps {
-  users: any[];
-  initialSlips: any[];
+  users: SalaryEmployee[];
+  initialSlips: SalarySlipRecord[];
   isHrOrAdmin: boolean;
-  currentUserId: string;
 }
 
-export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin, currentUserId }: SalarySlipsTabProps) {
-  const [slips, setSlips] = useState<any[]>(initialSlips);
+export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlipsTabProps) {
+  const [slips, setSlips] = useState<SalarySlipRecord[]>(initialSlips);
   const [isGenerateOpen, setIsGenerateOpen] = useState(false);
+  const [markPaidSlipId, setMarkPaidSlipId] = useState<string | null>(null);
+  const [adjustmentSlip, setAdjustmentSlip] = useState<SalarySlipRecord | null>(null);
 
   const getMonthName = (m: number) => {
     const d = new Date();
@@ -27,8 +31,16 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin, currentUserId
     return d.toLocaleString('default', { month: 'short' });
   };
 
-  const handleSuccess = (newSlip: any) => {
+  const handleSuccess = (newSlip: SalarySlipRecord) => {
     setSlips(prev => [newSlip, ...prev.filter(s => s.id !== newSlip.id)]);
+  };
+
+  const handleMarkPaidSuccess = (updatedSlip: SalarySlipUpdate) => {
+    setSlips(prev => prev.map(s => s.id === updatedSlip.id ? { ...s, ...updatedSlip } : s));
+  };
+
+  const handleAdjustmentsSuccess = (updatedSlip: SalarySlipUpdate) => {
+    setSlips(prev => prev.map(s => s.id === updatedSlip.id ? { ...s, ...updatedSlip } : s));
   };
 
   return (
@@ -79,7 +91,7 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin, currentUserId
                   </TableCell>
                   <TableCell>
                     <div className="font-bold text-emerald-600 dark:text-emerald-400">
-                      {formatCurrency(slip.netSalary)}
+                      {formatCurrency(Number(slip.netSalary))}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -99,6 +111,16 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin, currentUserId
                           <DownloadIcon className="w-4 h-4" />
                         </a>
                       </Button>
+                      {isHrOrAdmin && slip.status === 'GENERATED' && (
+                        <>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => setAdjustmentSlip(slip)} aria-label="Adjust salary slip">
+                            <PencilIcon className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-600 hover:text-emerald-700" onClick={() => setMarkPaidSlipId(slip.id)} aria-label="Mark salary slip as paid">
+                            <DollarSignIcon className="w-4 h-4" />
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -114,6 +136,30 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin, currentUserId
           onClose={() => setIsGenerateOpen(false)}
           users={users}
           onSuccess={handleSuccess}
+        />
+      )}
+
+      {markPaidSlipId && (
+        <SalarySlipMarkPaidDialog
+          isOpen={!!markPaidSlipId}
+          onClose={() => setMarkPaidSlipId(null)}
+          slipId={markPaidSlipId}
+          onSuccess={handleMarkPaidSuccess}
+        />
+      )}
+
+      {adjustmentSlip && (
+        <SalarySlipAdjustmentsDialog
+          key={adjustmentSlip.id}
+          isOpen={!!adjustmentSlip}
+          onClose={() => setAdjustmentSlip(null)}
+          slip={{
+            id: adjustmentSlip.id,
+            medicalReimbursement: Number(adjustmentSlip.medicalReimbursement ?? 0),
+            extraEarnings: Number(adjustmentSlip.extraEarnings ?? 0),
+            extraDeductions: Number(adjustmentSlip.extraDeductions ?? 0),
+          }}
+          onSuccess={handleAdjustmentsSuccess}
         />
       )}
     </div>

@@ -1,6 +1,8 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 
 import {
   SidebarGroup,
@@ -8,6 +10,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar"
 
 export function NavSecondary({
@@ -20,17 +23,30 @@ export function NavSecondary({
     icon: React.ReactNode
   }[]
 } & React.ComponentPropsWithoutRef<typeof SidebarGroup>) {
+  const pathname = usePathname()
+  const { isMobile, setOpenMobile } = useSidebar()
+  const closeMobileNav = () => {
+    if (isMobile) setOpenMobile(false)
+  }
+
   return (
     <SidebarGroup {...props}>
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => (
             <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton asChild>
-                <a href={item.url}>
+              <SidebarMenuButton
+                asChild
+                isActive={item.url === pathname || pathname.startsWith(`${item.url}/`)}
+              >
+                <Link
+                  href={item.url}
+                  aria-current={item.url === pathname || pathname.startsWith(`${item.url}/`) ? "page" : undefined}
+                  onClick={closeMobileNav}
+                >
                   {item.icon}
                   <span>{item.title}</span>
-                </a>
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
           ))}

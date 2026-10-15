@@ -276,9 +276,9 @@ export async function updateUserPayrollDetails(
   }
 
   const targetRole = targetUser.role;
-
+  console.log("Actor Role:", actorRole, "Target Role:", targetRole, "Role Levels:", roleLevel[actorRole], roleLevel[targetRole]);
   // Cannot modify user with same or higher role
-  if (roleLevel[actorRole] <= roleLevel[targetRole]) {
+  if (actorRole !== "SUPER_ADMIN" && roleLevel[actorRole] <= roleLevel[targetRole]) {
     throw new Error("You cannot modify this user's payroll details");
   }
 

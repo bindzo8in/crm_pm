@@ -2,7 +2,6 @@
 
 import * as React from "react"
 
-import { NavDocuments } from "@/components/nav-documents"
 import { NavMain } from "@/components/nav-main"
 import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
@@ -15,18 +14,17 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, ChartBarIcon, FolderIcon, UsersIcon, CameraIcon, FileTextIcon, Settings2Icon, CircleHelpIcon, SearchIcon, DatabaseIcon, FileChartColumnIcon, FileIcon, CommandIcon, BookUser, BoxIcon, HandshakeIcon, ScrollText, TableIcon, ReceiptText, ClockIcon, CalendarHeart, CalendarOff, WalletIcon } from "lucide-react"
+import { LayoutDashboardIcon, UsersIcon, FileTextIcon, Settings2Icon, CommandIcon, BookUser, BoxIcon, HandshakeIcon, ScrollText, TableIcon, ReceiptText, ClockIcon, CalendarHeart, CalendarOff, WalletIcon } from "lucide-react"
 import { env } from "@/lib/env"
+import { UserRole } from "@/app/generated/prisma/enums"
+import { canReadFinance } from "@/lib/permissions"
+import { canAccessRoute } from "@/lib/route-permissions"
 
 const data = {
-  user: {
-    name: "admin",
-    email: "admin@bindzo8.com",
-    avatar: "/logo.png",
-  },
   navMain: [
     {
       title: "Dashboard",
+      section: "Workspace",
       url: "/dashboard",
       icon: (
         <LayoutDashboardIcon
@@ -35,6 +33,7 @@ const data = {
     },
     {
       title: "Attendance",
+      section: "People",
       url: "/attendance",
       icon: (
         <ClockIcon />
@@ -42,6 +41,7 @@ const data = {
     },
     {
       title: "Leaves",
+      section: "People",
       url: "/dashboard/leaves",
       icon: (
         <CalendarOff />
@@ -49,6 +49,7 @@ const data = {
     },
     {
       title: "Holidays",
+      section: "People",
       url: "/dashboard/holidays",
       icon: (
         <CalendarHeart />
@@ -56,6 +57,7 @@ const data = {
     },
     {
       title: "Users",
+      section: "People",
       url: "/dashboard/users",
       icon: (
         <UsersIcon
@@ -64,6 +66,7 @@ const data = {
     },
     {
       title: "Customers",
+      section: "People",
       url: "/dashboard/customers",
       icon: (
         <BookUser />
@@ -71,6 +74,7 @@ const data = {
     },
     {
       title: "Services",
+      section: "Catalog",
       url: "/dashboard/services",
       icon: (
         <FileTextIcon />
@@ -78,6 +82,7 @@ const data = {
     },
     {
       title: "Packages",
+      section: "Catalog",
       url: "/dashboard/services/packages",
       icon: (
         <BoxIcon
@@ -86,6 +91,7 @@ const data = {
     },
     {
       title: "Tariffs",
+      section: "Catalog",
       url: "/dashboard/tariffs",
       icon: (
         <TableIcon
@@ -94,6 +100,7 @@ const data = {
     },
     {
       title: "Terms",
+      section: "Catalog",
       url: "/dashboard/terms",
       icon: (
         <HandshakeIcon
@@ -102,6 +109,7 @@ const data = {
     },
     {
       title: "Proposals",
+      section: "Business",
       url: "/dashboard/proposals",
       icon: (
         <ScrollText
@@ -109,15 +117,8 @@ const data = {
       ),
     },
     {
-      title: "Analytics",
-      url: "#",
-      icon: (
-        <ChartBarIcon
-        />
-      ),
-    },
-    {
       title: "Salary",
+      section: "Business",
       url: "/dashboard/salary",
       icon: (
         <WalletIcon />
@@ -125,9 +126,18 @@ const data = {
     },
     {
       title: "Invoice",
+      section: "Business",
       url: "/dashboard/invoices",
       icon: (
         <ReceiptText />
+      )
+    },
+    {
+      title: "Finance",
+      section: "Business",
+      url: "/dashboard/finance",
+      icon: (
+        <WalletIcon />
       )
     }
   ],
@@ -151,9 +161,29 @@ const data = {
   ],
 }
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+export function AppSidebar({
+  userRole,
+  user,
+  ...props
+}: React.ComponentProps<typeof Sidebar> & {
+  userRole: UserRole
+  user: { name: string; email: string; avatar: string }
+}) {
+  const navMainItems = data.navMain.filter((item) => {
+    if (!canAccessRoute(item.url, userRole)) return false
+    if (item.url === "/dashboard/finance") return canReadFinance(userRole)
+    return true
+  })
+  const navSecondaryItems = data.navSecondary.filter((item) =>
+    canAccessRoute(item.url, userRole)
+  )
+
   return (
-    <Sidebar collapsible="offcanvas" {...props}>
+    <Sidebar
+      collapsible="offcanvas"
+      className="[--sidebar:#111b2d] [--sidebar-foreground:#f1f5f9] [--sidebar-primary:#5b4bea] [--sidebar-primary-foreground:#ffffff] [--sidebar-accent:#202e43] [--sidebar-accent-foreground:#ffffff] [--sidebar-border:#2d3b50] [--sidebar-ring:#a5b4fc]"
+      {...props}
+    >
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -161,7 +191,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               asChild
               className="data-[slot=sidebar-menu-button]:p-1.5!"
             >
-              <a href="#">
+              <a href="/dashboard">
                 <CommandIcon className="size-5!" />
                 <span className="text-base font-semibold">{env.NEXT_PUBLIC_APP_NAME}</span>
               </a>
@@ -170,12 +200,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={data.navMain} />
-        {/* <NavDocuments items={data.documents} /> */}
-        <NavSecondary items={data.navSecondary} className="mt-auto" />
+        <NavMain items={navMainItems} />
+        <NavSecondary items={navSecondaryItems} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser user={user} />
       </SidebarFooter>
     </Sidebar>
   )

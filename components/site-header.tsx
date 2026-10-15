@@ -2,26 +2,32 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import Link from "next/link"
-import { ReactNode } from "react"
+import type { ReactNode } from "react"
 
 export function SiteHeader({ title, action }: { title: string, action?: { href: string, label: string, icon: ReactNode } }) {
   return (
-    <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
-      <div className="flex w-full items-center justify-between gap-1 px-4 lg:gap-2 lg:px-6">
-        <div className="flex items-center">
-          <SidebarTrigger className="-ml-1" />
+    <header className="flex h-(--header-height) shrink-0 items-center border-b border-border/80 bg-background/95 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
+      <div className="flex w-full min-w-0 items-center justify-between gap-2 px-3 sm:px-4 lg:px-6">
+        <div className="flex min-w-0 items-center">
+          <SidebarTrigger className="-ml-1 shrink-0" />
           <Separator
             orientation="vertical"
-            className="mx-2 data-[orientation=vertical]:h-4"
+            className="mx-2 hidden data-[orientation=vertical]:h-4 sm:block"
           />
-          <h1 className="text-base font-medium">{title}</h1>
+          <h1 className="truncate text-sm font-semibold tracking-tight sm:text-base">{title}</h1>
         </div>
-        {action &&
-          <Link href={action.href}>
-            <Button>{action.icon}{action.label}</Button>
-          </Link>
-        }
-
+        {action && (
+          <Button
+            asChild
+            aria-label={action.label}
+            className="h-9 shrink-0 gap-2 px-3 max-[420px]:size-9 max-[420px]:p-0"
+          >
+            <Link href={action.href}>
+              <span aria-hidden="true" className="inline-flex">{action.icon}</span>
+              <span className="max-[420px]:sr-only">{action.label}</span>
+            </Link>
+          </Button>
+        )}
       </div>
     </header>
   )

@@ -1,11 +1,9 @@
 "use client"
-import * as z from "zod"
 import { SigninSchema, signinSchema } from '@/lib/schemas/signin-schema'
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm, Controller } from "react-hook-form"
-import { motion } from "motion/react"
-import { Check, Mail } from "lucide-react"
-import { Field, FieldGroup, FieldContent, FieldLabel, FieldDescription, FieldError, FieldSeparator } from "@/components/ui/field"
+import { Mail } from "lucide-react"
+import { Field, FieldGroup, FieldContent, FieldLabel, FieldError, FieldSeparator } from "@/components/ui/field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Password } from "@/components/password"
@@ -39,23 +37,34 @@ export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
 
   const handleSubmit = form.handleSubmit(async (data: SigninSchema) => {
     try {
-      const { data:res, error } = await signIn.email({
+      const { error } = await signIn.email({
         email: data.email,
         password: data.password,
         rememberMe: data.rememberMe,
         callbackURL: callbackUrl
       })
-      console.log(res)
       if (error) throw error
       form.reset();
-    } catch (error: any) {
-      if (error?.status === 403) {
+    } catch (error) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "status" in error &&
+        error.status === 403
+      ) {
         setUnverifiedEmail(data.email);
         setNeedsVerification(true);
         return;
       }
 
-      setError(error.message ?? "Failed to sign in.");
+      setError(
+        typeof error === "object" &&
+        error !== null &&
+        "message" in error &&
+        typeof error.message === "string"
+          ? error.message
+          : "Failed to sign in."
+      );
     }
   });
 
@@ -65,7 +74,7 @@ export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
         provider,
         callbackURL: callbackUrl,
       })
-    } catch (error) {
+    } catch {
       setMessage(`an error occured while signing in with ${provider}, try again!`)
     }
   }
@@ -110,7 +119,7 @@ export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
           </h2>
 
           <p className="text-muted-foreground mt-3 max-w-md">
-            We've sent a verification link to:
+            We&apos;ve sent a verification link to:
           </p>
 
           <p className="font-medium mt-1">
@@ -168,10 +177,16 @@ export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+      {message && (
+        <Alert variant="destructive">
+          <AlertTitle>Sign-in failed</AlertTitle>
+          <AlertDescription>{message}</AlertDescription>
+        </Alert>
+      )}
       <form onSubmit={handleSubmit} className="p-2 sm:p-5 md:p-8 w-full rounded-md gap-2 border max-w-3xl mx-auto">
         <FieldGroup className="grid md:grid-cols-6 gap-4 mb-6">
           <h1 className="mt-6 mb-1 font-extrabold text-3xl tracking-tight col-span-full">Login</h1>
-          <p className="tracking-wide text-muted-foreground mb-5 text-wrap text-sm col-span-full">Login to create an account</p>
+          <p className="tracking-wide text-muted-foreground mb-5 text-wrap text-sm col-span-full">Sign in to access your account</p>
 
           <Controller
             name="email"
@@ -245,7 +260,7 @@ export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
                 }}
               >
                 <div className="place-items-center grid rounded-full bg-white size-6 p-0.5">
-                  <img src={o.src} width={16} height={16} />
+                  <img src={o.src} width={16} height={16} alt="" />
                 </div>
                 {o.label}
               </Button>
@@ -258,7 +273,7 @@ export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
           </Button>
         </div>
         <div className="mt-4 text-center text-sm">
-          Don't have an account?{" "}
+          Don&apos;t have an account?{" "}
           <Link href="/signup" className="text-primary hover:underline">
             Sign up
           </Link>

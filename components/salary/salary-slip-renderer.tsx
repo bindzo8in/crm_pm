@@ -3,18 +3,72 @@
 import React from "react";
 import { env } from "@/lib/env";
 
-function getImageUrl(field: any): string | null {
+type SalaryComponent = {
+  name: string;
+  type: "EARNING" | "DEDUCTION";
+  amount: number | string;
+};
+
+interface SalarySlipRenderData {
+  month: number;
+  year: number;
+  paidDays: number;
+  absentDays: number;
+  basicSalary: number | string;
+  hra: number | string;
+  conveyance: number | string;
+  medical: number | string;
+  specialAllowance: number | string;
+  medicalReimbursement: number | string;
+  extraEarnings: number | string;
+  extraDeductions: number | string;
+  providentFund: number | string;
+  professionalTax: number | string;
+  tds: number | string;
+  absentDeduction: number | string;
+  customComponents: SalaryComponent[] | null;
+  totalEarnings: number | string;
+  totalDeductions: number | string;
+  netSalary: number | string;
+  user?: {
+    name: string;
+    department: string | null;
+    designation: string | null;
+    employeeId: number;
+    bankName: string | null;
+    bankAccountNo: string | null;
+    panNo: string | null;
+    costCenter: string | null;
+    uanNo: string | null;
+    pfNo: string | null;
+  } | null;
+}
+
+interface SalaryCompanyRenderData {
+  logo: unknown;
+  legalName: string;
+  displayName: string;
+  address: string;
+  city: string;
+  state: string;
+  postalCode: string | null;
+}
+
+function getImageUrl(field: unknown): string | null {
   if (!field) return null;
   if (typeof field === "string") {
     try {
-      const parsed = JSON.parse(field);
-      return parsed.url || null;
+      const parsed: unknown = JSON.parse(field);
+      if (typeof parsed === "object" && parsed !== null && "url" in parsed) {
+        return typeof parsed.url === "string" ? parsed.url : null;
+      }
+      return null;
     } catch {
       return null;
     }
   }
-  if (typeof field === "object" && field.url) {
-    return field.url;
+  if (typeof field === "object" && field !== null && "url" in field) {
+    return typeof field.url === "string" ? field.url : null;
   }
   return null;
 }
@@ -57,7 +111,15 @@ function numberToWords(amount: number): string {
   return word.trim();
 }
 
-export function SalarySlipRenderer({ slip, company, isPdfMode = false }: { slip: any, company?: any, isPdfMode?: boolean }) {
+export function SalarySlipRenderer({
+  slip,
+  company,
+  isPdfMode = false,
+}: {
+  slip: SalarySlipRenderData;
+  company?: SalaryCompanyRenderData | null;
+  isPdfMode?: boolean;
+}) {
   if (!slip) {
     return <div className="p-8 text-center text-destructive font-semibold">Slip not found</div>;
   }
@@ -73,7 +135,7 @@ export function SalarySlipRenderer({ slip, company, isPdfMode = false }: { slip:
     [company?.state, company?.postalCode].filter(Boolean).join(" - ")
   ].filter(Boolean).join(", ");
 
-  const formatVal = (val: any) => (val > 0 ? Number(val).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0.00");
+  const formatVal = (val: number | string) => Number(val).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
     <div className={`mx-auto bg-white text-black font-sans ${isPdfMode ? "w-[794px] min-h-[1123px] p-8" : "max-w-4xl p-8 shadow-xl border border-gray-200"}`}>
@@ -144,7 +206,9 @@ export function SalarySlipRenderer({ slip, company, isPdfMode = false }: { slip:
                 <div className="flex justify-between"><span>Conveyance</span><span>{formatVal(slip.conveyance)}</span></div>
                 <div className="flex justify-between"><span>Medical Allowance</span><span>{formatVal(slip.medical)}</span></div>
                 <div className="flex justify-between"><span>Special Allowance</span><span>{formatVal(slip.specialAllowance)}</span></div>
-                {slip.customComponents?.filter((c: any) => c.type === "EARNING").map((comp: any, i: number) => (
+                {Number(slip.medicalReimbursement) > 0 && <div className="flex justify-between"><span>Medical Reimbursement</span><span>{formatVal(slip.medicalReimbursement)}</span></div>}
+                {Number(slip.extraEarnings) > 0 && <div className="flex justify-between"><span>Additional Earnings</span><span>{formatVal(slip.extraEarnings)}</span></div>}
+                {slip.customComponents?.filter((c) => c.type === "EARNING").map((comp, i) => (
                   <div key={i} className="flex justify-between"><span>{comp.name}</span><span>{formatVal(comp.amount)}</span></div>
                 ))}
                 {/* Visual filler to pad the cell height a bit */}
@@ -158,7 +222,8 @@ export function SalarySlipRenderer({ slip, company, isPdfMode = false }: { slip:
                 <div className="flex justify-between"><span>Prof Tax</span><span>{formatVal(slip.professionalTax)}</span></div>
                 <div className="flex justify-between"><span>TDS</span><span>{formatVal(slip.tds)}</span></div>
                 <div className="flex justify-between"><span>LOP Deduction</span><span>{formatVal(slip.absentDeduction)}</span></div>
-                {slip.customComponents?.filter((c: any) => c.type === "DEDUCTION").map((comp: any, i: number) => (
+                {Number(slip.extraDeductions) > 0 && <div className="flex justify-between"><span>Additional Deductions</span><span>{formatVal(slip.extraDeductions)}</span></div>}
+                {slip.customComponents?.filter((c) => c.type === "DEDUCTION").map((comp, i) => (
                   <div key={i} className="flex justify-between"><span>{comp.name}</span><span>{formatVal(comp.amount)}</span></div>
                 ))}
               </div>
@@ -181,7 +246,7 @@ export function SalarySlipRenderer({ slip, company, isPdfMode = false }: { slip:
         </div>
       </div>
       <div className="italic text-[13px] text-gray-800">
-        (Rupees {numberToWords(slip.netSalary)} Only)
+        (Rupees {numberToWords(Number(slip.netSalary))} Only)
       </div>
 
       {/* Footer */}

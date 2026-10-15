@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { getInvoiceById, getPublicInvoiceById, recordInvoicePayment, updateInvoiceStatus, sendInvoiceEmailAction, softDeleteInvoice } from "@/actions/invoice";
+import { assignInvoicePaymentAccount, getInvoiceById, getInvoicePaymentAccounts, getPublicInvoiceById, recordInvoicePayment, updateInvoiceStatus, sendInvoiceEmailAction, softDeleteInvoice } from "@/actions/invoice";
 import { invoiceKeys } from "@/components/invoice/util";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -29,6 +29,12 @@ import { ArrowLeftIcon, CreditCardIcon, CheckCircle2Icon, Loader2Icon, DownloadI
 import Link from "next/link";
 import { PaymentMethodType } from "@/lib/schemas/invoice-schema";
 
+function getLocalDateInputValue() {
+  const date = new Date();
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+  return date.toISOString().slice(0, 10);
+}
+
 function getImageUrl(field: any): string | null {
   if (!field) return null;
   if (typeof field === "string") {
@@ -50,37 +56,90 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
   const queryClient = useQueryClient();
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [amount, setAmount] = useState("");
+  const [paymentDate, setPaymentDate] = useState("");
+  const [accountSelections, setAccountSelections] = useState<Record<string, string>>({});
   const [method, setMethod] = useState<PaymentMethodType>("BANK_TRANSFER");
   const [refId, setRefId] = useState("");
   const [notes, setNotes] = useState("");
   const [downloading, setDownloading] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
 
+  useEffect(() => {
+    setPaymentDate(getLocalDateInputValue());
+  }, []);
+
   const { data, isLoading } = useQuery({
     queryKey: invoiceKeys.detail(invoiceId),
     queryFn: () => (isPdfMode ? getPublicInvoiceById(invoiceId) : getInvoiceById(invoiceId)),
   });
 
+  const {
+    data: paymentAccountsResult,
+    isLoading: isLoadingPaymentAccounts,
+  } = useQuery({
+    queryKey: ["invoice-payment-accounts"],
+    queryFn: getInvoicePaymentAccounts,
+    enabled: !isPdfMode,
+  });
+
   const invoice = data?.success ? data.data : null;
-  console.log(invoice)
+  const paymentAccounts = paymentAccountsResult?.success ? paymentAccountsResult.data ?? [] : [];
+  const [financialAccountId, setFinancialAccountId] = useState("");
 
   const paymentMutation = useMutation({
     mutationFn: () =>
       recordInvoicePayment({
         invoiceId,
+        financialAccountId,
         amount: Number(amount),
         paymentMethod: method,
-        paymentDate: new Date(),
+        paymentDate: new Date(`${paymentDate}T12:00:00`),
         referenceId: refId,
         notes,
       }),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (!result.success) {
+        toast.error(result.message || "Failed to record payment");
+        return;
+      }
+
+      toast.success(result.message || "Payment recorded successfully");
       setPaymentOpen(false);
       setAmount("");
+      setPaymentDate(getLocalDateInputValue());
+      setFinancialAccountId("");
       setRefId("");
       setNotes("");
       queryClient.invalidateQueries({ queryKey: invoiceKeys.detail(invoiceId) });
       queryClient.invalidateQueries({ queryKey: invoiceKeys.lists() });
+      router.refresh();
+    },
+    onError: () => {
+      toast.error("Failed to record payment");
+    },
+  });
+
+  const accountAssignmentMutation = useMutation({
+    mutationFn: (input: { paymentId: string; financialAccountId: string }) =>
+      assignInvoicePaymentAccount(input),
+    onSuccess: (result, variables) => {
+      if (!result.success) {
+        toast.error(result.message || "Failed to link payment to account");
+        return;
+      }
+
+      toast.success(result.message || "Payment linked to account");
+      setAccountSelections((current) => {
+        const next = { ...current };
+        delete next[variables.paymentId];
+        return next;
+      });
+      queryClient.invalidateQueries({ queryKey: invoiceKeys.detail(invoiceId) });
+      queryClient.invalidateQueries({ queryKey: invoiceKeys.lists() });
+      router.refresh();
+    },
+    onError: () => {
+      toast.error("Failed to link payment to account");
     },
   });
 
@@ -273,7 +332,7 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
               </Button>
             )}
 
-            {invoice.status !== "PAID" && balance > 0 && (
+            {invoice.status !== "VOID" && balance > 0 && (
               <Dialog open={paymentOpen} onOpenChange={setPaymentOpen}>
                 <DialogTrigger asChild>
                   <Button className="gap-2 shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white">
@@ -301,6 +360,11 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
                   </div>
 
                   <div className="space-y-4 py-1">
+                    {invoice.status === "PAID" && (
+                      <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+                        This invoice is marked paid but still has an unrecorded balance. Record the actual receipt to add it to the correct account.
+                      </p>
+                    )}
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Payment Amount ({symbol})</label>
                       <Input
@@ -309,6 +373,41 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
                         placeholder={`Max ${symbol}${balance.toLocaleString("en-IN")}`}
                         value={amount}
                         onChange={(e) => setAmount(e.target.value)}
+                      />
+                    </div>
+                    {isLoadingPaymentAccounts ? (
+                      <p className="text-sm text-muted-foreground">Loading company accounts...</p>
+                    ) : !paymentAccountsResult?.success ? (
+                      <p className="text-sm text-destructive">
+                        {paymentAccountsResult?.message || "Unable to load company accounts."}
+                      </p>
+                    ) : paymentAccounts.length === 0 ? (
+                      <p className="text-sm text-destructive">
+                        No active financial accounts are set up. Create an account in Finance before recording this payment.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Deposit account</label>
+                        <Select value={financialAccountId} onValueChange={setFinancialAccountId}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Choose the account that received the payment" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {paymentAccounts.map((account) => (
+                              <SelectItem key={account.id} value={account.id}>
+                                {account.name} ({account.type.toLowerCase().replace("_", " ")})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Date received</label>
+                      <Input
+                        type="date"
+                        value={paymentDate}
+                        onChange={(e) => setPaymentDate(e.target.value)}
                       />
                     </div>
                     <div className="space-y-2">
@@ -345,7 +444,15 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
                     <Button
                       className="w-full"
                       onClick={() => paymentMutation.mutate()}
-                      disabled={paymentMutation.isPending || !amount || Number(amount) <= 0}
+                      disabled={
+                        paymentMutation.isPending ||
+                        !amount ||
+                        Number(amount) <= 0 ||
+                        !paymentDate ||
+                        !financialAccountId ||
+                        paymentAccounts.length === 0 ||
+                        isLoadingPaymentAccounts
+                      }
                     >
                       {paymentMutation.isPending ? (
                         <>
@@ -728,14 +835,57 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
             <h3 className="text-sm font-semibold">Recorded Payment Transactions</h3>
             <div className="space-y-2">
               {invoice.payments.map((p: any) => (
-                <div key={p.id} className="flex items-center justify-between p-3 rounded-md bg-muted text-xs">
+                <div key={p.id} className="flex flex-col gap-3 p-3 rounded-md bg-muted text-xs sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <span className="font-medium">{symbol}{p.amount.toLocaleString("en-IN")}</span> via{" "}
                     <span className="font-medium">{p.paymentMethod.replace("_", " ")}</span>
                     {p.referenceId && <span className="text-muted-foreground ml-2">(Ref: {p.referenceId})</span>}
+                    {!isPdfMode && (
+                      <div className="mt-1 text-muted-foreground">
+                        {p.financialAccountId
+                          ? `Deposited to ${paymentAccounts.find((account) => account.id === p.financialAccountId)?.name || "a linked account"}`
+                          : "Account not assigned"}
+                      </div>
+                    )}
                   </div>
-                  <div className="text-muted-foreground">
-                    {new Date(p.paymentDate).toLocaleDateString("en-IN")}
+                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                    <span className="text-muted-foreground">
+                      {new Date(p.paymentDate).toLocaleDateString("en-IN")}
+                    </span>
+                    {!p.financialAccountId && paymentAccounts.length > 0 && (
+                      <>
+                        <Select
+                          value={accountSelections[p.id] || ""}
+                          onValueChange={(value) =>
+                            setAccountSelections((current) => ({ ...current, [p.id]: value }))
+                          }
+                        >
+                          <SelectTrigger className="w-[210px] bg-background">
+                            <SelectValue placeholder="Choose receiving account" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {paymentAccounts.map((account) => (
+                              <SelectItem key={account.id} value={account.id}>
+                                {account.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!accountSelections[p.id] || accountAssignmentMutation.isPending}
+                          onClick={() =>
+                            accountAssignmentMutation.mutate({
+                              paymentId: p.id,
+                              financialAccountId: accountSelections[p.id],
+                            })
+                          }
+                        >
+                          Link account
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}

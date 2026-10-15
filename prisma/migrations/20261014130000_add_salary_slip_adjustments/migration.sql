@@ -1,0 +1,4 @@
+ALTER TABLE "salary_slip"
+ADD COLUMN "medicalReimbursement" DECIMAL(12,2) NOT NULL DEFAULT 0,
+ADD COLUMN "extraEarnings" DECIMAL(12,2) NOT NULL DEFAULT 0,
+ADD COLUMN "extraDeductions" DECIMAL(12,2) NOT NULL DEFAULT 0;

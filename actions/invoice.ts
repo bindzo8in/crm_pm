@@ -14,9 +14,12 @@ import {
   invoiceQuerySchema,
   RecordPaymentInput,
   recordPaymentSchema,
+  AssignPaymentAccountInput,
+  assignPaymentAccountSchema,
 } from "@/lib/schemas/invoice-schema";
 import { headers } from "next/headers";
 import { sendInvoiceLinkEmail } from "@/lib/email";
+import { revalidatePath } from "next/cache";
 
 const InvoiceStatus = {
   DRAFT: "DRAFT",
@@ -364,6 +367,32 @@ export async function createInvoice(input: CreateInvoiceInput) {
   }
 }
 
+export async function getInvoicePaymentAccounts() {
+  try {
+    const user = await getSessionUser();
+    if (!user) return errorResponse("Unauthorized");
+
+    const canRecord = await checkInvoicePermission("record-payment");
+    if (!canRecord) return errorResponse("You don't have permission to record invoice payments");
+
+    const company = await prisma.company.findFirst({
+      select: { id: true },
+    });
+    if (!company) return errorResponse("Create the company profile before recording payments");
+
+    const accounts = await prisma.financialAccount.findMany({
+      where: { companyId: company.id, isActive: true },
+      select: { id: true, name: true, type: true },
+      orderBy: { name: "asc" },
+    });
+
+    return successResponse("Payment accounts retrieved successfully", accounts);
+  } catch (error) {
+    console.error("Failed to fetch invoice payment accounts:", error);
+    return errorResponse("Failed to fetch payment accounts", getErrorMessage(error));
+  }
+}
+
 export async function updateInvoice(input: UpdateInvoiceInput) {
   try {
     const user = await getSessionUser();
@@ -386,6 +415,10 @@ export async function updateInvoice(input: UpdateInvoiceInput) {
 
     if (existing.status === InvoiceStatus.PAID) {
       return errorResponse("Paid invoices are immutable and cannot be edited.");
+    }
+
+    if (status === InvoiceStatus.PAID && existing.amountPaid.toNumber() < existing.grandTotal.toNumber()) {
+      return errorResponse("Record the received payment before marking this invoice as paid.");
     }
 
     let customerDisplayName = existing.customerDisplayName;
@@ -504,6 +537,10 @@ export async function updateInvoiceStatus(id: string, status: InvoiceStatus) {
     });
     if (!existing) return errorResponse("Invoice not found");
 
+    if (status === InvoiceStatus.PAID && existing.amountPaid.toNumber() < existing.grandTotal.toNumber()) {
+      return errorResponse("Record the received payment before marking this invoice as paid.");
+    }
+
     if (existing.status === InvoiceStatus.PAID && status !== InvoiceStatus.PAID) {
       return errorResponse("Paid invoices are immutable and cannot change status.");
     }
@@ -542,56 +579,151 @@ export async function recordInvoicePayment(input: RecordPaymentInput) {
       return errorResponse("Invalid payment data", validated.error.issues);
     }
 
-    const invoice = await (prisma as any).invoice.findFirst({
-      where: { id: validated.data.invoiceId, deletedAt: null },
+    const company = await prisma.company.findFirst({
+      select: { id: true },
     });
-    if (!invoice) return errorResponse("Invoice not found");
+    if (!company) return errorResponse("Company profile not found");
 
-    const newAmountPaid = invoice.amountPaid.toNumber() + validated.data.amount;
-    const grandTotal = invoice.grandTotal.toNumber();
+    const financialAccount = await prisma.financialAccount.findFirst({
+      where: {
+        id: validated.data.financialAccountId,
+        companyId: company.id,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    if (!financialAccount) return errorResponse("Select an active financial account belonging to your company");
 
-    let newStatus: InvoiceStatus = invoice.status;
-    if (newAmountPaid >= grandTotal) {
-      newStatus = InvoiceStatus.PAID;
-    } else if (newAmountPaid > 0) {
-      newStatus = InvoiceStatus.PARTIALLY_PAID;
-    }
+    const result = await prisma.$transaction(async (tx) => {
+      const invoice = await tx.invoice.findFirst({
+        where: { id: validated.data.invoiceId, deletedAt: null },
+      });
+      if (!invoice) return { error: "Invoice not found" as const };
+      if (invoice.status === "VOID") return { error: "Cannot record a payment for a void invoice" as const };
 
-    const [payment] = await prisma.$transaction([
-      prisma.invoicePayment.create({
+      const amountPaid = invoice.amountPaid.toNumber();
+      const grandTotal = invoice.grandTotal.toNumber();
+      const remainingBalance = grandTotal - amountPaid;
+      if (validated.data.amount > remainingBalance) {
+        return { error: "Payment amount cannot exceed the remaining invoice balance" as const };
+      }
+
+      const newAmountPaid = amountPaid + validated.data.amount;
+      let newStatus: InvoiceStatus = invoice.status;
+      if (newAmountPaid >= grandTotal) {
+        newStatus = InvoiceStatus.PAID;
+      } else if (newAmountPaid > 0) {
+        newStatus = InvoiceStatus.PARTIALLY_PAID;
+      }
+
+      const updatedInvoice = await tx.invoice.updateMany({
+        where: {
+          id: invoice.id,
+          amountPaid: invoice.amountPaid,
+          status: { not: "VOID" },
+        },
+        data: {
+          amountPaid: new Prisma.Decimal(newAmountPaid),
+          status: newStatus,
+        },
+      });
+      if (updatedInvoice.count === 0) {
+        return { error: "Invoice balance changed while recording payment. Refresh and try again." as const };
+      }
+
+      const payment = await tx.invoicePayment.create({
         data: {
           invoiceId: invoice.id,
+          financialAccountId: financialAccount.id,
           amount: new Prisma.Decimal(validated.data.amount),
           paymentMethod: validated.data.paymentMethod as PaymentMethod,
           paymentDate: validated.data.paymentDate,
           referenceId: validated.data.referenceId || null,
           notes: validated.data.notes || null,
         },
-      }),
-      (prisma as any).invoice.update({
-        where: { id: invoice.id },
-        data: {
-          amountPaid: new Prisma.Decimal(newAmountPaid),
-          status: newStatus,
-          activities: {
-            create: {
-              userId: user.id,
-              action: newStatus === InvoiceStatus.PAID ? "MARKED_PAID" : "PAYMENT_RECEIVED",
-              details: `Payment of ${invoice.currency} ${validated.data.amount} recorded via ${validated.data.paymentMethod}`,
-            },
-          },
-        },
-      }),
-    ]);
+      });
 
-    const formattedPayment = {
-      ...payment,
-      amount: payment.amount && typeof (payment.amount as any).toNumber === "function" ? (payment.amount as any).toNumber() : Number(payment.amount),
+      await tx.invoiceActivity.create({
+        data: {
+          invoiceId: invoice.id,
+          userId: user.id,
+          action: newStatus === InvoiceStatus.PAID ? "MARKED_PAID" : "PAYMENT_RECEIVED",
+          details: `Payment of ${invoice.currency} ${validated.data.amount} recorded via ${validated.data.paymentMethod}`,
+        },
+      });
+
+      return { payment };
+    });
+    if ("error" in result && result.error) return errorResponse(result.error);
+
+    const payment = {
+      ...result.payment,
+      amount: result.payment.amount.toNumber(),
     };
-    return successResponse("Payment recorded successfully", formattedPayment);
+    revalidatePath("/dashboard/finance");
+    return successResponse("Payment recorded successfully", payment);
   } catch (error) {
     console.error("Failed to record payment:", error);
     return errorResponse("Failed to record payment", getErrorMessage(error));
+  }
+}
+
+export async function assignInvoicePaymentAccount(input: AssignPaymentAccountInput) {
+  try {
+    const user = await getSessionUser();
+    if (!user) return errorResponse("Unauthorized");
+
+    const canRecord = await checkInvoicePermission("record-payment");
+    if (!canRecord) return errorResponse("You don't have permission to manage invoice payments");
+
+    const validated = assignPaymentAccountSchema.safeParse(input);
+    if (!validated.success) {
+      return errorResponse("Invalid payment account assignment", validated.error.issues);
+    }
+
+    const payment = await prisma.invoicePayment.findFirst({
+      where: {
+        id: validated.data.paymentId,
+        invoice: { deletedAt: null },
+      },
+      select: { id: true, financialAccountId: true },
+    });
+    if (!payment) return errorResponse("Invoice payment not found");
+    if (payment.financialAccountId) {
+      return errorResponse("This payment is already linked to an account");
+    }
+
+    const company = await prisma.company.findFirst({
+      select: { id: true },
+    });
+    if (!company) return errorResponse("Company profile not found");
+
+    const account = await prisma.financialAccount.findFirst({
+      where: {
+        id: validated.data.financialAccountId,
+        companyId: company.id,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    if (!account) return errorResponse("Select an active financial account belonging to your company");
+
+    const updated = await prisma.invoicePayment.updateMany({
+      where: {
+        id: payment.id,
+        financialAccountId: null,
+      },
+      data: { financialAccountId: account.id },
+    });
+    if (updated.count === 0) {
+      return errorResponse("This payment was linked to an account by another user. Refresh and try again.");
+    }
+
+    revalidatePath("/dashboard/finance");
+    return successResponse("Payment linked to the account successfully");
+  } catch (error) {
+    console.error("Failed to assign invoice payment account:", error);
+    return errorResponse("Failed to link payment to account", getErrorMessage(error));
   }
 }
 

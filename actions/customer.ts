@@ -27,11 +27,21 @@ export async function CreateCustomer(data: CustomerSchema) {
     if (!validatedData.success) {
       return { error: "Invalid data", message: "Invalid data provided" }
     }
-    await prisma.customer.create({
+    const customer = await prisma.customer.create({
       data: validatedData.data
     })
 
-    return { success: true, message: "Customer created successfully" }
+    return {
+      success: true,
+      message: "Customer created successfully",
+      customer: {
+        id: customer.id,
+        customerNumber: customer.customerNumber,
+        displayName: customer.displayName,
+        companyName: customer.companyName,
+        primaryContactName: customer.primaryContactName,
+      },
+    }
   } catch (error) {
     if (process.env.NODE_ENV === 'development') console.log(error)
     return { error: "Internal Server Error", message: "An error occurred while creating the customer" }

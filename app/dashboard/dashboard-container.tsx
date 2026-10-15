@@ -1,14 +1,13 @@
 import { SiteHeader } from "@/components/site-header";
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 
-export default async function DashboardContainer({ children, title, action }: { children: ReactNode, title: string, action?: { href: string, label: string, icon: ReactNode } }) {
+export default function DashboardContainer({ children, title, action }: { children: ReactNode, title: string, action?: { href: string, label: string, icon: ReactNode } }) {
     return (
         <>
             <SiteHeader title={title} action={action} />
-            <div className="flex flex-1 flex-col">
-                <div className="@container/main flex flex-1 flex-col gap-2">
-                    <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-
+            <div className="flex min-w-0 flex-1 flex-col">
+                <div className="@container/main mx-auto flex w-full max-w-[1760px] flex-1 flex-col">
+                    <div className="flex min-w-0 flex-col gap-5 py-5 sm:gap-6 sm:py-6">
                         {children}
                     </div>
                 </div>

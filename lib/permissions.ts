@@ -73,6 +73,13 @@ const statement = {
         "read",
     ],
 
+    finance: [
+        "read",
+        "create",
+        "update",
+        "delete",
+    ],
+
     settings: [
         "read",
         "update",
@@ -125,6 +132,8 @@ export const superAdminRole = ac.newRole({
 
     reports: ["read"],
 
+    finance: ["read", "create", "update", "delete"],
+
     settings: ["read", "update"],
 
     account: ["read", "update"],
@@ -151,6 +160,8 @@ export const adminRole = ac.newRole({
 
     reports: ["read"],
 
+    finance: ["read", "create", "update", "delete"],
+
     users: ["read", "update", "assign-department"],
 
     account: ["read", "update"],
@@ -173,6 +184,17 @@ export const staffRole = ac.newRole({
 
     attendance: ["clock-in", "clock-out", "read-own", "view-analytics", "regularize"]
 });
+
+export function canReadFinance(role: UserRole): boolean {
+    switch (role) {
+        case UserRole.SUPER_ADMIN:
+            return superAdminRole.statements.finance?.includes("read") ?? false;
+        case UserRole.ADMIN:
+            return adminRole.statements.finance?.includes("read") ?? false;
+        case UserRole.STAFF:
+            return false;
+    }
+}
 
 export function canManageUser(
     actorRole: UserRole,
