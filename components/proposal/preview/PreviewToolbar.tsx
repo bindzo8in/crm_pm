@@ -11,9 +11,32 @@ interface PreviewToolbarProps {
   proposalId: string;
   proposalNumber: number;
   clientEmail?: string | null;
+  proposalDetails: {
+    title: string;
+    customerName: string;
+    customerCompanyName: string | null;
+    currency: string;
+    subtotal: number;
+    discount: number;
+    tax: number;
+    grandTotal: number;
+    validUntil: string | null;
+    services: Array<{
+      name: string;
+      items: Array<{ name: string; quantity: number; total: number }>;
+    }>;
+    bankAccount: {
+      bankName: string;
+      accountName: string;
+      accountNumber: string;
+      ifscCode: string;
+      swiftCode: string | null;
+      upiId: string | null;
+    } | null;
+  };
 }
 
-export function PreviewToolbar({ proposalId, proposalNumber, clientEmail }: PreviewToolbarProps) {
+export function PreviewToolbar({ proposalId, proposalNumber, clientEmail, proposalDetails }: PreviewToolbarProps) {
   const [zoom, setZoom] = useState(100);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
@@ -49,7 +72,42 @@ export function PreviewToolbar({ proposalId, proposalNumber, clientEmail }: Prev
 
   const handleWhatsAppShare = async () => {
     const url = `${window.location.origin}/p/${proposalId}`;
-    const text = encodeURIComponent(`Here is your proposal: ${url}`);
+    const formatAmount = (amount: number) =>
+      new Intl.NumberFormat("en-IN", {
+        style: "currency",
+        currency: proposalDetails.currency || "INR",
+        maximumFractionDigits: 2,
+      }).format(amount);
+    const lines = [
+      `Hello ${proposalDetails.customerName},`,
+      "",
+      `Please find proposal #${proposalNumber}: ${proposalDetails.title}`,
+      ...(proposalDetails.customerCompanyName ? [`Prepared for: ${proposalDetails.customerCompanyName}`] : []),
+      ...(proposalDetails.validUntil
+        ? [`Valid until: ${new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(new Date(proposalDetails.validUntil))}`]
+        : []),
+      "",
+      "Proposal summary:",
+      ...proposalDetails.services.flatMap((service) => [
+        `• ${service.name}`,
+        ...service.items.map((item) => `  - ${item.name} × ${item.quantity}: ${formatAmount(item.total)}`),
+      ]),
+      "",
+      `Subtotal: ${formatAmount(proposalDetails.subtotal)}`,
+      ...(proposalDetails.discount > 0 ? [`Discount: -${formatAmount(proposalDetails.discount)}`] : []),
+      `Tax: ${formatAmount(proposalDetails.tax)}`,
+      `Total: ${formatAmount(proposalDetails.grandTotal)}`,
+    ];
+
+    if (proposalDetails.bankAccount) {
+      const { bankName, accountName, accountNumber, ifscCode, swiftCode, upiId } = proposalDetails.bankAccount;
+      lines.push("", "Payment details:", `Bank: ${bankName}`, `Account name: ${accountName}`, `Account number: ${accountNumber}`, `IFSC: ${ifscCode}`);
+      if (swiftCode) lines.push(`SWIFT: ${swiftCode}`);
+      if (upiId) lines.push(`UPI: ${upiId}`);
+    }
+
+    lines.push("", `View the full proposal and payment section: ${url}`);
+    const text = encodeURIComponent(lines.join("\n"));
     
     // Open in a new window immediately to prevent popup blockers
     window.open(`https://wa.me/?text=${text}`, "_blank");

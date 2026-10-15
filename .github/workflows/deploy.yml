@@ -110,6 +110,7 @@ jobs:
             GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
             CHROMIUM_REMOTE_EXEC_PATH=${{ secrets.CHROMIUM_REMOTE_EXEC_PATH }}
             EXCHANGE_RATE_API_KEY=${{ secrets.EXCHANGE_RATE_API_KEY }}
+            SALARY_CRON_SECRET=${{ secrets.SALARY_CRON_SECRET }}
             
 
 
@@ -231,7 +232,7 @@ jobs:
           CHROMIUM_REMOTE_EXEC_PATH: ${{ secrets.CHROMIUM_REMOTE_EXEC_PATH }}
 
           EXCHANGE_RATE_API_KEY: ${{ secrets.EXCHANGE_RATE_API_KEY }}
-
+          SALARY_CRON_SECRET: ${{ secrets.SALARY_CRON_SECRET }}
           # --------------------------------------------------
           # GHCR
           # --------------------------------------------------
@@ -263,6 +264,7 @@ jobs:
             GOOGLE_CLIENT_SECRET,
             CHROMIUM_REMOTE_EXEC_PATH,
             EXCHANGE_RATE_API_KEY,
+            SALARY_CRON_SECRET,
             GHCR_USERNAME,
             GHCR_TOKEN
 
@@ -320,7 +322,7 @@ jobs:
             CHROMIUM_REMOTE_EXEC_PATH=$CHROMIUM_REMOTE_EXEC_PATH
 
             EXCHANGE_RATE_API_KEY=$EXCHANGE_RATE_API_KEY
-
+            SALARY_CRON_SECRET=$SALARY_CRON_SECRET
             EOF
 
 

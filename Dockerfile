@@ -70,6 +70,7 @@ RUN \
     --mount=type=secret,id=GOOGLE_CLIENT_SECRET,env=GOOGLE_CLIENT_SECRET \
     --mount=type=secret,id=CHROMIUM_REMOTE_EXEC_PATH,env=CHROMIUM_REMOTE_EXEC_PATH \
     --mount=type=secret,id=EXCHANGE_RATE_API_KEY,env=EXCHANGE_RATE_API_KEY \
+    --mount=type=secret,id=SALARY_CRON_SECRET,env=SALARY_CRON_SECRET \
     --mount=type=secret,id=NEXT_PUBLIC_APP_NAME,env=NEXT_PUBLIC_APP_NAME \
     --mount=type=secret,id=NEXT_PUBLIC_SITE_URL,env=NEXT_PUBLIC_SITE_URL \
     --mount=type=secret,id=NEXT_PUBLIC_SUPPORT_EMAIL,env=NEXT_PUBLIC_SUPPORT_EMAIL \

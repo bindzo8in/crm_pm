@@ -14,8 +14,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, UsersIcon, FileTextIcon, Settings2Icon, CommandIcon, BookUser, BoxIcon, HandshakeIcon, ScrollText, TableIcon, ReceiptText, ClockIcon, CalendarHeart, CalendarOff, WalletIcon } from "lucide-react"
+import { LayoutDashboardIcon, UsersIcon, FileTextIcon, Settings2Icon, BookUser, BoxIcon, HandshakeIcon, ScrollText, TableIcon, ReceiptText, ClockIcon, CalendarHeart, CalendarOff, WalletIcon } from "lucide-react"
 import { env } from "@/lib/env"
+import Image from "next/image"
 import { UserRole } from "@/app/generated/prisma/enums"
 import { canReadFinance } from "@/lib/permissions"
 import { canAccessRoute } from "@/lib/route-permissions"
@@ -139,6 +140,14 @@ const data = {
       icon: (
         <WalletIcon />
       )
+    },
+    {
+      title: "Reports",
+      section: "Business",
+      url: "/dashboard/reports",
+      icon: (
+        <TableIcon />
+      )
     }
   ],
   navSecondary: [
@@ -192,7 +201,7 @@ export function AppSidebar({
               className="data-[slot=sidebar-menu-button]:p-1.5!"
             >
               <a href="/dashboard">
-                <CommandIcon className="size-5!" />
+                <Image src="/logo.png" alt="" width={28} height={28} className="size-7 shrink-0 object-contain" />
                 <span className="text-base font-semibold">{env.NEXT_PUBLIC_APP_NAME}</span>
               </a>
             </SidebarMenuButton>

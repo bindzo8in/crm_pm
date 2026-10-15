@@ -163,15 +163,17 @@ const initialFilters: ReportFilters = {
   direction: "desc",
 };
 
-function FinanceReportPanel({
+export function FinanceReportPanel({
   initialReport,
+  initialType = "ALL",
   accounts,
   categories,
   creators,
 }: {
   initialReport: ReportResult | null;
-  accounts: Account[];
-  categories: Category[];
+  initialType?: ReportFilters["type"];
+  accounts: Array<Pick<Account, "id" | "name">>;
+  categories: Array<Pick<Category, "id" | "name">>;
   creators: Creator[];
 }) {
   const [report, setReport] = React.useState(initialReport);
@@ -179,6 +181,7 @@ function FinanceReportPanel({
     ...initialFilters,
     startDate: initialReport?.startDate ?? "",
     endDate: initialReport?.endDate ?? "",
+    type: initialType,
   });
   const [isLoading, setIsLoading] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
@@ -217,6 +220,8 @@ function FinanceReportPanel({
       search: String(data.get("search") ?? ""),
       minAmount: String(data.get("minAmount") ?? ""),
       maxAmount: String(data.get("maxAmount") ?? ""),
+      sort: String(data.get("sort") ?? "date") as ReportFilters["sort"],
+      direction: String(data.get("direction") ?? "desc") as ReportFilters["direction"],
       page: 0,
     };
     void runReport(nextFilters);
@@ -230,112 +235,120 @@ function FinanceReportPanel({
 
   return (
     <Card className="shadow-none">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">Financial report</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Review recorded invoice payments and expenses. Date filters include both the start and end dates.
-        </p>
+      <CardHeader className="border-b bg-muted/30 py-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle className="text-base">Payments and expenses</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Review recorded transactions for the selected period.
+            </p>
+          </div>
+          {report && (
+            <p className="text-xs text-muted-foreground">
+              {formatDate(report.startDate)} – {formatDate(report.endDate)}
+            </p>
+          )}
+        </div>
       </CardHeader>
-      <CardContent className="space-y-5">
-        <form onSubmit={handleSubmit} className="grid gap-3 rounded-lg bg-muted/30 p-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="report-start-date">From date</Label>
-            <Input id="report-start-date" name="startDate" type="date" defaultValue={filters.startDate} />
+      <CardContent className="space-y-4 pt-4">
+        <form onSubmit={handleSubmit} className="space-y-3 rounded-lg border bg-background p-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_0.9fr_0.9fr_minmax(180px,1.4fr)_auto]">
+            <div className="space-y-1.5">
+              <Label htmlFor="report-start-date">From date</Label>
+              <Input id="report-start-date" name="startDate" type="date" defaultValue={filters.startDate} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="report-end-date">To date</Label>
+              <Input id="report-end-date" name="endDate" type="date" defaultValue={filters.endDate} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="report-type">Transaction type</Label>
+              <select id="report-type" name="type" defaultValue={filters.type} className={selectClassName}>
+                <option value="ALL">All transactions</option>
+                <option value="INCOME">Income</option>
+                <option value="EXPENSE">Expenses</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="report-status">Status</Label>
+              <select id="report-status" name="status" defaultValue={filters.status} className={selectClassName}>
+                <option value="ALL">Any status</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="PENDING">Pending</option>
+                <option value="CANCELLED">Cancelled</option>
+                <option value="REVERSED">Reversed</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="report-search">Search transactions</Label>
+              <Input id="report-search" name="search" defaultValue={filters.search} placeholder="Reference, customer, vendor…" />
+            </div>
+            <div className="flex items-end">
+              <Button type="submit" disabled={isLoading} className="w-full">
+                {isLoading ? "Running…" : "Run report"}
+              </Button>
+            </div>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="report-end-date">To date</Label>
-            <Input id="report-end-date" name="endDate" type="date" defaultValue={filters.endDate} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="report-type">Transaction type</Label>
-            <select id="report-type" name="type" defaultValue={filters.type} className={selectClassName}>
-              <option value="ALL">Income and expenses</option>
-              <option value="INCOME">Income</option>
-              <option value="EXPENSE">Expenses</option>
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="report-status">Status</Label>
-            <select id="report-status" name="status" defaultValue={filters.status} className={selectClassName}>
-              <option value="ALL">Any status</option>
-              <option value="COMPLETED">Completed</option>
-              <option value="PENDING">Pending</option>
-              <option value="CANCELLED">Cancelled</option>
-              <option value="REVERSED">Reversed</option>
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="report-category">Category / source</Label>
-            <select id="report-category" name="categoryId" defaultValue={filters.categoryId} className={selectClassName}>
-              <option value="ALL">All categories</option>
-              <option value="INVOICE_PAYMENT">Invoice payment income</option>
-              {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="report-account">Account</Label>
-            <select id="report-account" name="accountId" defaultValue={filters.accountId} className={selectClassName}>
-              <option value="ALL">All accounts</option>
-              <option value="UNASSIGNED">Account not assigned</option>
-              {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="report-payment-method">Payment method</Label>
-            <select id="report-payment-method" name="paymentMethod" defaultValue={filters.paymentMethod} className={selectClassName}>
-              <option value="ALL">Any payment method</option>
-              {paymentMethods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="report-creator">Created by (invoice creator for income)</Label>
-            <select id="report-creator" name="creatorId" defaultValue={filters.creatorId} className={selectClassName}>
-              <option value="ALL">Anyone</option>
-              {creators.map((creator) => <option key={creator.id} value={creator.id}>{creator.name}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1.5 lg:col-span-2">
-            <Label htmlFor="report-search">Search</Label>
-            <Input id="report-search" name="search" defaultValue={filters.search} placeholder="Description, reference, customer, vendor" />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="report-min-amount">Minimum amount (₹)</Label>
-            <Input id="report-min-amount" name="minAmount" type="number" min="0" step="0.01" defaultValue={filters.minAmount} placeholder="Any" />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="report-max-amount">Maximum amount (₹)</Label>
-            <Input id="report-max-amount" name="maxAmount" type="number" min="0" step="0.01" defaultValue={filters.maxAmount} placeholder="Any" />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="report-sort">Sort by</Label>
-            <select
-              id="report-sort"
-              name="sort"
-              defaultValue={filters.sort}
-              className={selectClassName}
-              onChange={(event) => setFilters((current) => ({ ...current, sort: event.target.value as ReportFilters["sort"] }))}
-            >
-              <option value="date">Date</option>
-              <option value="amount">Amount</option>
-              <option value="description">Description</option>
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="report-direction">Order</Label>
-            <select
-              id="report-direction"
-              name="direction"
-              defaultValue={filters.direction}
-              className={selectClassName}
-              onChange={(event) => setFilters((current) => ({ ...current, direction: event.target.value as ReportFilters["direction"] }))}
-            >
-              <option value="desc">Newest / highest first</option>
-              <option value="asc">Oldest / lowest first</option>
-            </select>
-          </div>
-          <div className="flex items-end lg:col-span-2">
-            <Button type="submit" disabled={isLoading}>{isLoading ? "Loading report…" : "Apply filters"}</Button>
-          </div>
+          <details className="group border-t pt-2">
+            <summary className="w-fit cursor-pointer list-none text-sm font-medium text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+              More filters
+            </summary>
+            <div className="grid gap-3 pt-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="report-category">Category / source</Label>
+                <select id="report-category" name="categoryId" defaultValue={filters.categoryId} className={selectClassName}>
+                  <option value="ALL">All categories</option>
+                  <option value="INVOICE_PAYMENT">Invoice payment income</option>
+                  {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="report-account">Account</Label>
+                <select id="report-account" name="accountId" defaultValue={filters.accountId} className={selectClassName}>
+                  <option value="ALL">All accounts</option>
+                  <option value="UNASSIGNED">Account not assigned</option>
+                  {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="report-payment-method">Payment method</Label>
+                <select id="report-payment-method" name="paymentMethod" defaultValue={filters.paymentMethod} className={selectClassName}>
+                  <option value="ALL">Any payment method</option>
+                  {paymentMethods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="report-creator">Created by</Label>
+                <select id="report-creator" name="creatorId" defaultValue={filters.creatorId} className={selectClassName}>
+                  <option value="ALL">Anyone</option>
+                  {creators.map((creator) => <option key={creator.id} value={creator.id}>{creator.name}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="report-min-amount">Minimum amount (₹)</Label>
+                <Input id="report-min-amount" name="minAmount" type="number" min="0" step="0.01" defaultValue={filters.minAmount} placeholder="Any" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="report-max-amount">Maximum amount (₹)</Label>
+                <Input id="report-max-amount" name="maxAmount" type="number" min="0" step="0.01" defaultValue={filters.maxAmount} placeholder="Any" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="report-sort">Sort by</Label>
+                <select id="report-sort" name="sort" defaultValue={filters.sort} className={selectClassName}>
+                  <option value="date">Date</option>
+                  <option value="amount">Amount</option>
+                  <option value="description">Description</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="report-direction">Order</Label>
+                <select id="report-direction" name="direction" defaultValue={filters.direction} className={selectClassName}>
+                  <option value="desc">Newest / highest first</option>
+                  <option value="asc">Oldest / lowest first</option>
+                </select>
+              </div>
+            </div>
+          </details>
         </form>
 
         {errorMessage && <p role="alert" className="text-sm text-destructive">{errorMessage}</p>}
@@ -357,8 +370,8 @@ function FinanceReportPanel({
               </div>
             </div>
 
-            <div className="overflow-hidden rounded-lg border">
-              <Table>
+            <div className="overflow-x-auto rounded-lg border">
+              <Table className="min-w-[1120px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Date</TableHead>

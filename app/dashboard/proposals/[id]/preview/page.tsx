@@ -30,15 +30,23 @@ export default async function ProposalPreviewPage({ params }: ProposalPreviewPag
   console.log('resssssdata', res.data)
 
   const { proposal, blocks } = res.data;
+  const proposalDetails = proposal as typeof proposal & {
+    bankAccountId?: string | null;
+    customer?: { primaryContactEmail?: string | null };
+    proposalServices?: Array<{
+    serviceName: string;
+    packageName?: string | null;
+    items: Array<{ name: string; quantity: number; total: number }>;
+    }>;
+  };
 
   // Fetch Company and associated Bank Account for PDF generation
   const company = await prisma.company.findFirst();
   let bankAccount = null;
 
-  const propAny = proposal as any;
-  if (propAny.bankAccountId) {
+  if (proposalDetails.bankAccountId) {
     bankAccount = await prisma.companyBankAccount.findUnique({
-      where: { id: propAny.bankAccountId },
+      where: { id: proposalDetails.bankAccountId },
     });
   } else if (company) {
     // Fallback to default if no specific account selected
@@ -62,7 +70,36 @@ export default async function ProposalPreviewPage({ params }: ProposalPreviewPag
       <PreviewToolbar 
         proposalId={proposal.id} 
         proposalNumber={proposal.proposalNumber} 
-        clientEmail={(proposal as any).customer?.primaryContactEmail}
+        clientEmail={proposalDetails.customer?.primaryContactEmail}
+        proposalDetails={{
+          title: proposal.title,
+          customerName: proposal.customerDisplayName,
+          customerCompanyName: proposal.customerCompanyName,
+          currency: proposal.currency,
+          subtotal: Number(proposal.subtotal),
+          discount: Number(proposal.discount),
+          tax: Number(proposal.tax),
+          grandTotal: Number(proposal.grandTotal),
+          validUntil: proposal.validUntil?.toISOString() ?? null,
+          services: proposalDetails.proposalServices?.map((service) => ({
+            name: service.packageName
+              ? `${service.packageName} (${service.serviceName})`
+              : service.serviceName,
+            items: service.items.map((item) => ({
+              name: item.name,
+              quantity: item.quantity,
+              total: item.total,
+            })),
+          })) ?? [],
+          bankAccount: bankAccount ? {
+            bankName: bankAccount.bankName,
+            accountName: bankAccount.accountName,
+            accountNumber: bankAccount.accountNumber,
+            ifscCode: bankAccount.ifscCode,
+            swiftCode: bankAccount.swiftCode,
+            upiId: bankAccount.upiId,
+          } : null,
+        }}
       />
       
       <main className="flex-1 overflow-auto py-8 mb-16">
