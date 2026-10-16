@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { canAccessRoute } from "@/lib/route-permissions";
 import { UserRole } from "@/app/generated/prisma/enums";
+import { canReadDashboard } from "@/lib/permissions";
 
 /**
  * Ensures the user is authenticated and has permission to access the specified route.
@@ -23,10 +24,17 @@ export async function requirePageAccess(targetPath?: string) {
 
   const pathname = targetPath || headersList.get("x-pathname") || "/dashboard";
   const userRole = session.user.role as UserRole;
+  const dashboardAccess = canReadDashboard(userRole);
+  const staffHomeAccess = userRole === UserRole.STAFF;
+  const fallbackPath = dashboardAccess || staffHomeAccess ? "/dashboard" : "/attendance";
 
-  if (!canAccessRoute(pathname, userRole)) {
+  if (pathname === "/dashboard" && !dashboardAccess && !staffHomeAccess) {
+    redirect(fallbackPath);
+  }
+
+  if (!canAccessRoute(pathname, userRole, session.user.department)) {
     console.log('Access denied for route:', pathname, 'User role:', userRole);
-    redirect("/dashboard");
+    redirect(fallbackPath);
   }
 
   return session;

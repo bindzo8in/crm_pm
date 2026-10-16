@@ -1,7 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation } from "@tanstack/react-query";
+import { z } from "zod";
+import type { Holiday } from "@/app/generated/prisma/client";
+import {
+  createHolidayAction,
+  deleteHolidayAction,
+  updateHolidayAction,
+} from "@/actions/holiday";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -11,91 +24,140 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { createHolidayAction, deleteHolidayAction } from "@/actions/holiday";
-import { useMutation } from "@tanstack/react-query";
-import { Input } from "@/components/ui/input";
-import { Plus, Trash2 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { CalendarPlus, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
-export function ManageHolidayDialog({ holidayToEdit }: { holidayToEdit?: any }) {
+const holidayFormSchema = z.object({
+  name: z.string().trim().min(1, "Enter a holiday name.").max(120),
+  date: z.iso.date("Choose a valid holiday date."),
+  description: z.string().trim().max(500),
+});
+
+type HolidayFormValues = z.infer<typeof holidayFormSchema>;
+
+export function ManageHolidayDialog({ holiday }: { holiday?: Holiday }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState(holidayToEdit?.name || "");
-  const [date, setDate] = useState(holidayToEdit?.date ? new Date(holidayToEdit.date).toISOString().split('T')[0] : "");
-  const [description, setDescription] = useState(holidayToEdit?.description || "");
+  const [error, setError] = useState<string | null>(null);
+  const form = useForm<HolidayFormValues>({
+    resolver: zodResolver(holidayFormSchema),
+    defaultValues: {
+      name: holiday?.name ?? "",
+      date: holiday?.date.toISOString().slice(0, 10) ?? "",
+      description: holiday?.description ?? "",
+    },
+  });
 
-  const createMutation = useMutation({
-    mutationFn: (data: any) => createHolidayAction(data),
+  const saveMutation = useMutation({
+    mutationFn: (values: HolidayFormValues) =>
+      holiday
+        ? updateHolidayAction({ ...values, id: holiday.id })
+        : createHolidayAction(values),
     onSuccess: () => {
+      setError(null);
+      toast.success(holiday ? "Holiday updated." : "Holiday added.");
+      if (!holiday) {
+        form.reset({ name: "", date: "", description: "" });
+      }
       setOpen(false);
-      setName("");
-      setDate("");
-      setDescription("");
+      router.refresh();
+    },
+    onError: (mutationError: Error) => {
+      setError(mutationError.message || "Unable to save this holiday.");
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteHolidayAction(id),
+    mutationFn: () => deleteHolidayAction({ id: holiday?.id ?? "" }),
     onSuccess: () => {
+      setError(null);
+      toast.success("Holiday deleted.");
       setOpen(false);
+      router.refresh();
+    },
+    onError: (mutationError: Error) => {
+      setError(mutationError.message || "Unable to delete this holiday.");
     },
   });
 
-  const handleSubmit = () => {
-    createMutation.mutate({ name, date, description });
-  };
-
-  const handleDelete = () => {
-    if (holidayToEdit && confirm("Are you sure you want to delete this holiday?")) {
-      deleteMutation.mutate(holidayToEdit.id);
-    }
-  };
+  const onSubmit = form.handleSubmit((values) => {
+    setError(null);
+    saveMutation.mutate(values);
+  });
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        {holidayToEdit ? (
-          <Button variant="ghost" size="icon" className="text-red-500" onClick={(e) => {
-            e.preventDefault();
-            handleDelete();
-          }}>
-            <Trash2 className="h-4 w-4" />
+        {holiday ? (
+          <Button type="button" variant="outline" size="sm">
+            <Pencil aria-hidden="true" className="mr-2 size-4" />
+            Edit
           </Button>
         ) : (
-          <Button><Plus className="h-4 w-4 mr-2" /> Add Holiday</Button>
+          <Button type="button">
+            <CalendarPlus aria-hidden="true" className="mr-2 size-4" />
+            Add holiday
+          </Button>
         )}
       </DialogTrigger>
-      {/* We only render the content if it's not a direct delete button interaction, but Radix handles it. Actually, for a delete button we shouldn't use DialogTrigger, but this is a simplified version. */}
-      {!holidayToEdit && (
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New Holiday</DialogTitle>
-            <DialogDescription>
-              Create a new company or public holiday.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="py-4 space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Holiday Name</label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. New Year's Day" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Date</label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Description (Optional)</label>
-              <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional description..." />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={handleSubmit} disabled={createMutation.isPending || !name || !date}>
-              Save Holiday
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{holiday ? "Edit holiday" : "Add company holiday"}</DialogTitle>
+          <DialogDescription>
+            Holidays apply to all departments. Saved leave day counts will not change when the holiday calendar is edited.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={onSubmit} className="space-y-4">
+          <label className="block space-y-2 text-sm font-medium">
+            Holiday name
+            <Input placeholder="e.g. New Year’s Day" {...form.register("name")} aria-invalid={Boolean(form.formState.errors.name)} />
+            {form.formState.errors.name && (
+              <span className="block text-xs text-destructive">{form.formState.errors.name.message}</span>
+            )}
+          </label>
+          <label className="block space-y-2 text-sm font-medium">
+            Date
+            <Input type="date" {...form.register("date")} aria-invalid={Boolean(form.formState.errors.date)} />
+            {form.formState.errors.date && (
+              <span className="block text-xs text-destructive">{form.formState.errors.date.message}</span>
+            )}
+          </label>
+          <label className="block space-y-2 text-sm font-medium">
+            Description (optional)
+            <Textarea rows={3} maxLength={500} {...form.register("description")} />
+          </label>
+          {error && (
+            <Alert variant="destructive">
+              <AlertTitle>Unable to save holiday</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          <DialogFooter className="gap-2 sm:gap-2">
+            {holiday && (
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={deleteMutation.isPending || saveMutation.isPending}
+                onClick={() => {
+                  if (window.confirm(`Delete ${holiday.name}?`)) {
+                    deleteMutation.mutate();
+                  }
+                }}
+              >
+                <Trash2 aria-hidden="true" className="mr-2 size-4" />
+                Delete
+              </Button>
+            )}
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saveMutation.isPending || deleteMutation.isPending}>
+              {saveMutation.isPending ? "Saving…" : holiday ? "Save changes" : "Add holiday"}
             </Button>
           </DialogFooter>
-        </DialogContent>
-      )}
+        </form>
+      </DialogContent>
     </Dialog>
   );
 }

@@ -6,8 +6,8 @@ export default function DashboardContainer({ children, title, action }: { childr
         <>
             <SiteHeader title={title} action={action} />
             <div className="flex min-w-0 flex-1 flex-col">
-                <div className="@container/main mx-auto flex w-full max-w-[1760px] flex-1 flex-col">
-                    <div className="flex min-w-0 flex-col gap-5 py-5 sm:gap-6 sm:py-6">
+                <div className="@container/main mx-auto flex min-w-0 w-full max-w-[1760px] flex-1 flex-col">
+                    <div className="flex min-w-0 flex-col gap-5 px-3 py-4 sm:gap-6 sm:px-5 sm:py-6 lg:px-6">
                         {children}
                     </div>
                 </div>

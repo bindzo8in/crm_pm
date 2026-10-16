@@ -492,11 +492,10 @@ export function FinanceDashboardClient({
   ];
 
   return (
-    <main className="space-y-6 p-4 md:p-6">
+    <main className="min-w-0 space-y-6">
       <header className="flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm text-muted-foreground">Finance</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Expenses and cash flow</h1>
+          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Expenses and cash flow</h2>
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
             Record business expenses here. Invoice payments are brought in automatically as received income.
           </p>

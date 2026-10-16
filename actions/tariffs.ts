@@ -15,12 +15,11 @@ async function checkPermission(permission: "read" | "create" | "update" | "delet
     return { success: false, error: "You are not authenticated" };
   }
   
-  // Since tariffs are part of services, we'll check 'services' permissions
   const hasPermission = await auth.api.userHasPermission({
     headers: await headers(),
     body: {
       permissions: {
-        services: [permission],
+        tariffs: [permission],
       },
     },
   });

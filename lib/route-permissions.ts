@@ -1,25 +1,30 @@
 import { UserRole } from "@/app/generated/prisma/enums";
+import { BUSINESS_WORKSPACE_DEPARTMENTS } from "@/lib/workspace-access";
 
 type RoutePermission = {
   path: string;
   roles: UserRole[]; // Roles allowed to access this path (and its sub-paths)
+  departmentRoles?: Partial<Record<UserRole, readonly string[]>>;
 };
 
 // Define your route restrictions here.
 // Routes not listed in this array are accessible to all authenticated users by default.
 export const routePermissions: RoutePermission[] = [
-  // Accessible by all authenticated roles (SUPER_ADMIN, ADMIN, STAFF)
+  // Business records are available to admins and staff in HR or Sales.
   {
     path: "/dashboard/customers",
     roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF],
+    departmentRoles: { [UserRole.STAFF]: BUSINESS_WORKSPACE_DEPARTMENTS },
   },
   {
     path: "/dashboard/proposals",
     roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF],
+    departmentRoles: { [UserRole.STAFF]: BUSINESS_WORKSPACE_DEPARTMENTS },
   },
   {
     path: "/dashboard/invoices",
     roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF],
+    departmentRoles: { [UserRole.STAFF]: BUSINESS_WORKSPACE_DEPARTMENTS },
   },
   {
     path: "/dashboard/finance",
@@ -50,7 +55,7 @@ export const routePermissions: RoutePermission[] = [
     roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF]
   },
 
-  // Accessible only by SUPER_ADMIN and ADMIN (STAFF denied)
+  // Administrative configuration routes; the holiday calendar is intentionally staff-readable.
   {
     path: "/dashboard/services",
     roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN],
@@ -69,7 +74,16 @@ export const routePermissions: RoutePermission[] = [
   },
   {
     path: "/dashboard/holidays",
+    roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF],
+  },
+  {
+    path: "/dashboard/tariffs",
     roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN],
+  },
+  {
+    path: "/dashboard/salary",
+    roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF],
+    departmentRoles: { [UserRole.STAFF]: ["HR"] },
   },
 
   // Accessible only by SUPER_ADMIN (ADMIN and STAFF denied)
@@ -86,11 +100,18 @@ export const routePermissions: RoutePermission[] = [
  * @param userRole The role of the logged-in user
  * @returns boolean indicating whether access is granted
  */
-export function canAccessRoute(pathname: string, userRole: UserRole): boolean {
+export function canAccessRoute(
+  pathname: string,
+  userRole: UserRole,
+  department?: string | null,
+): boolean {
   for (const route of routePermissions) {
     if (pathname.startsWith(route.path)) {
-      // If the route matches a restricted path, check if the user's role is in the allowed list
       if (!route.roles.includes(userRole)) {
+        return false;
+      }
+      const allowedDepartments = route.departmentRoles?.[userRole];
+      if (allowedDepartments && !allowedDepartments.includes(department ?? "")) {
         return false;
       }
     }

@@ -83,12 +83,33 @@ type DashboardData = {
 };
 
 const chartConfig = {
-  income: { label: "Income", color: "#3b82f6" },
-  receivedAmount: { label: "Received amount", color: "#16a36a" },
-  expenses: { label: "Expense", color: "#f97316" },
+  income: { label: "Sales", color: "#2d91f4" },
+  receivedAmount: { label: "Receipts", color: "#2fc27a" },
+  expenses: { label: "Expenses", color: "#fa5a26" },
 } satisfies ChartConfig;
 
 const sourceColors = ["bg-violet-500", "bg-sky-500", "bg-emerald-500", "bg-amber-500", "bg-pink-500", "bg-slate-400"];
+
+function MonthAxisTick({
+  x = 0,
+  y = 0,
+  payload,
+}: {
+  x?: number;
+  y?: number;
+  payload?: { value?: string };
+}) {
+  const [month, year] = (payload?.value ?? "").split(" ");
+
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text textAnchor="middle" fill="currentColor" fontSize={10}>
+        <tspan x={0} dy="0.8em">{month}</tspan>
+        <tspan x={0} dy="1.2em">{year}</tspan>
+      </text>
+    </g>
+  );
+}
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -148,6 +169,25 @@ export function DashboardOverview({
     y: number;
   } | null>(null);
   const maxCustomerSource = Math.max(1, ...data.customerSources.map((source) => source.count));
+  const chartTotals = data.monthlyTrend.reduce(
+    (totals, month) => ({
+      sales: totals.sales + month.income,
+      receipts: totals.receipts + month.receivedAmount,
+      expenses: totals.expenses + month.expenses,
+    }),
+    { sales: 0, receipts: 0, expenses: 0 },
+  );
+  const chartMaxValue = Math.max(
+    20_000,
+    Math.ceil(Math.max(
+      0,
+      ...data.monthlyTrend.flatMap((month) => [month.income, month.receivedAmount, month.expenses]),
+    ) / 20_000) * 20_000,
+  );
+  const chartTicks = Array.from(
+    { length: chartMaxValue / 20_000 + 1 },
+    (_, index) => index * 20_000,
+  );
 
   function selectChartBar(type: ChartType, month: string) {
     const [year, monthIndex] = month.split("-").map(Number);
@@ -174,9 +214,9 @@ export function DashboardOverview({
       <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <p className="text-sm text-muted-foreground">{formatDate(new Date().toISOString())}</p>
-          <h2 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
             {greeting}, {firstName}
-          </h2>
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">Here’s the latest across your customers and invoices.</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -189,26 +229,23 @@ export function DashboardOverview({
         </div>
       </header>
 
-      <section aria-label="Outstanding receivables" className="grid gap-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(250px,0.7fr)]">
-        <Card className="shadow-none">
+      <section aria-label="Outstanding receivables" className="w-full max-w-[850px]">
+        <Card className="gap-0 shadow-none">
           <CardHeader className="flex flex-row items-center justify-between gap-3 border-b bg-muted/30 py-3">
             <div className="min-w-0">
-              <CardTitle className="text-sm font-medium">Total receivables</CardTitle>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {data.pendingInvoiceCount.toLocaleString("en-IN")} invoices with an outstanding balance
-              </p>
+              <CardTitle className="text-sm font-medium">Total Receivables</CardTitle>
             </div>
             <Button className="shrink-0" variant="ghost" size="sm" asChild>
-              <Link href="/dashboard/invoices">View invoices</Link>
+              <Link href="/dashboard/invoices/create"><Plus className="size-4 text-sky-500" /> New</Link>
             </Button>
           </CardHeader>
-          <CardContent className="space-y-4 pt-4">
-            <p className="text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">
-              {formatCurrency(data.receivableTotal)}
+          <CardContent className="space-y-3 pt-3">
+            <p className="text-xs text-muted-foreground">
+              Total Receivables {formatTooltipCurrency(data.receivableTotal)}
             </p>
             <div
               aria-label="Receivables by overdue age"
-              className="flex h-2.5 overflow-hidden rounded-sm bg-muted"
+              className="flex h-3 overflow-hidden rounded-sm bg-muted"
               role="group"
             >
               <TooltipProvider>
@@ -234,152 +271,180 @@ export function DashboardOverview({
                 ))}
               </TooltipProvider>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              {data.receivableAging.map((bucket) => (
-                <div key={bucket.label} className="border-l-2 border-border pl-2.5 first:border-sky-500">
-                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <span aria-hidden="true" className={`size-2 rounded-full ${bucket.tone}`} />
-                    {bucket.label === "Current"
-                      ? "Current outstanding"
-                      : `Overdue · ${bucket.label}`}
-                  </p>
-                  <p className="mt-1 text-sm font-medium tabular-nums">{formatCurrency(bucket.amount)}</p>
-                </div>
-              ))}
-            </div>
           </CardContent>
-        </Card>
-
-        <Card className="shadow-none">
-          <CardHeader className="border-b bg-muted/30 py-3">
-            <CardTitle className="text-sm font-medium">This month</CardTitle>
-          </CardHeader>
-          <CardContent className="divide-y pt-1">
-            <div className="flex items-center justify-between gap-3 py-3">
-              <span className="text-sm text-muted-foreground">Revenue received</span>
-              <span className="text-sm font-semibold tabular-nums">{formatCurrency(data.currentRevenue)}</span>
-            </div>
-            <div className="flex items-center justify-between gap-3 py-3">
-              <span className="text-sm text-muted-foreground">Change from last month</span>
-              <span className={`text-sm font-semibold tabular-nums ${data.revenueChange !== null && data.revenueChange < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-700 dark:text-emerald-400"}`}>
-                {formatPercent(data.revenueChange)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-3 py-3">
-              <span className="text-sm text-muted-foreground">New customers</span>
-              <span className="text-sm font-semibold tabular-nums">{data.newCustomerCount.toLocaleString("en-IN")}</span>
-            </div>
-            <p className="pb-2 text-xs text-muted-foreground">
-              {data.customerCount.toLocaleString("en-IN")} active customers in total
-            </p>
-          </CardContent>
+          <div className="grid gap-3 border-t px-4 py-3 sm:grid-cols-2 lg:grid-cols-5">
+            {data.receivableAging.map((bucket) => (
+              <div key={bucket.label} className="border-l border-border pl-3 first:border-sky-500">
+                <p className={`text-[11px] uppercase ${bucket.label === "Current" ? "text-sky-600" : "text-orange-600"}`}>
+                  {bucket.label === "Current" ? "Current" : bucket.label === "1–15 days" ? "Overdue" : "\u00a0"}
+                </p>
+                <p className="mt-1 text-lg font-medium tabular-nums">{formatTooltipCurrency(bucket.amount)}</p>
+                {bucket.label !== "Current" && (
+                  <p className="text-xs text-muted-foreground">{bucket.label}</p>
+                )}
+              </div>
+            ))}
+          </div>
         </Card>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(290px,0.8fr)]">
-        <Card className="min-w-0 shadow-none">
-          <CardHeader className="gap-3 pb-0">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <CardTitle className="text-base">Income, received amount and expenses</CardTitle>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Monthly totals · {data.chartRangeLabel}
-                </p>
+      <section className="w-full max-w-[850px]">
+        <Card className="min-w-0 gap-0 shadow-none">
+          <CardHeader className="flex flex-col justify-between gap-3 border-b bg-muted/30 py-3 sm:flex-row sm:items-center">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <div>
+                <CardTitle className="text-sm font-medium">Sales and Expenses</CardTitle>
               </div>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="About sales and expenses"
+                      className="inline-flex size-5 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <Info className="size-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Sales are invoiced totals, receipts are payments received, and expenses are completed expenses.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+            <div className="w-full sm:w-auto">
               <DashboardChartDateFilter
                 period={data.chartPeriod}
                 fromDate={data.chartFromDate}
                 toDate={data.chartToDate}
               />
             </div>
-            {data.chartRangeError && (
-              <p role="alert" className="text-sm text-destructive">{data.chartRangeError}</p>
-            )}
           </CardHeader>
-          <CardContent className="pt-5">
-            {data.monthlyTrend.every((month) => month.income === 0 && month.receivedAmount === 0 && month.expenses === 0) ? (
-              <div className="grid h-[260px] place-items-center rounded-md bg-muted/25 px-6 text-center text-sm text-muted-foreground">
-                Income, received amounts and expenses will appear here as you record transactions.
-              </div>
-            ) : (
-              <div className="relative">
-                <ChartContainer config={chartConfig} className="h-[280px] w-full">
-                  <BarChart data={data.monthlyTrend} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                    <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} />
-                    <YAxis
-                      tickLine={false}
-                      axisLine={false}
-                      width={72}
-                      tickFormatter={(value: number) => new Intl.NumberFormat("en-IN", { notation: "compact", maximumFractionDigits: 1 }).format(value)}
-                    />
-                    <Bar
-                      dataKey="income"
-                      fill="var(--color-income)"
-                      radius={[3, 3, 0, 0]}
-                      maxBarSize={28}
-                      cursor="pointer"
-                      onClick={(bar) => void selectChartBar("income", bar.payload.monthKey)}
-                      onMouseEnter={(bar) => setActiveBar({
-                        label: "Income",
-                        value: getBarValue(bar.value),
-                        x: bar.x + bar.width / 2,
-                        y: bar.y,
-                      })}
-                      onMouseLeave={() => setActiveBar(null)}
-                    />
-                    <Bar
-                      dataKey="receivedAmount"
-                      fill="var(--color-receivedAmount)"
-                      radius={[3, 3, 0, 0]}
-                      maxBarSize={28}
-                      cursor="pointer"
-                      onClick={(bar) => void selectChartBar("receivedAmount", bar.payload.monthKey)}
-                      onMouseEnter={(bar) => setActiveBar({
-                        label: "Received amount",
-                        value: getBarValue(bar.value),
-                        x: bar.x + bar.width / 2,
-                        y: bar.y,
-                      })}
-                      onMouseLeave={() => setActiveBar(null)}
-                    />
-                    <Bar
-                      dataKey="expenses"
-                      fill="var(--color-expenses)"
-                      radius={[3, 3, 0, 0]}
-                      maxBarSize={28}
-                      cursor="pointer"
-                      onClick={(bar) => void selectChartBar("expenses", bar.payload.monthKey)}
-                      onMouseEnter={(bar) => setActiveBar({
-                        label: "Expense",
-                        value: getBarValue(bar.value),
-                        x: bar.x + bar.width / 2,
-                        y: bar.y,
-                      })}
-                      onMouseLeave={() => setActiveBar(null)}
-                    />
-                  </BarChart>
-                </ChartContainer>
-                {activeBar && (
-                  <div
-                    className="pointer-events-none absolute z-10 min-w-32 -translate-x-1/2 -translate-y-[calc(100%+8px)] rounded-lg border border-border/50 bg-background px-2.5 py-2 shadow-xl"
-                    style={{ left: activeBar.x, top: activeBar.y }}
-                    role="status"
+          <div className="grid min-w-0 lg:grid-cols-[minmax(0,3fr)_minmax(220px,1fr)]">
+            <CardContent className="min-w-0 border-b py-4 lg:border-b-0 lg:border-r lg:py-5">
+              {data.chartRangeError && (
+                <p role="alert" className="mb-2 text-sm text-destructive">{data.chartRangeError}</p>
+              )}
+              {data.monthlyTrend.every((month) => month.income === 0 && month.receivedAmount === 0 && month.expenses === 0) ? (
+                <div className="grid h-[210px] place-items-center rounded-md bg-muted/25 px-6 text-center text-sm text-muted-foreground">
+                  Sales, receipts and expenses will appear here as you record transactions.
+                </div>
+              ) : (
+                <div className="relative">
+                  <ChartContainer
+                    config={chartConfig}
+                    className="h-[210px] w-full [&_.recharts-surface:focus:not(:focus-visible)]:outline-none"
                   >
-                    <p className="text-sm font-medium tabular-nums">{formatTooltipCurrency(activeBar.value)}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{activeBar.label}</p>
-                  </div>
-                )}
+                    <BarChart
+                      data={data.monthlyTrend}
+                      barGap={2}
+                      barCategoryGap="38%"
+                      margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                    >
+                      <CartesianGrid vertical={false} stroke="#dce4f2" strokeDasharray="1 3" />
+                      <XAxis
+                        dataKey="month"
+                        interval={1}
+                        tick={<MonthAxisTick />}
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={6}
+                        height={36}
+                      />
+                      <YAxis
+                        tickLine={false}
+                        axisLine={false}
+                        width={52}
+                        domain={[0, chartMaxValue]}
+                        ticks={chartTicks}
+                        allowDecimals={false}
+                        tick={{ fill: "#526079", fontSize: 10 }}
+                        tickFormatter={(value: number) => value === 0
+                          ? "0"
+                          : `${new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(value / 1000)} K`}
+                      />
+                      <Bar
+                        dataKey="income"
+                        fill="var(--color-income)"
+                        radius={[3, 3, 0, 0]}
+                        maxBarSize={10}
+                        cursor="pointer"
+                        onClick={(bar) => void selectChartBar("income", bar.payload.monthKey)}
+                        onMouseEnter={(bar) => setActiveBar({
+                          label: "Sales",
+                          value: getBarValue(bar.value),
+                          x: bar.x + bar.width / 2,
+                          y: bar.y,
+                        })}
+                        onMouseLeave={() => setActiveBar(null)}
+                      />
+                      <Bar
+                        dataKey="receivedAmount"
+                        fill="var(--color-receivedAmount)"
+                        radius={[3, 3, 0, 0]}
+                        maxBarSize={10}
+                        cursor="pointer"
+                        onClick={(bar) => void selectChartBar("receivedAmount", bar.payload.monthKey)}
+                        onMouseEnter={(bar) => setActiveBar({
+                          label: "Receipts",
+                          value: getBarValue(bar.value),
+                          x: bar.x + bar.width / 2,
+                          y: bar.y,
+                        })}
+                        onMouseLeave={() => setActiveBar(null)}
+                      />
+                      <Bar
+                        dataKey="expenses"
+                        fill="var(--color-expenses)"
+                        radius={[3, 3, 0, 0]}
+                        maxBarSize={10}
+                        cursor="pointer"
+                        onClick={(bar) => void selectChartBar("expenses", bar.payload.monthKey)}
+                        onMouseEnter={(bar) => setActiveBar({
+                          label: "Expenses",
+                          value: getBarValue(bar.value),
+                          x: bar.x + bar.width / 2,
+                          y: bar.y,
+                        })}
+                        onMouseLeave={() => setActiveBar(null)}
+                      />
+                    </BarChart>
+                  </ChartContainer>
+                  {activeBar && (
+                    <div
+                      className="pointer-events-none absolute z-10 min-w-32 -translate-x-1/2 -translate-y-[calc(100%+8px)] rounded-lg border border-border/50 bg-background px-2.5 py-2 shadow-xl"
+                      style={{ left: activeBar.x, top: activeBar.y }}
+                      role="status"
+                    >
+                      <p className="text-sm font-medium tabular-nums">{formatTooltipCurrency(activeBar.value)}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{activeBar.label}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              <p className="mt-2 text-xs text-muted-foreground">
+                * Sales value displayed is inclusive of tax and includes credits.
+              </p>
+            </CardContent>
+            <div className="flex min-w-0 flex-col justify-center gap-5 border-t px-5 py-4 text-right lg:border-t-0 lg:border-l">
+              <div>
+                <p className="text-xs text-blue-500">Total Sales</p>
+                <p className="mt-1 text-lg font-medium tabular-nums">{formatTooltipCurrency(chartTotals.sales)}</p>
               </div>
-            )}
-            <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-2"><span className="size-2.5 rounded-sm bg-blue-500" />Income</span>
-              <span className="inline-flex items-center gap-2"><span className="size-2.5 rounded-sm bg-emerald-600" />Received amount</span>
-              <span className="inline-flex items-center gap-2"><span className="size-2.5 rounded-sm bg-orange-500" />Expense</span>
+              <div>
+                <p className="text-xs text-emerald-600">Total Receipts</p>
+                <p className="mt-1 text-lg font-medium tabular-nums">{formatTooltipCurrency(chartTotals.receipts)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-orange-500">Total Expenses</p>
+                <p className="mt-1 text-lg font-medium tabular-nums">{formatTooltipCurrency(chartTotals.expenses)}</p>
+              </div>
             </div>
-          </CardContent>
+          </div>
         </Card>
+      </section>
 
+      <section className="grid gap-4 lg:grid-cols-2">
         <Card className="shadow-none">
           <CardHeader className="flex-row items-center justify-between pb-3">
             <div>
@@ -419,6 +484,33 @@ export function DashboardOverview({
                 ))}
               </div>
             )}
+          </CardContent>
+        </Card>
+        <Card className="shadow-none">
+          <CardHeader className="flex-row items-center justify-between pb-3">
+            <div>
+              <CardTitle className="text-base">This month</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">A quick view of current activity</p>
+            </div>
+          </CardHeader>
+          <CardContent className="divide-y pt-1">
+            <div className="flex items-center justify-between gap-3 py-3">
+              <span className="text-sm text-muted-foreground">Revenue received</span>
+              <span className="text-sm font-semibold tabular-nums">{formatCurrency(data.currentRevenue)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 py-3">
+              <span className="text-sm text-muted-foreground">Change from last month</span>
+              <span className={`text-sm font-semibold tabular-nums ${data.revenueChange !== null && data.revenueChange < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-700 dark:text-emerald-400"}`}>
+                {formatPercent(data.revenueChange)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-3 py-3">
+              <span className="text-sm text-muted-foreground">New customers</span>
+              <span className="text-sm font-semibold tabular-nums">{data.newCustomerCount.toLocaleString("en-IN")}</span>
+            </div>
+            <p className="pb-2 text-xs text-muted-foreground">
+              {data.customerCount.toLocaleString("en-IN")} active customers in total
+            </p>
           </CardContent>
         </Card>
       </section>

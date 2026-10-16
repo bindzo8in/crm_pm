@@ -9,7 +9,7 @@ import { requestPasswordReset } from "@/lib/auth-client"
 import { useEffect, useState } from "react"
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Card, CardContent } from '@/components/ui/card'
-import { Mail } from 'lucide-react'
+import { LockKeyhole, Mail } from 'lucide-react'
 import Link from 'next/link'
 
 export function ForgotPasswordForm() {
@@ -91,7 +91,7 @@ export function ForgotPasswordForm() {
 
   if (submittedEmail) {
     return (
-      <Card className="max-w-md mx-auto">
+      <Card className="mx-auto w-full max-w-md">
         <CardContent className="flex flex-col items-center py-10 text-center">
           <Mail className="size-12 mb-4" />
 
@@ -116,13 +116,13 @@ export function ForgotPasswordForm() {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-2 mt-6 w-full">
-            <Button asChild className="flex-1" variant="outline">
-              <Link href="/">
-                Back Home
+            <Button asChild className="min-h-11 flex-1" variant="outline">
+              <Link href="/signin">
+                Back to sign in
               </Link>
             </Button>
             <Button
-              className="flex-1"
+              className="min-h-11 flex-1"
               variant="outline"
               disabled={cooldown > 0 || isResending}
               onClick={handleResend}
@@ -148,9 +148,12 @@ export function ForgotPasswordForm() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       }
-      <form onSubmit={handleSubmit} className="p-2 sm:p-5 md:p-8 w-full rounded-md gap-2 border max-w-3xl mx-auto">
+      <form onSubmit={handleSubmit} className="w-full rounded-xl border bg-card p-5 shadow-sm sm:p-7">
         <FieldGroup className="grid md:grid-cols-6 gap-4 mb-6">
-          <h1 className="mt-6 mb-1 font-extrabold text-3xl tracking-tight col-span-full">🔐 Forgot Password</h1>
+          <h1 className="col-span-full mt-6 mb-1 flex flex-wrap items-center gap-2 text-2xl font-extrabold tracking-tight sm:text-3xl">
+            <LockKeyhole aria-hidden="true" className="size-6 text-primary" />
+            Forgot password
+          </h1>
           <p className="tracking-wide text-muted-foreground mb-5 text-wrap text-sm col-span-full">Enter the email address associated with your account and we&apos;ll send you a password reset link.</p>
 
           <Controller
@@ -177,8 +180,8 @@ export function ForgotPasswordForm() {
           />
         </FieldGroup>
         <div className="flex justify-end items-center w-full">
-          <Button disabled={isSubmitting}>
-            {isSubmitting ? 'Submitting...' : 'Submit'}
+          <Button className="min-h-11 w-full" disabled={isSubmitting}>
+            {isSubmitting ? 'Sending...' : 'Send reset link'}
           </Button>
         </div>
       </form>

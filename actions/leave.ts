@@ -1,158 +1,133 @@
 "use server";
 
-import { auth } from "@/lib/auth";
-import prisma from "@/lib/prisma";
-import { headers } from "next/headers";
-import { UserRole, LeaveType, LeaveStatus } from "@/app/generated/prisma/enums";
-import { z } from "zod";
+import { LeaveStatus, LeaveType, Department } from "@/app/generated/prisma/enums";
+import { ActionError } from "@/lib/action-error";
+import { requireLeaveManager, requireLeaveUser } from "@/lib/leave-access";
+import { parseDateOnly } from "@/lib/leave-policy";
+import { formatInIST } from "@/lib/date";
+import {
+  cancelPendingLeaveRequest,
+  createLeaveRequest,
+  getAnnualLeaveBalance,
+  getManagerLeaveRequests,
+  getOwnLeaveRequests,
+  reviewLeaveRequest,
+} from "@/services/leave-service";
 import { revalidatePath } from "next/cache";
-import { eachDayOfInterval, format, isSunday } from "date-fns";
+import { z } from "zod";
 
-const leaveRequestSchema = z.object({
-  type: z.enum(LeaveType),
-  startDate: z.coerce.date(),
-  endDate: z.coerce.date(),
-  reason: z.string().min(1, "Reason is required").max(500),
+const dateOnlySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid date.")
+  .refine((value) => {
+    try {
+      parseDateOnly(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Enter a valid date.")
+  .transform(parseDateOnly);
+
+const leaveRequestSchema = z
+  .object({
+    type: z.enum(LeaveType),
+    startDate: dateOnlySchema,
+    endDate: dateOnlySchema,
+    reason: z.string().trim().min(1, "Reason is required.").max(500),
+  })
+  .refine((value) => value.endDate >= value.startDate, {
+    path: ["endDate"],
+    message: "End date cannot be before start date.",
+  });
+
+const paginationSchema = z.object({
+  page: z.coerce.number().int().min(0).max(100_000).default(0),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 
-export async function submitLeaveRequestAction(input: any) {
-  const reqHeaders = await headers();
-  const session = await auth.api.getSession({ headers: reqHeaders });
+const managerFilterSchema = paginationSchema.extend({
+  search: z.string().trim().max(120).optional(),
+  type: z.enum(LeaveType).optional(),
+  status: z.enum(LeaveStatus).optional(),
+  department: z.enum(Department).optional(),
+  fromDate: dateOnlySchema.optional(),
+  throughDate: dateOnlySchema.optional(),
+});
 
-  if (!session) {
-    throw new Error("Unauthorized");
-  }
+const updateLeaveStatusSchema = z.object({
+  id: z.string().trim().min(1).max(100),
+  status: z.enum([LeaveStatus.APPROVED, LeaveStatus.REJECTED]),
+  managerComment: z.string().trim().max(1000).optional(),
+});
 
+const requestIdSchema = z.object({
+  id: z.string().trim().min(1).max(100),
+});
+
+const balanceSchema = z.object({
+  month: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Enter a valid calendar month.")
+    .optional(),
+});
+
+export async function submitLeaveRequestAction(input: unknown) {
+  const user = await requireLeaveUser("create");
   const parsed = leaveRequestSchema.parse(input);
-
-
-  if (parsed.endDate < parsed.startDate) {
-    throw new Error("End date cannot be before start date");
-  }
-  const start = parsed.startDate;
-  const end = parsed.endDate;
-
-  // 1. Generate every calendar day in the interval
-  const allDays = eachDayOfInterval({ start: parsed.startDate, end: parsed.endDate });
-
-  // 2. Fetch all database holidays that fall within this leave range
-  const databaseHolidays = await prisma.holiday.findMany({
-    where: {
-      date: {
-        gte: start,
-        lte: end,
-      }
-    },
-    select: { date: true }
-  })
-
-  // Convert DB date intervals into standard comparable format strings
-  const holidayStrings = new Set(
-    databaseHolidays.map((h) => format(h.date, 'yyyy-MM-dd'))
-  );
-
-  // 3. Initialize metrics counters
-  let totalSundays = 0;
-  let totalHolidays = 0;
-  let totalNormalLeaveDays = 0; // Net payable leave days
-
-  // 4. Categorize each day in a single loop execution
-  allDays.forEach((day) => {
-    const formattedStr = format(day, 'yyyy-MM-dd');
-    const isDaySunday = isSunday(day);
-    const isDayHoliday = holidayStrings.has(formattedStr);
-
-    if (isDaySunday) {
-      totalSundays++;
-    } else if (isDayHoliday) {
-      // Note: If a public holiday falls on a Sunday, it is counted as a Sunday above.
-      totalHolidays++;
-    } else {
-      totalNormalLeaveDays++;
-    }
-  });
-
-  const leave = await prisma.leaveRequest.create({
-    data: {
-      userId: session.user.id,
-      type: parsed.type,
-      startDate: parsed.startDate,
-      endDate: parsed.endDate,
-      reason: parsed.reason,
-      status: LeaveStatus.PENDING,
-
-      // Map your loop metrics here:
-      totalDays: allDays.length,
-      netLeaveDays: totalNormalLeaveDays,
-      sundayCount: totalSundays,
-      holidayCount: totalHolidays,
-    },
-  });
-
+  const leave = await createLeaveRequest({ userId: user.id, ...parsed });
 
   revalidatePath("/dashboard/leaves");
-  return {
-    success: true, leave
-  };
-}
-
-export async function getMyLeaveRequestsAction() {
-  const reqHeaders = await headers();
-  const session = await auth.api.getSession({ headers: reqHeaders });
-
-  if (!session) {
-    throw new Error("Unauthorized");
-  }
-
-  const leaves = await prisma.leaveRequest.findMany({
-    where: { userId: session.user.id },
-    orderBy: { createdAt: "desc" },
-  });
-
-  return { success: true, leaves };
-}
-
-export async function getAllLeaveRequestsAction(page: number = 0, limit: number = 20) {
-  const reqHeaders = await headers();
-  const session = await auth.api.getSession({ headers: reqHeaders });
-
-  if (!session || (session.user.role !== UserRole.SUPER_ADMIN && session.user.role !== UserRole.ADMIN)) {
-    throw new Error("Unauthorized");
-  }
-
-  const leaves = await prisma.leaveRequest.findMany({
-    include: {
-      user: {
-        select: { id: true, name: true, email: true, department: true, role: true }
-      }
-    },
-    orderBy: { createdAt: "desc" },
-    skip: page * limit,
-    take: limit,
-  });
-
-  const totalCount = await prisma.leaveRequest.count();
-
-  return { success: true, leaves, totalCount };
-}
-
-export async function updateLeaveStatusAction(id: string, status: LeaveStatus, managerComment?: string) {
-  const reqHeaders = await headers();
-  const session = await auth.api.getSession({ headers: reqHeaders });
-
-  if (!session || (session.user.role !== UserRole.SUPER_ADMIN && session.user.role !== UserRole.ADMIN)) {
-    throw new Error("Unauthorized");
-  }
-
-  const leave = await prisma.leaveRequest.update({
-    where: { id },
-    data: {
-      status,
-      managerComment: managerComment || null
-    },
-    include: { user: true }
-  });
-
-  revalidatePath("/dashboard/leaves");
+  revalidatePath("/dashboard");
   return { success: true, leave };
+}
+
+export async function getMyLeaveRequestsAction(input: unknown = {}) {
+  const user = await requireLeaveUser();
+  const parsed = paginationSchema.parse(input);
+  const result = await getOwnLeaveRequests(user.id, parsed.page, parsed.pageSize);
+  return { success: true, ...result, page: parsed.page, pageSize: parsed.pageSize };
+}
+
+export async function getAllLeaveRequestsAction(input: unknown = {}) {
+  await requireLeaveManager("read-all");
+  const parsed = managerFilterSchema.parse(input);
+  if (parsed.fromDate && parsed.throughDate && parsed.fromDate > parsed.throughDate) {
+    throw new ActionError("The start of the filter range must be before its end.", 400);
+  }
+
+  const result = await getManagerLeaveRequests(parsed);
+  return { success: true, ...result, page: parsed.page, pageSize: parsed.pageSize };
+}
+
+export async function cancelLeaveRequestAction(input: unknown) {
+  const user = await requireLeaveUser("cancel-own");
+  const { id } = requestIdSchema.parse(input);
+  await cancelPendingLeaveRequest(user.id, id);
+
+  revalidatePath("/dashboard/leaves");
+  revalidatePath("/dashboard");
+  return { success: true };
+}
+
+export async function updateLeaveStatusAction(input: unknown) {
+  const user = await requireLeaveManager("review");
+  const parsed = updateLeaveStatusSchema.parse(input);
+  const leave = await reviewLeaveRequest({
+    approverId: user.id,
+    id: parsed.id,
+    status: parsed.status,
+    managerComment: parsed.managerComment || null,
+  });
+
+  revalidatePath("/dashboard/leaves");
+  revalidatePath("/dashboard");
+  return { success: true, leave };
+}
+
+export async function getAnnualLeaveBalanceAction(input: unknown = {}) {
+  const user = await requireLeaveUser();
+  const parsed = balanceSchema.parse(input);
+  const month = parsed.month ?? formatInIST(new Date(), "yyyy-MM");
+  return { success: true, ...(await getAnnualLeaveBalance(user.id, month)) };
 }

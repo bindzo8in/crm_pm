@@ -27,7 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Password } from "@/components/password";
 import { Card, CardContent } from "@/components/ui/card";
 
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, LockKeyhole } from "lucide-react";
 
 type ResetPasswordFormProps = {
   token?: string;
@@ -104,7 +104,7 @@ export function ResetPasswordForm({
   return (
     <>
       {error && (
-        <Alert variant="destructive" className="max-w-3xl mx-auto mb-4">
+        <Alert variant="destructive" className="mx-auto mb-4 w-full max-w-md">
           <AlertCircle className="size-4" />
           <AlertTitle>Error</AlertTitle>
           <AlertDescription>
@@ -115,11 +115,12 @@ export function ResetPasswordForm({
 
       <form
         onSubmit={handleSubmit}
-        className="p-2 sm:p-5 md:p-8 w-full rounded-md border max-w-3xl mx-auto"
+        className="w-full rounded-xl border bg-card p-5 shadow-sm sm:p-7"
       >
-        <FieldGroup className="grid md:grid-cols-6 gap-4 mb-6">
-          <h1 className="mt-6 mb-1 font-extrabold text-3xl tracking-tight col-span-full">
-            🔒 Create New Password
+        <FieldGroup className="mb-6 grid gap-4 md:grid-cols-6">
+          <h1 className="col-span-full mt-6 mb-1 flex flex-wrap items-center gap-2 text-2xl font-extrabold tracking-tight sm:text-3xl">
+            <LockKeyhole aria-hidden="true" className="size-6 text-primary" />
+            Create new password
           </h1>
 
           <p className="tracking-wide text-muted-foreground mb-5 text-sm col-span-full">
@@ -183,18 +184,18 @@ export function ResetPasswordForm({
           />
         </FieldGroup>
 
-        <div className="flex justify-end items-center gap-2">
+        <div className="flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:justify-end">
           <Button
             type="button"
             variant="outline"
             asChild
           >
-            <Link href="/login">
-              Back to Login
+            <Link href="/signin">
+              Back to sign in
             </Link>
           </Button>
 
-          <Button type="submit" disabled={isSubmitting}>
+          <Button className="min-h-11" type="submit" disabled={isSubmitting}>
             {isSubmitting
               ? "Updating Password..."
               : "Update Password"}

@@ -2,7 +2,7 @@
 import { SigninSchema, signinSchema } from '@/lib/schemas/signin-schema'
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm, Controller } from "react-hook-form"
-import { Mail } from "lucide-react"
+import { Globe, Mail } from "lucide-react"
 import { Field, FieldGroup, FieldContent, FieldLabel, FieldError, FieldSeparator } from "@/components/ui/field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,8 +13,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import Link from "next/link"
 
-const socialMediaButtons = [{ "src": "https://cdn.brandfetch.io/id6O2oGzv-/theme/dark/symbol.svg?c=1bxid64Mup7aczewSAYMX&t=1755835725776", "label": "Continue with Google", provider: "google" as const },
-  // {"src":"https://cdn.brandfetch.io/idM8Hlme1a/theme/dark/symbol.svg?c=1bxid64Mup7aczewSAYMX&t=1668075051777","label":"Continue with Discord"}
+const socialMediaButtons = [
+  { label: "Continue with Google", provider: "google" as const },
 ]
 
 export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
@@ -75,7 +75,7 @@ export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
         callbackURL: callbackUrl,
       })
     } catch {
-      setMessage(`an error occured while signing in with ${provider}, try again!`)
+      setMessage(`Sign in with ${provider} could not start. Please try again.`)
     }
   }
 
@@ -108,7 +108,7 @@ export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
 
   if (needsVerification && unverifiedEmail) {
     return (
-      <div className="p-2 sm:p-5 md:p-8 w-full rounded-md border max-w-3xl mx-auto">
+      <div className="w-full rounded-xl border bg-card p-5 shadow-sm sm:p-7">
         <div className="flex flex-col items-center text-center py-8">
           <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
             <Mail className="size-8 text-primary" />
@@ -183,10 +183,10 @@ export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
           <AlertDescription>{message}</AlertDescription>
         </Alert>
       )}
-      <form onSubmit={handleSubmit} className="p-2 sm:p-5 md:p-8 w-full rounded-md gap-2 border max-w-3xl mx-auto">
-        <FieldGroup className="grid md:grid-cols-6 gap-4 mb-6">
-          <h1 className="mt-6 mb-1 font-extrabold text-3xl tracking-tight col-span-full">Login</h1>
-          <p className="tracking-wide text-muted-foreground mb-5 text-wrap text-sm col-span-full">Sign in to access your account</p>
+      <form onSubmit={handleSubmit} className="w-full rounded-xl border bg-card p-5 shadow-sm sm:p-7">
+        <FieldGroup className="mb-6 grid gap-4 md:grid-cols-6">
+          <h1 className="col-span-full text-2xl font-semibold tracking-tight sm:text-3xl">Sign in</h1>
+          <p className="col-span-full text-sm text-muted-foreground">Sign in to access your account.</p>
 
           <Controller
             name="email"
@@ -197,7 +197,8 @@ export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
                 <Input
                   {...field}
                   id="email"
-                  type="text"
+                  type="email"
+                  autoComplete="email"
                   onChange={(e) => {
                     field.onChange(e.target.value)
                   }}
@@ -224,7 +225,7 @@ export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
                   placeholder="Password"
 
                 />
-                <FieldContent className="flex justify-center items-end w-full">
+                <FieldContent className="flex w-full items-end justify-end">
                   <Link href="/forget-password" className="text-sm text-primary text-nowrap hover:underline">
                     Forgot password?
                   </Link>
@@ -259,17 +260,15 @@ export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
                   continueWith({ provider: o.provider });
                 }}
               >
-                <div className="place-items-center grid rounded-full bg-white size-6 p-0.5">
-                  <img src={o.src} width={16} height={16} alt="" />
-                </div>
+                <Globe aria-hidden="true" className="size-4" />
                 {o.label}
               </Button>
             ))}
           </div>
         </FieldGroup>
         <div className="flex justify-end items-center w-full">
-          <Button disabled={isSubmitting}>
-            {isSubmitting ? 'Submitting...' : 'Submit'}
+          <Button className="h-11 w-full" disabled={isSubmitting}>
+            {isSubmitting ? 'Signing in...' : 'Sign in'}
           </Button>
         </div>
         <div className="mt-4 text-center text-sm">

@@ -24,6 +24,7 @@ import {
   CopyPlus,
   Trash2,
   ReceiptText,
+  FolderKanban,
 } from "lucide-react";
 
 import { DeleteProposal, DuplicateProposal } from "@/actions/proposal";
@@ -31,6 +32,7 @@ import { createInvoiceFromProposal } from "@/actions/invoice";
 import { proposalKeys } from "../util";
 
 interface ProposalActionsProps {
+  canConvertToProject: boolean;
   proposal: {
     id: string;
     status: string;
@@ -39,6 +41,7 @@ interface ProposalActionsProps {
 
 export function ProposalActions({
   proposal,
+  canConvertToProject,
 }: ProposalActionsProps) {
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -143,6 +146,15 @@ export function ProposalActions({
           <DropdownMenuItem onClick={handleGenerateInvoice} disabled={isGenerating}>
             <ReceiptText />
             {isGenerating ? "Generating..." : "Generate Invoice"}
+          </DropdownMenuItem>
+        )}
+
+        {proposal.status === "ACCEPTED" && canConvertToProject && (
+          <DropdownMenuItem asChild>
+            <Link href={`/dashboard/projects/new?proposalId=${proposal.id}`}>
+              <FolderKanban />
+              Convert to Project
+            </Link>
           </DropdownMenuItem>
         )}
 

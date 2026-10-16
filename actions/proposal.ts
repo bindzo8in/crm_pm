@@ -11,6 +11,23 @@ import { addDays } from "date-fns";
 import { headers } from "next/headers";
 import { sendProposalLinkEmail } from "@/lib/email";
 import { syncProposalComposerTermsAndFeatures } from "@/actions/proposal-composer";
+import { hasBusinessWorkspaceAccess } from "@/lib/workspace-access";
+
+type ProposalPermission = "create" | "read" | "update" | "delete" | "send";
+
+async function hasProposalPermission(permission: ProposalPermission): Promise<boolean> {
+    const requestHeaders = await headers();
+    const session = await auth.api.getSession({ headers: requestHeaders });
+    if (!session?.user || !hasBusinessWorkspaceAccess(session.user)) {
+        return false;
+    }
+
+    const result = await auth.api.userHasPermission({
+        headers: requestHeaders,
+        body: { permissions: { proposals: [permission] } },
+    });
+    return result.success;
+}
 
 export async function createProposal(proposal: ProposalSchema) {
     try {
@@ -22,6 +39,9 @@ export async function createProposal(proposal: ProposalSchema) {
             return errorResponse(
                 "You don't have permission to create a proposal"
             );
+        }
+        if (!hasBusinessWorkspaceAccess(session.user)) {
+            return errorResponse("Proposals are available to administrators and staff in HR or Sales.");
         }
 
         const hasPermission = await auth.api.userHasPermission({
@@ -96,6 +116,9 @@ export async function updateProposalStatus(proposalId: string, status: "DRAFT" |
         if (!session?.user) {
             return errorResponse("You don't have permission to update this proposal");
         }
+        if (!hasBusinessWorkspaceAccess(session.user)) {
+            return errorResponse("Proposals are available to administrators and staff in HR or Sales.");
+        }
 
         const hasPermission = await auth.api.userHasPermission({
             headers: await headers(),
@@ -123,16 +146,7 @@ export async function updateProposalStatus(proposalId: string, status: "DRAFT" |
 
 export async function updateProposal(id: string, data: ProposalSchema) {
     try {
-        const hasPermission = await auth.api.userHasPermission({
-            headers: await headers(),
-            body: {
-                permissions: {
-                    proposals: ["update"]
-                }
-            }
-        });
-
-        if (!hasPermission.success) {
+        if (!(await hasProposalPermission("update"))) {
             return errorResponse<string>("You don't have permission to update proposals");
         }
 
@@ -208,15 +222,7 @@ export async function updateProposal(id: string, data: ProposalSchema) {
 
 export async function DeleteProposal(id: string) {
     try {
-        const hasPermission = await auth.api.userHasPermission({
-            headers: await headers(),
-            body: {
-                permissions: {
-                    proposals: ["delete"]
-                }
-            }
-        })
-        if (!hasPermission.success) {
+        if (!(await hasProposalPermission("delete"))) {
             return errorResponse<string>("You don't have permission to delete this proposal");
         }
 
@@ -235,16 +241,7 @@ export async function DeleteProposal(id: string) {
 
 export async function DuplicateProposal(id: string) {
     try {
-        const hasPermission = await auth.api.userHasPermission({
-            headers: await headers(),
-            body: {
-                permissions: {
-                    proposals: ["create"]
-                }
-            }
-        });
-        
-        if (!hasPermission.success) {
+        if (!(await hasProposalPermission("create"))) {
             return errorResponse<string>("You don't have permission to duplicate this proposal");
         }
 
@@ -360,6 +357,10 @@ export async function DuplicateProposal(id: string) {
 
 export async function getProposals(query: ProposalQuerySchema) {
     try {
+        if (!(await hasProposalPermission("read"))) {
+            return errorResponse("Your account is not allowed to read proposals.");
+        }
+
         const { page, pageSize, search, status, sortDirection, customerId } = query
 
         const where: ProposalWhereInput = {
@@ -440,6 +441,12 @@ export async function sendProposalEmailAction(proposalId: string, email: string,
         });
         if (!session?.user) {
             return errorResponse("You don't have permission to send emails");
+        }
+        if (
+            !hasBusinessWorkspaceAccess(session.user) ||
+            !(await hasProposalPermission("send"))
+        ) {
+            return errorResponse("You don't have permission to send proposal emails");
         }
 
         const company = await prisma.company.findFirst();

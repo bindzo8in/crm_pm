@@ -1,9 +1,12 @@
 import { UserRole } from "@/app/generated/prisma/enums";
 import { createAccessControl } from "better-auth/plugins/access";
 import { defaultStatements, adminAc } from "better-auth/plugins/admin/access";
+import type { Prisma } from "@/app/generated/prisma/client";
 
-const statement = {
+export const statement = {
     ...defaultStatements,
+
+    dashboard: ["read"],
 
     users: [
         "create",
@@ -56,17 +59,23 @@ const statement = {
 
     projects: [
         "create",
-        "read",
+        "read-all",
+        "read-assigned",
         "update",
-        "delete",
+        "update-status",
+        "manage-team",
+        "view-budget",
+        "archive",
     ],
 
     tasks: [
         "create",
-        "read",
+        "read-all",
+        "read-assigned",
         "update",
         "delete",
         "assign",
+        "update-own",
     ],
 
     reports: [
@@ -100,7 +109,53 @@ const statement = {
         "regularize",
         "approve-regularization",
         "view-audit-logs"
-    ]
+    ],
+
+    leave: [
+        "create",
+        "read-own",
+        "cancel-own",
+        "read-all",
+        "review",
+    ],
+
+    holidays: [
+        "read",
+        "create",
+        "update",
+        "delete",
+    ],
+
+    salary: [
+        "read-own",
+        "read-all",
+        "create",
+        "update",
+        "mark-paid",
+    ],
+
+    tariffs: [
+        "create",
+        "read",
+        "update",
+        "delete",
+    ],
+
+    company: [
+        "read",
+        "update",
+    ],
+
+    bankAccounts: [
+        "read",
+        "create",
+        "update",
+        "delete",
+    ],
+
+    referenceData: [
+        "read",
+    ],
 } as const;
 
 export const roleLevel: Record<UserRole, number> = {
@@ -113,6 +168,7 @@ export const ac = createAccessControl(statement);
 
 export const superAdminRole = ac.newRole({
     ...adminAc.statements,
+    dashboard: ["read"],
 
     users: ["create", "read", "update", "delete", "assign-role", "assign-department"],
 
@@ -126,9 +182,8 @@ export const superAdminRole = ac.newRole({
 
     terms: ["create", "read", "update", "delete"],
 
-    projects: ["create", "read", "update", "delete"],
-
-    tasks: ["create", "read", "update", "delete", "assign"],
+    projects: ["create", "read-all", "read-assigned", "update", "update-status", "manage-team", "view-budget", "archive"],
+    tasks: ["create", "read-all", "read-assigned", "update", "delete", "assign", "update-own"],
 
     reports: ["read"],
 
@@ -138,11 +193,26 @@ export const superAdminRole = ac.newRole({
 
     account: ["read", "update"],
 
-    attendance: ["clock-in", "clock-out", "read-own", "read-all", "manage", "view-analytics", "regularize", "approve-regularization", "view-audit-logs"]
+    attendance: ["clock-in", "clock-out", "read-own", "read-all", "manage", "view-analytics", "regularize", "approve-regularization", "view-audit-logs"],
+
+    leave: ["create", "read-own", "cancel-own", "read-all", "review"],
+
+    holidays: ["read", "create", "update", "delete"],
+
+    salary: ["read-own", "read-all", "create", "update", "mark-paid"],
+
+    tariffs: ["create", "read", "update", "delete"],
+
+    company: ["read", "update"],
+
+    bankAccounts: ["read", "create", "update", "delete"],
+
+    referenceData: ["read"],
 });
 
 export const adminRole = ac.newRole({
     ...adminAc.statements,
+    dashboard: ["read"],
 
     customers: ["create", "read", "update", "delete"],
 
@@ -154,15 +224,24 @@ export const adminRole = ac.newRole({
 
     terms: ["create", "read", "update", "delete"],
 
-    projects: ["create", "read", "update", "delete"],
-
-    tasks: ["create", "read", "update", "delete", "assign"],
+    projects: ["create", "read-all", "read-assigned", "update", "update-status", "manage-team", "view-budget", "archive"],
+    tasks: ["create", "read-all", "read-assigned", "update", "delete", "assign", "update-own"],
 
     reports: ["read"],
 
     finance: ["read", "create", "update", "delete"],
 
     users: ["read", "update", "assign-department"],
+
+    leave: ["create", "read-own", "cancel-own", "read-all", "review"],
+
+    holidays: ["read", "create", "update", "delete"],
+
+    salary: ["read-own", "read-all", "create", "update", "mark-paid"],
+
+    tariffs: ["create", "read", "update", "delete"],
+
+    referenceData: ["read"],
 
     account: ["read", "update"],
 
@@ -176,14 +255,67 @@ export const staffRole = ac.newRole({
 
     invoices: ["create", "read", "update", "send", "record-payment", "mark-paid"],
 
-    projects: ["read", "update"],
-
-    tasks: ["read", "update"],
+    projects: ["read-assigned", "update-status"],
+    tasks: ["read-assigned", "update-own"],
 
     account: ["read", "update"],
 
-    attendance: ["clock-in", "clock-out", "read-own", "view-analytics", "regularize"]
+    attendance: ["clock-in", "clock-out", "read-own", "view-analytics", "regularize", "view-audit-logs"],
+
+    leave: ["create", "read-own", "cancel-own"],
+
+    holidays: ["read"],
+
+    referenceData: ["read"],
 });
+
+export const prismaModelPermissions = {
+    User: "users",
+    Session: "session",
+    Account: "user",
+    Verification: "user",
+    Customer: "customers",
+    CustomerContact: "customers",
+    Service: "services",
+    ServicePackage: "services",
+    ServicePackageItem: "services",
+    PackageFeature: "services",
+    ProposalTerm: "terms",
+    ProposalTermPackage: "terms",
+    ProposalTemplate: "proposals",
+    Proposal: "proposals",
+    ProposalBlock: "proposals",
+    ProposalService: "proposals",
+    ProposalLineItem: "proposals",
+    ProposalFeature: "proposals",
+    ProposalActivity: "proposals",
+    Company: "company",
+    CompanyBankAccount: "bankAccounts",
+    TariffGrid: "tariffs",
+    TariffGridPackage: "tariffs",
+    Invoice: "invoices",
+    InvoiceLineItem: "invoices",
+    FinancialAccount: "finance",
+    ExpenseCategory: "finance",
+    Expense: "finance",
+    InvoicePayment: "invoices",
+    InvoiceActivity: "invoices",
+    ExchangeRateCache: "referenceData",
+    Country: "referenceData",
+    State: "referenceData",
+    AttendanceRecord: "attendance",
+    AttendanceBreak: "attendance",
+    LeaveRequest: "leave",
+    Holiday: "holidays",
+    AttendanceSettings: "attendance",
+    AttendanceAuditLog: "attendance",
+    SalaryStructure: "salary",
+    SalarySlip: "salary",
+    Project: "projects",
+    ProjectMember: "projects",
+    ProjectActivity: "projects",
+    ProjectTask: "tasks",
+} satisfies Record<Prisma.ModelName, keyof typeof statement>;
 
 export function canReadFinance(role: UserRole): boolean {
     switch (role) {
@@ -191,6 +323,17 @@ export function canReadFinance(role: UserRole): boolean {
             return superAdminRole.statements.finance?.includes("read") ?? false;
         case UserRole.ADMIN:
             return adminRole.statements.finance?.includes("read") ?? false;
+        case UserRole.STAFF:
+            return false;
+    }
+}
+
+export function canReadDashboard(role: UserRole): boolean {
+    switch (role) {
+        case UserRole.SUPER_ADMIN:
+            return superAdminRole.statements.dashboard?.includes("read") ?? false;
+        case UserRole.ADMIN:
+            return adminRole.statements.dashboard?.includes("read") ?? false;
         case UserRole.STAFF:
             return false;
     }

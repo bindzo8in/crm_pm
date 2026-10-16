@@ -11,9 +11,10 @@ import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { ProposalTable } from "@/components/proposal/table";
 import { getProposals } from "@/actions/proposal";
 import { requirePageAccess } from "@/lib/auth-guard";
+import { UserRole } from "@/app/generated/prisma/enums";
 
 export default async function ProposalsPage({ searchParams }: PageProps<"/dashboard/proposals">) {
-    await requirePageAccess("/dashboard/proposals");
+    const session = await requirePageAccess("/dashboard/proposals");
     const { page, pageSize, search, sortDirection, status, customerId } = await searchParams;
     const initialQuery: ProposalQuerySchema = {
         page: Number(page ?? 0),
@@ -33,7 +34,10 @@ export default async function ProposalsPage({ searchParams }: PageProps<"/dashbo
     return (
         <DashboardContainer title="Proposals" action={{ href: "/dashboard/proposals/create", label: "Create Proposal", icon: <PlusIcon /> }}>
             <HydrationBoundary state={dehydrate(queryClient)}>
-                <ProposalTable initialQuery={initialQuery} />
+                <ProposalTable
+                    initialQuery={initialQuery}
+                    canConvertToProject={session.user.role !== UserRole.STAFF}
+                />
             </HydrationBoundary>
         </DashboardContainer>
     );

@@ -4,7 +4,7 @@ import { otpSchema } from '@/lib/schemas/otp-schema'
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm, Controller } from "react-hook-form"
 import { motion } from "motion/react"
-import { Check } from "lucide-react"
+import { Check, Mail } from "lucide-react"
 import { Field, FieldGroup, FieldContent, FieldLabel, FieldDescription, FieldError, FieldSeparator } from "@/components/ui/field"
 import { Button } from "@/components/ui/button"
 import { InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot
@@ -64,8 +64,11 @@ const handleSubmit = form.handleSubmit(async (data: Schema) => {
 return (
       <form onSubmit={handleSubmit} className="p-2 sm:p-5 md:p-8 w-full rounded-md gap-2 border max-w-3xl mx-auto">
         <FieldGroup className="grid md:grid-cols-6 gap-4 mb-6">
-          <h1 className="mt-6 mb-1 font-extrabold text-3xl tracking-tight col-span-full">📧 Email Verification</h1>
-<p className="tracking-wide text-muted-foreground mb-5 text-wrap text-sm col-span-full">We've sent a verification code to</p>
+          <h1 className="col-span-full mt-6 mb-1 flex flex-wrap items-center gap-2 text-2xl font-extrabold tracking-tight sm:text-3xl">
+            <Mail aria-hidden="true" className="size-6 text-primary" />
+            Email verification
+          </h1>
+<p className="tracking-wide text-muted-foreground mb-5 text-wrap text-sm col-span-full">We&apos;ve sent a verification code to</p>
 <h3 className="mt-3 mb-1 font-semibold text-xl tracking-tight col-span-full">Verify your email</h3>
 
         <Controller

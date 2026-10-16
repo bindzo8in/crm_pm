@@ -74,9 +74,8 @@ export default async function ReportsPage({
 
   return (
     <DashboardContainer title="Reports">
-      <main className="space-y-5 px-4 pb-8 md:px-6">
+      <main className="space-y-5 pb-8">
         <header>
-          <h1 className="text-2xl font-semibold tracking-tight">Reports</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Explore business performance with reports across your CRM.
           </p>

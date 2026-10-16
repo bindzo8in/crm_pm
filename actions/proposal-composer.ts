@@ -17,6 +17,7 @@ import { getProposalPricing } from "@/actions/proposal-pricing";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { ProposalBlockType, Prisma } from "@/app/generated/prisma/client";
+import { hasBusinessWorkspaceAccess } from "@/lib/workspace-access";
 
 async function checkPermission(permission: "read" | "create" | "update" | "delete") {
   const session = await auth.api.getSession({
@@ -24,6 +25,9 @@ async function checkPermission(permission: "read" | "create" | "update" | "delet
   });
   if (!session?.user) {
     return { success: false, error: "You are not authenticated" };
+  }
+  if (!hasBusinessWorkspaceAccess(session.user)) {
+    return { success: false, error: "Proposals are available to administrators and staff in HR or Sales." };
   }
 
   const hasPermission = await auth.api.userHasPermission({

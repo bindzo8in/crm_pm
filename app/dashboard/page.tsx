@@ -1,14 +1,15 @@
 import { Prisma } from "@/app/generated/prisma/client";
+import { UserRole } from "@/app/generated/prisma/enums";
 import { DashboardOverview } from "@/components/dashboard/dashboard-overview";
-import { auth } from "@/lib/auth";
+import { StaffDashboardHome } from "./staff-dashboard-home";
 import { requirePageAccess } from "@/lib/auth-guard";
+import { canReadDashboard } from "@/lib/permissions";
 import prisma from "@/lib/prisma";
-import { headers } from "next/headers";
 import { z } from "zod";
 import DashboardContainer from "./dashboard-container";
 
 const chartFilterSchema = z.object({
-  period: z.enum(["last6months", "thisFiscalYear", "previousFiscalYear", "custom"]).default("last6months"),
+  period: z.enum(["last6months", "thisFiscalYear", "previousFiscalYear", "custom"]).default("previousFiscalYear"),
   fromDate: z.preprocess((value) => value === "" ? undefined : value, z.iso.date().optional()),
   toDate: z.preprocess((value) => value === "" ? undefined : value, z.iso.date().optional()),
 }).superRefine((filters, context) => {
@@ -80,14 +81,27 @@ export default async function Page({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  await requirePageAccess("/dashboard");
+  const session = await requirePageAccess("/dashboard");
+  const firstName = session.user.name?.trim().split(/\s+/)[0] || "there";
+  const greeting = getGreeting(new Date().getHours());
+
+  if (!canReadDashboard(session.user.role as UserRole)) {
+    return (
+      <StaffDashboardHome
+        firstName={firstName}
+        greeting={greeting}
+        hasDepartment={Boolean(session.user.department?.trim())}
+        canViewSalary={session.user.department === "HR"}
+      />
+    );
+  }
 
   const now = new Date();
   const currentMonthStart = startOfMonth(now);
   const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const query = await searchParams;
   const first = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
-  const rawPeriod = first(query.period) ?? "last6months";
+  const rawPeriod = first(query.period) ?? "previousFiscalYear";
   const rawFromDate = first(query.fromDate);
   const rawToDate = first(query.toDate);
   const parsedChartFilters = chartFilterSchema.safeParse({
@@ -96,21 +110,21 @@ export default async function Page({
     toDate: rawToDate,
   });
   const parsedPeriod = chartFilterSchema.shape.period.safeParse(rawPeriod);
-  const chartPeriod: ChartPeriod = parsedPeriod.success ? parsedPeriod.data : "last6months";
+  const chartPeriod: ChartPeriod = parsedPeriod.success ? parsedPeriod.data : "previousFiscalYear";
   const chartRange = parsedChartFilters.success
     ? getChartRange(chartPeriod, now, parsedChartFilters.data.fromDate, parsedChartFilters.data.toDate)
-    : getChartRange(chartPeriod === "custom" ? "last6months" : chartPeriod, now);
+    : getChartRange(chartPeriod === "custom" ? "previousFiscalYear" : chartPeriod, now);
   const chartRangeError = parsedChartFilters.success
     ? null
     : parsedChartFilters.error.issues[0]?.message ?? "Invalid chart date range";
   const chartRangeLabel = chartRange
     ? getChartRangeLabel(
-        parsedChartFilters.success ? chartPeriod : chartPeriod === "custom" ? "last6months" : chartPeriod,
+        parsedChartFilters.success ? chartPeriod : chartPeriod === "custom" ? "previousFiscalYear" : chartPeriod,
         chartRange,
         parsedChartFilters.success ? parsedChartFilters.data.toDate : undefined,
       )
     : "Last 6 months";
-  const activeChartRange = chartRange ?? getChartRange("last6months", now)!;
+  const activeChartRange = chartRange ?? getChartRange("previousFiscalYear", now)!;
   const chartStartDate = activeChartRange.start.toISOString().slice(0, 10);
   const chartEndDate = new Date(activeChartRange.endExclusive.getTime() - 1).toISOString().slice(0, 10);
   const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -124,9 +138,6 @@ export default async function Page({
   const fifteenDaysAgo = new Date(todayStart.getTime() - 15 * 24 * 60 * 60 * 1000);
   const thirtyDaysAgo = new Date(todayStart.getTime() - 30 * 24 * 60 * 60 * 1000);
   const fortyFiveDaysAgo = new Date(todayStart.getTime() - 45 * 24 * 60 * 60 * 1000);
-
-  const session = await auth.api.getSession({ headers: await headers() });
-  const firstName = session?.user.name?.trim().split(/\s+/)[0] || "there";
 
   const salesReceiptsDuesPeriods = [
     { label: "Today", start: todayStart, end: tomorrowStart },
@@ -345,7 +356,7 @@ export default async function Page({
   while (monthCursor < activeChartRange.endExclusive) {
     monthNames.push({
       key: `${monthCursor.getUTCFullYear()}-${monthCursor.getUTCMonth()}`,
-      label: new Intl.DateTimeFormat("en", { month: "short", year: "2-digit", timeZone: "UTC" }).format(monthCursor),
+      label: new Intl.DateTimeFormat("en", { month: "short", year: "numeric", timeZone: "UTC" }).format(monthCursor),
     });
     monthCursor.setUTCMonth(monthCursor.getUTCMonth() + 1);
   }

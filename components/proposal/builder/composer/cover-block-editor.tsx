@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -62,7 +62,7 @@ export function CoverBlockEditor({ block, proposal, onSave }: CoverBlockEditorPr
   const [isSaving, setIsSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     setIsSaving(true);
     try {
       await onSave(block.id, form as Record<string, unknown>);
@@ -75,7 +75,7 @@ export function CoverBlockEditor({ block, proposal, onSave }: CoverBlockEditorPr
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [block.id, form, onSave]);
 
   useEffect(() => {
     const handleGlobalSave = (e: Event) => {
@@ -89,14 +89,14 @@ export function CoverBlockEditor({ block, proposal, onSave }: CoverBlockEditorPr
     };
     window.addEventListener("composer-save-all", handleGlobalSave);
     return () => window.removeEventListener("composer-save-all", handleGlobalSave);
-  }, [isDirty, isSaving, form]);
+  }, [handleSave, isDirty, isSaving]);
 
   return (
-    <div className="space-y-6 bg-gradient-to-br from-blue-50/30 to-transparent dark:from-blue-950/10 p-6 rounded-lg border">
+    <div className="space-y-6 rounded-xl border bg-card p-4 sm:p-6">
       {/* Read-only Proposal Title Display */}
       <div className="border-b pb-4">
-        <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Proposal Main Title (Read-Only from Proposal)
+        <Label className="text-xs font-medium text-muted-foreground">
+          Proposal title (read-only)
         </Label>
         <div className="mt-1 text-xl font-bold text-foreground flex items-center gap-2">
           <FileText className="h-5 w-5 text-blue-500" />
@@ -131,9 +131,9 @@ export function CoverBlockEditor({ block, proposal, onSave }: CoverBlockEditorPr
               <SelectValue placeholder="Select layout style" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="MODERN">✨ Modern Vibrant (Gradient Banner)</SelectItem>
-              <SelectItem value="CLASSIC">🏛️ Classic Corporate (Bordered Header)</SelectItem>
-              <SelectItem value="MINIMAL">🍃 Minimalist Clean (Centered Serif)</SelectItem>
+              <SelectItem value="MODERN">Modern vibrant (gradient banner)</SelectItem>
+              <SelectItem value="CLASSIC">Classic corporate (bordered header)</SelectItem>
+              <SelectItem value="MINIMAL">Minimalist clean (centered serif)</SelectItem>
             </SelectContent>
           </Select>
         </div>

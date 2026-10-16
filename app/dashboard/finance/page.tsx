@@ -8,6 +8,7 @@ import {
 } from "@/actions/finance";
 import { FinanceDashboardClient } from "@/components/finance/finance-dashboard-client";
 import { requirePageAccess } from "@/lib/auth-guard";
+import DashboardContainer from "@/app/dashboard/dashboard-container";
 
 export default async function FinancePage() {
   await requirePageAccess("/dashboard/finance");
@@ -67,14 +68,16 @@ export default async function FinancePage() {
   ].filter((message): message is string => message !== null).join(" ");
 
   return (
-    <FinanceDashboardClient
-      overview={overview}
-      accounts={accounts}
-      categories={categories}
-      invoicePayments={invoicePayments}
-      creators={creators}
-      report={report}
-      loadError={loadError || null}
-    />
+    <DashboardContainer title="Finance">
+      <FinanceDashboardClient
+        overview={overview}
+        accounts={accounts}
+        categories={categories}
+        invoicePayments={invoicePayments}
+        creators={creators}
+        report={report}
+        loadError={loadError || null}
+      />
+    </DashboardContainer>
   );
 }

@@ -43,8 +43,13 @@ export async function requireAttendanceAccess(): Promise<AttendanceUserPermissio
 //     redirect("/signin");
 //   }
 
-  const isAdminOrSuperAdmin = session.user.role === UserRole.SUPER_ADMIN || session.user.role === UserRole.ADMIN;
-  const isAuthorized = isAdminOrSuperAdmin || !!(session.user.role && session.user.department);
+  const isAdminOrSuperAdmin =
+    session.user.role === UserRole.SUPER_ADMIN ||
+    session.user.role === UserRole.ADMIN;
+  const isAssignedStaff =
+    session.user.role === UserRole.STAFF &&
+    Boolean(session.user.department?.trim());
+  const isAuthorized = isAdminOrSuperAdmin || isAssignedStaff;
 
   return {
     session,
@@ -62,4 +67,3 @@ export function isAttendanceManager(user: { role?: UserRole | string | null; dep
   if (role === "STAFF" && dept === "HR") return true;
   return false;
 }
-

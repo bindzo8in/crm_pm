@@ -4,10 +4,28 @@ import { PreviewToolbar } from "@/components/proposal/preview/PreviewToolbar";
 import { AcceptProposalButton } from "@/components/proposal/preview/AcceptProposalButton";
 import prisma from "@/lib/prisma";
 import { requirePageAccess } from "@/lib/auth-guard";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 export const metadata = {
   title: "Proposal Preview",
 };
+
+function getCompanyLogoUrl(logo: unknown): string | undefined {
+  let value = logo;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (typeof value !== "object" || value === null || Array.isArray(value) || !("url" in value)) {
+    return undefined;
+  }
+  return typeof value.url === "string" ? value.url : undefined;
+}
 
 interface ProposalPreviewPageProps {
   params: Promise<{ id: string }>;
@@ -22,12 +40,19 @@ export default async function ProposalPreviewPage({ params }: ProposalPreviewPag
 
   if (!res.success || !res.data) {
     return (
-      <div className="flex h-screen items-center justify-center bg-gray-50 text-gray-500">
-        <p>Proposal not found or you lack permission to view it.</p>
-      </div>
+      <main className="flex min-h-svh items-center justify-center bg-muted/20 p-4">
+        <section role="alert" className="w-full max-w-lg rounded-xl border bg-card p-6 text-center shadow-sm">
+          <h1 className="text-xl font-semibold">Proposal preview unavailable</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            This proposal may have been removed or your account may not have permission to view it.
+          </p>
+          <Button asChild className="mt-5">
+            <Link href="/dashboard/proposals">Back to proposals</Link>
+          </Button>
+        </section>
+      </main>
     );
   }
-  console.log('resssssdata', res.data)
 
   const { proposal, blocks } = res.data;
   const proposalDetails = proposal as typeof proposal & {
@@ -60,10 +85,11 @@ export default async function ProposalPreviewPage({ params }: ProposalPreviewPag
   if (company && typeof company.logo === "string") {
     try {
       safeCompany = { ...company, logo: JSON.parse(company.logo) };
-    } catch (e) {
-      console.error("Failed to parse company logo", e);
+    } catch {
+      safeCompany = company;
     }
   }
+  const companyLogoUrl = getCompanyLogoUrl(safeCompany?.logo);
 
   return (
     <div className="min-h-screen bg-gray-200/50 flex flex-col">
@@ -102,7 +128,7 @@ export default async function ProposalPreviewPage({ params }: ProposalPreviewPag
         }}
       />
       
-      <main className="flex-1 overflow-auto py-8 mb-16">
+      <main className="min-h-0 flex-1 overflow-auto px-3 py-8 pb-32 sm:px-6 sm:pb-24">
         <div id="proposal-preview-wrapper" className="transition-transform duration-200 ease-out pb-16">
           <ProposalRenderer 
             proposal={proposal} 
@@ -118,19 +144,23 @@ export default async function ProposalPreviewPage({ params }: ProposalPreviewPag
         </div>
       </main>
 
-      <footer className="fixed bottom-0 w-full bg-white/90 backdrop-blur-sm border-t p-3 shadow-[0_-4px_15px_-5px_rgba(0,0,0,0.1)] z-40 flex items-center justify-center gap-3 print:hidden">
-        {(safeCompany?.logo as any)?.url && (
-          <img src={(safeCompany?.logo as any).url} alt="Company Logo" className="h-8 object-contain" />
+      <footer className="fixed inset-x-0 bottom-0 z-40 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t bg-background/95 px-4 py-3 text-center shadow-[0_-4px_15px_-5px_rgba(0,0,0,0.1)] backdrop-blur-sm print:hidden">
+        {companyLogoUrl && (
+          <img src={companyLogoUrl} alt="Company logo" className="h-8 object-contain" />
         )}
-        <span className="font-semibold text-slate-700 text-sm">{safeCompany?.displayName || safeCompany?.legalName || 'Company Name'}</span>
+        {(safeCompany?.displayName || safeCompany?.legalName) && (
+          <span className="text-sm font-semibold">
+            {safeCompany.displayName || safeCompany.legalName}
+          </span>
+        )}
         {safeCompany?.website && (
           <>
-            <span className="text-gray-300">|</span>
+            <span aria-hidden="true" className="hidden h-4 border-l sm:block" />
             <a 
               href={safeCompany.website.startsWith('http') ? safeCompany.website : `https://${safeCompany.website}`} 
               target="_blank" 
               rel="noopener noreferrer" 
-              className="text-blue-600 hover:text-blue-700 hover:underline text-sm font-medium transition-colors"
+              className="break-all text-sm font-medium text-primary hover:underline"
             >
               {safeCompany.website}
             </a>

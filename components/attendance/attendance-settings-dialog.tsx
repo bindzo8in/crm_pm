@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { updateAttendanceSettingsAction } from "@/actions/attendance";
-import { Settings2Icon, RefreshCwIcon, CheckCircle2Icon, ShieldAlertIcon } from "lucide-react";
+import { Settings2Icon, RefreshCwIcon, CheckCircle2Icon, ShieldAlertIcon, Clock3, MapPin } from "lucide-react";
 import { toast } from "sonner";
 
 interface AttendanceSettingsDialogProps {
@@ -93,7 +93,7 @@ export function AttendanceSettingsDialog({ isOpen, onClose, settings, onSuccess 
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg bg-background border-border p-6 rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl font-bold">
             <Settings2Icon className="w-5 h-5 text-primary" /> Shift Rules & Geofence Settings
@@ -107,7 +107,8 @@ export function AttendanceSettingsDialog({ isOpen, onClose, settings, onSuccess 
           {/* Shift Hours */}
           <div className="space-y-3 p-3 bg-muted/30 rounded-2xl border border-border/50">
             <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-              ⏱️ Shift Schedule & Grace Rules
+              <Clock3 aria-hidden="true" className="size-4 text-muted-foreground" />
+              Shift schedule and grace rules
             </h4>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
@@ -177,7 +178,8 @@ export function AttendanceSettingsDialog({ isOpen, onClose, settings, onSuccess 
           <div className="space-y-3 p-3 bg-primary/5 rounded-2xl border border-primary/20">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                📍 Office Location & Geofence Rule
+                <MapPin aria-hidden="true" className="size-4 text-muted-foreground" />
+                Office location and geofence rule
               </h4>
               <Button
                 type="button"

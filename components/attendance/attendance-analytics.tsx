@@ -197,7 +197,7 @@ export function AttendanceAnalytics() {
                 <SelectValue placeholder="All Departments" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ALL">🏢 All Departments</SelectItem>
+                <SelectItem value="ALL">All departments</SelectItem>
                 {Object.values(Department).map((dept) => (
                   <SelectItem key={dept} value={dept}>
                     {dept}
@@ -214,7 +214,7 @@ export function AttendanceAnalytics() {
                 <SelectValue placeholder="All Employees" />
               </SelectTrigger>
               <SelectContent className="max-h-64">
-                <SelectItem value="ALL">👥 All Employees</SelectItem>
+                <SelectItem value="ALL">All employees</SelectItem>
                 {employees.map((emp) => (
                   <SelectItem key={emp.id} value={emp.id}>
                     {emp.name} {emp.employeeId ? `(${emp.employeeId})` : ""}

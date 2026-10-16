@@ -4,20 +4,27 @@ import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { CustomerQuerySchema, customerSchema, CustomerSchema } from "@/lib/schemas/customer-schema";
 import { headers } from "next/headers";
+import { hasBusinessWorkspaceAccess } from "@/lib/workspace-access";
 
+type CustomerAction = "create" | "read" | "update" | "delete";
+
+async function hasCustomerPermission(action: CustomerAction): Promise<boolean> {
+  const requestHeaders = await headers();
+  const session = await auth.api.getSession({ headers: requestHeaders });
+  if (!session?.user || !hasBusinessWorkspaceAccess(session.user)) {
+    return false;
+  }
+
+  const permission = await auth.api.userHasPermission({
+    headers: requestHeaders,
+    body: { permissions: { customers: [action] } },
+  });
+  return permission.success;
+}
 
 export async function CreateCustomer(data: CustomerSchema) {
   try {
-    const hasPermission = await auth.api.userHasPermission({
-      headers: await headers(),
-      body: {
-        permissions: {
-          customers: ["create"]
-        }
-      }
-    })
-
-    if (!hasPermission.success) {
+    if (!(await hasCustomerPermission("create"))) {
       return { error: "Unauthorized", message: "You do not have permission to create a customer" }
     }
 
@@ -50,16 +57,7 @@ export async function CreateCustomer(data: CustomerSchema) {
 
 export async function UpdateCustomer(data: CustomerSchema) {
   try {
-    const hasPermission = await auth.api.userHasPermission({
-      headers: await headers(),
-      body: {
-        permissions: {
-          customers: ["update"]
-        }
-      }
-    })
-
-    if (!hasPermission.success) {
+    if (!(await hasCustomerPermission("update"))) {
       return { error: "Unauthorized", message: "You do not have permission to update a customer" }
     }
 
@@ -85,6 +83,10 @@ export async function UpdateCustomer(data: CustomerSchema) {
 
 export async function GetCustomer(id: string) {
   try {
+    if (!(await hasCustomerPermission("read"))) {
+      return { error: "Unauthorized", message: "You do not have permission to view this customer" };
+    }
+
     const customer = await prisma.customer.findUnique({
       where: {
         id
@@ -102,6 +104,10 @@ export async function GetCustomers(
   query: CustomerQuerySchema
 ) {
   try {
+    if (!(await hasCustomerPermission("read"))) {
+      throw new Error("You do not have permission to view customers");
+    }
+
     const {
       page,
       pageSize,
@@ -198,16 +204,7 @@ export async function GetCustomers(
 
 export async function DeleteCustomer(id: string) {
   try {
-    const hasPermission = await auth.api.userHasPermission({
-      headers: await headers(),
-      body: {
-        permissions: {
-          customers: ["delete"]
-        }
-      }
-    })
-
-    if (!hasPermission.success) {
+    if (!(await hasCustomerPermission("delete"))) {
       return { error: "Unauthorized", message: "You do not have permission to delete a customer" }
     }
 
@@ -229,6 +226,10 @@ export async function DeleteCustomer(id: string) {
 
 export async function GetCustomerOptions(search?: string) {
   try {
+    if (!(await hasCustomerPermission("read"))) {
+      throw new Error("You do not have permission to view customers");
+    }
+
     const customers = await prisma.customer.findMany({
       where: {
         deletedAt: null,

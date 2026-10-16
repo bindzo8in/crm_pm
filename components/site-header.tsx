@@ -6,7 +6,7 @@ import type { ReactNode } from "react"
 
 export function SiteHeader({ title, action }: { title: string, action?: { href: string, label: string, icon: ReactNode } }) {
   return (
-    <header className="flex h-(--header-height) shrink-0 items-center border-b border-border/80 bg-background/95 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
+    <header className="sticky top-0 z-30 flex h-(--header-height) shrink-0 items-center border-b border-border/80 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
       <div className="flex w-full min-w-0 items-center justify-between gap-2 px-3 sm:px-4 lg:px-6">
         <div className="flex min-w-0 items-center">
           <SidebarTrigger className="-ml-1 shrink-0" />

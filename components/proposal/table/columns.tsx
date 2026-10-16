@@ -10,7 +10,8 @@ type ProposalRow =
     Extract<GetProposalsResponse, { success: true }>["data"]
   >["data"][number];
 
-export const columns: ColumnDef<ProposalRow>[] = [
+export function getProposalColumns(canConvertToProject: boolean): ColumnDef<ProposalRow>[] {
+  return [
   {
     accessorKey: "proposalNumber",
     header: "Proposal #",
@@ -70,7 +71,8 @@ export const columns: ColumnDef<ProposalRow>[] = [
     enableSorting: false,
     enableHiding: false,
     cell: ({ row }) => (
-      <ProposalActions proposal={row.original} />
+      <ProposalActions proposal={row.original} canConvertToProject={canConvertToProject} />
     ),
   },
-];
+  ];
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -45,23 +45,23 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlips
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold">Salary Slips</h2>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-xl font-semibold">Salary slips</h2>
         {isHrOrAdmin && (
-          <Button onClick={() => setIsGenerateOpen(true)} className="rounded-xl shadow-md font-semibold">
-            <PlusIcon className="w-4 h-4 mr-2" /> Generate Slip
+          <Button onClick={() => setIsGenerateOpen(true)} className="min-h-11 w-full sm:w-auto">
+            <PlusIcon aria-hidden="true" className="mr-2 size-4" /> Generate slip
           </Button>
         )}
       </div>
 
-      <Card className="border border-border/60 shadow-md rounded-3xl overflow-hidden">
+      <Card className="min-w-0 overflow-hidden rounded-xl border">
         <Table>
           <TableHeader className="bg-muted/40">
             <TableRow>
               <TableHead className="font-semibold">Employee</TableHead>
               <TableHead className="font-semibold">Period</TableHead>
               <TableHead className="font-semibold">Attendance</TableHead>
-              <TableHead className="font-semibold">Net Payable</TableHead>
+              <TableHead className="text-right font-semibold">Net payable</TableHead>
               <TableHead className="font-semibold">Status</TableHead>
               <TableHead className="font-semibold text-right">Actions</TableHead>
             </TableRow>
@@ -70,7 +70,7 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlips
             {slips.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                  No salary slips generated yet.
+                  No salary slips generated yet. Generate a slip to see it here.
                 </TableCell>
               </TableRow>
             ) : (
@@ -78,46 +78,46 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlips
                 <TableRow key={slip.id} className="hover:bg-muted/30">
                   <TableCell>
                     <div className="font-medium text-foreground">{slip.user?.name}</div>
-                    <div className="text-xs text-muted-foreground">{slip.user?.department || "N/A"}</div>
+                    <div className="text-xs text-muted-foreground">{slip.user?.department || "Not assigned"}</div>
                   </TableCell>
                   <TableCell>
                     <span className="font-semibold">{getMonthName(slip.month)} {slip.year}</span>
                   </TableCell>
                   <TableCell>
-                    <div className="text-[11px] text-muted-foreground space-y-0.5">
+                    <div className="space-y-0.5 text-xs text-muted-foreground">
                       <div>Paid: <span className="font-bold text-foreground">{slip.paidDays}</span> / {slip.totalDays}</div>
                       <div>LOP: <span className="font-bold text-rose-500">{slip.absentDays}</span></div>
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <div className="font-bold text-emerald-600 dark:text-emerald-400">
+                  <TableCell className="text-right tabular-nums">
+                    <div className="font-semibold text-emerald-700 dark:text-emerald-400">
                       {formatCurrency(Number(slip.netSalary))}
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={slip.status === 'PAID' ? 'default' : 'secondary'} className="text-[10px]">
+                    <Badge variant={slip.status === 'PAID' ? 'default' : 'secondary'} className="text-xs">
                       {slip.status}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <Button variant="ghost" size="icon" asChild className="h-8 w-8 text-muted-foreground hover:text-foreground">
-                        <Link href={`/s/${slip.id}`} target="_blank">
-                          <EyeIcon className="w-4 h-4" />
+                      <Button variant="ghost" size="icon" asChild className="size-10 text-muted-foreground hover:text-foreground">
+                        <Link href={`/s/${slip.id}`} target="_blank" aria-label={`View salary slip for ${slip.user?.name ?? "employee"}`}>
+                          <EyeIcon aria-hidden="true" className="size-4" />
                         </Link>
                       </Button>
-                      <Button variant="ghost" size="icon" asChild className="h-8 w-8 text-muted-foreground hover:text-foreground">
-                        <a href={`/api/salary/slips/${slip.id}/pdf`} target="_blank" rel="noreferrer">
-                          <DownloadIcon className="w-4 h-4" />
+                      <Button variant="ghost" size="icon" asChild className="size-10 text-muted-foreground hover:text-foreground">
+                        <a href={`/api/salary/slips/${slip.id}/pdf`} target="_blank" rel="noreferrer" aria-label={`Download salary slip for ${slip.user?.name ?? "employee"}`}>
+                          <DownloadIcon aria-hidden="true" className="size-4" />
                         </a>
                       </Button>
                       {isHrOrAdmin && slip.status === 'GENERATED' && (
                         <>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => setAdjustmentSlip(slip)} aria-label="Adjust salary slip">
-                            <PencilIcon className="w-4 h-4" />
+                          <Button variant="ghost" size="icon" className="size-10 text-muted-foreground hover:text-foreground" onClick={() => setAdjustmentSlip(slip)} aria-label={`Adjust salary slip for ${slip.user?.name ?? "employee"}`}>
+                            <PencilIcon aria-hidden="true" className="size-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-600 hover:text-emerald-700" onClick={() => setMarkPaidSlipId(slip.id)} aria-label="Mark salary slip as paid">
-                            <DollarSignIcon className="w-4 h-4" />
+                          <Button variant="ghost" size="icon" className="size-10 text-emerald-700 hover:text-emerald-800 dark:text-emerald-400" onClick={() => setMarkPaidSlipId(slip.id)} aria-label={`Mark salary slip for ${slip.user?.name ?? "employee"} as paid`}>
+                            <DollarSignIcon aria-hidden="true" className="size-4" />
                           </Button>
                         </>
                       )}

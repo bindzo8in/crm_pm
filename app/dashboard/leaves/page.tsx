@@ -1,9 +1,12 @@
-import { getAllLeaveRequestsAction, getMyLeaveRequestsAction } from "@/actions/leave";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
-import { UserRole } from "@/app/generated/prisma/enums";
-import { differenceInDays, format } from "date-fns";
+import Link from "next/link";
+import { Department, LeaveStatus, LeaveType, UserRole } from "@/app/generated/prisma/enums";
+import {
+  getAllLeaveRequestsAction,
+  getAnnualLeaveBalanceAction,
+  getMyLeaveRequestsAction,
+} from "@/actions/leave";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -13,129 +16,407 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ManageLeaveDialog } from "./manage-leave-dialog";
+import { formatInIST } from "@/lib/date";
+import { isLeaveManager, requireLeaveUser } from "@/lib/leave-access";
+import type { LeaveRequestRow, ManagerLeaveRequestRow } from "@/lib/types/leave";
+import { CancelLeaveButton } from "./cancel-leave-button";
+import { LeaveRequestForm } from "./leave-request-form";
+import { LeaveReviewDialog } from "./leave-review-dialog";
+import DashboardContainer from "../dashboard-container";
 
-export default async function LeavesPage() {
-  const reqHeaders = await headers();
-  const session = await auth.api.getSession({ headers: reqHeaders });
+type SearchParameters = Record<string, string | string[] | undefined>;
 
-  if (!session) return null;
+function first(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
 
-  const isAdmin = session.user.role === UserRole.SUPER_ADMIN || session.user.role === UserRole.ADMIN;
+function parsedPage(value: string | undefined): number {
+  const page = Number(value);
+  return Number.isSafeInteger(page) && page >= 0 ? Math.min(page, 100_000) : 0;
+}
 
-  let leaves: any[] = [];
-  if (isAdmin) {
-    const res = await getAllLeaveRequestsAction();
-    console.log(res)
-    if (res.success) leaves = res.leaves;
-  } else {
-    const res = await getMyLeaveRequestsAction();
-    if (res.success) leaves = res.leaves;
+function formatDate(date: Date): string {
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
+
+function statusVariant(status: LeaveStatus): "default" | "destructive" | "secondary" {
+  if (status === LeaveStatus.APPROVED) return "default";
+  if (status === LeaveStatus.REJECTED) return "destructive";
+  return "secondary";
+}
+
+function buildPageHref(query: URLSearchParams, pageKey: string, page: number): string {
+  const next = new URLSearchParams(query);
+  next.set(pageKey, String(page));
+  const search = next.toString();
+  return search ? `/dashboard/leaves?${search}` : "/dashboard/leaves";
+}
+
+function LeaveDays({
+  totalDays,
+  netLeaveDays,
+  sundayCount,
+  holidayCount,
+}: {
+  totalDays: number;
+  netLeaveDays: number;
+  sundayCount: number;
+  holidayCount: number;
+}) {
+  return (
+    <div className="min-w-36 space-y-1 text-xs">
+      <p><span className="font-medium">{netLeaveDays}</span> chargeable</p>
+      <p className="text-muted-foreground">
+        {sundayCount} Sundays · {holidayCount} holidays
+      </p>
+      <p className="text-muted-foreground">{totalDays} calendar days</p>
+    </div>
+  );
+}
+
+function LeaveTableRow({
+  leave,
+  managerUser,
+  viewerId,
+}: {
+  leave: LeaveRequestRow;
+  managerUser?: ManagerLeaveRequestRow["user"];
+  viewerId: string;
+}) {
+  const canReview = Boolean(
+    managerUser &&
+    leave.status === LeaveStatus.PENDING &&
+    managerUser.id !== viewerId,
+  );
+
+  return (
+    <TableRow>
+      {managerUser && (
+        <TableCell className="min-w-40">
+          <p className="font-medium">{managerUser.name || managerUser.email}</p>
+          <p className="text-xs text-muted-foreground">{managerUser.department ?? "No department"}</p>
+        </TableCell>
+      )}
+      <TableCell><Badge variant="outline">{leave.type}</Badge></TableCell>
+      <TableCell className="min-w-36">
+        {formatDate(leave.startDate)}<br />
+        <span className="text-muted-foreground">to {formatDate(leave.endDate)}</span>
+      </TableCell>
+      <TableCell>
+        <LeaveDays
+          totalDays={leave.totalDays}
+          netLeaveDays={leave.netLeaveDays}
+          sundayCount={leave.sundayCount}
+          holidayCount={leave.holidayCount}
+        />
+      </TableCell>
+      <TableCell className="max-w-56 whitespace-normal">{leave.reason}</TableCell>
+      <TableCell><Badge variant={statusVariant(leave.status)}>{leave.status}</Badge></TableCell>
+      <TableCell className="max-w-48 whitespace-normal">{leave.managerComment || "—"}</TableCell>
+      <TableCell className="text-right">
+        {canReview && managerUser
+          ? <LeaveReviewDialog leave={{ ...leave, user: managerUser }} />
+          : managerUser && leave.status === LeaveStatus.PENDING
+            ? <span className="text-xs text-muted-foreground">Self-review blocked</span>
+            : !managerUser && leave.status === LeaveStatus.PENDING
+              ? <CancelLeaveButton id={leave.id} />
+              : "—"}
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function Pagination({
+  query,
+  pageKey,
+  page,
+  pageSize,
+  totalCount,
+}: {
+  query: URLSearchParams;
+  pageKey: string;
+  page: number;
+  pageSize: number;
+  totalCount: number;
+}) {
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const hasPrevious = page > 0;
+  const hasNext = page + 1 < totalPages;
+
+  return (
+    <div className="mt-4 flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+      <span className="text-muted-foreground">
+        Page {page + 1} of {totalPages} · {totalCount} request(s)
+      </span>
+      <div className="flex gap-2">
+        {hasPrevious ? (
+          <Button asChild variant="outline" size="sm">
+            <Link href={buildPageHref(query, pageKey, page - 1)}>Previous</Link>
+          </Button>
+        ) : (
+          <Button type="button" variant="outline" size="sm" disabled>Previous</Button>
+        )}
+        {hasNext ? (
+          <Button asChild variant="outline" size="sm">
+            <Link href={buildPageHref(query, pageKey, page + 1)}>Next</Link>
+          </Button>
+        ) : (
+          <Button type="button" variant="outline" size="sm" disabled>Next</Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RequestsTable({
+  rows,
+  managerView,
+  viewerId,
+}: {
+  rows: readonly LeaveRequestRow[];
+  managerView: boolean;
+  viewerId: string;
+}) {
+  const managerRows = managerView
+    ? rows.filter((row): row is ManagerLeaveRequestRow => "user" in row)
+    : [];
+
+  return (
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {managerView && <TableHead>Employee</TableHead>}
+            <TableHead>Type</TableHead>
+            <TableHead>Dates</TableHead>
+            <TableHead>Days</TableHead>
+            <TableHead>Reason</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Manager comment</TableHead>
+            <TableHead className="text-right">Action</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {managerView
+            ? managerRows.map((leave) => (
+                <LeaveTableRow
+                  key={leave.id}
+                  leave={leave}
+                  managerUser={leave.user}
+                  viewerId={viewerId}
+                />
+              ))
+            : rows.map((leave) => (
+                <LeaveTableRow key={leave.id} leave={leave} viewerId={viewerId} />
+              ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+export default async function LeavesPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParameters>;
+}) {
+  const user = await requireLeaveUser();
+  const query = await searchParams;
+  const isManager = isLeaveManager(user);
+  const isStaff = user.role === UserRole.STAFF;
+  const pageSize = 20;
+  const managerPage = parsedPage(first(query.page));
+  const ownPage = parsedPage(first(isManager ? query.myPage : query.page));
+  const search = first(query.search)?.trim() || undefined;
+  const type = first(query.type) || undefined;
+  const status = first(query.status) || undefined;
+  const department = first(query.department) || undefined;
+  const fromDate = first(query.fromDate) || undefined;
+  const throughDate = first(query.throughDate) || undefined;
+
+  const managerResult = isManager
+    ? await getAllLeaveRequestsAction({
+        page: managerPage,
+        pageSize,
+        search,
+        type,
+        status,
+        department,
+        fromDate,
+        throughDate,
+      })
+    : null;
+  const ownResult = isStaff
+    ? await getMyLeaveRequestsAction({ page: ownPage, pageSize })
+    : null;
+  const balance = isStaff
+    ? await getAnnualLeaveBalanceAction({ month: formatInIST(new Date(), "yyyy-MM") })
+    : null;
+
+  const managerQuery = new URLSearchParams();
+  for (const [key, value] of Object.entries({
+    search,
+    type,
+    status,
+    department,
+    fromDate,
+    throughDate,
+  })) {
+    if (value) managerQuery.set(key, value);
+  }
+  const ownQuery = new URLSearchParams();
+  if (isManager) {
+    for (const [key, value] of managerQuery) ownQuery.set(key, value);
   }
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
-      <div className="flex items-center justify-between space-y-2">
-        <h2 className="text-3xl font-bold tracking-tight">Leave Management</h2>
-      </div>
+    <DashboardContainer title="Leaves">
+      <header className="space-y-1">
+        <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Leave management</h2>
+        <p className="text-sm text-muted-foreground">
+          {isManager
+            ? "Review leave requests across the organization."
+            : "Request time away and follow the status of your requests."}
+        </p>
+      </header>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{isAdmin ? "All Leave Requests" : "My Leave Requests"}</CardTitle>
-          <CardDescription>
-            {isAdmin ? "Manage and review employee leave requests." : "View the status of your leave requests."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {leaves.length === 0 ? (
-            <div className="text-center py-6 text-muted-foreground">No leave requests found.</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {isAdmin && <TableHead>Employee</TableHead>}
-                  <TableHead>Type</TableHead>
-                  <TableHead>Start Date</TableHead>
-                  <TableHead>End Date</TableHead>
-                  <TableHead>Total Days</TableHead>
-                  <TableHead>Reason</TableHead>
-                  <TableHead>Status</TableHead>
-                  {isAdmin && <TableHead className="text-right">Actions</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {leaves.map((leave) => (
-                  <TableRow key={leave.id}>
-                    {isAdmin && (
-                      <TableCell className="font-medium">
-                        {leave.user?.name || leave.user?.email || "Unknown"}
-                      </TableCell>
-                    )}
-                    <TableCell><Badge variant="outline">{leave.type}</Badge></TableCell>
-                    <TableCell>{format(new Date(leave.startDate), "MMM d, yyyy")}</TableCell>
-                    <TableCell>{format(new Date(leave.endDate), "MMM d, yyyy")}</TableCell>
-                    <TableCell>
-<div className="space-y-2 min-w-[180px]">
-  <div className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2">
-    <span className="text-sm font-medium text-muted-foreground">
-      Sunday
-    </span>
-    <span className="rounded-md bg-background px-2 py-0.5 text-sm font-semibold">
-      {leave.sundayCount}
-    </span>
-  </div>
+      {isStaff && (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Request leave</CardTitle>
+              <CardDescription>
+                Submit a request for review. Pending requests do not reserve paid Annual Leave.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <LeaveRequestForm />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Annual Leave allowance</CardTitle>
+              <CardDescription>
+                {balance?.month}: one paid day is available per calendar month; unused days expire at month-end and do not carry forward.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm">
+                {balance?.approvedDays} approved of {balance?.entitledDays} paid day(s) used ·{" "}
+                <strong>{balance?.remainingDays} remaining</strong>
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Sick, Casual, and Unpaid leave are not paid leave. Annual Leave approval checks each month in the requested date range.
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>My requests</CardTitle>
+              <CardDescription>
+                You can cancel only your own pending requests. New requests cannot overlap pending or approved leave.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {ownResult?.leaves.length ? (
+                <>
+                  <RequestsTable
+                    rows={ownResult.leaves}
+                    managerView={false}
+                    viewerId={user.id}
+                  />
+                  <Pagination
+                    query={ownQuery}
+                    pageKey={isManager ? "myPage" : "page"}
+                    page={ownPage}
+                    pageSize={ownResult.pageSize}
+                    totalCount={ownResult.totalCount}
+                  />
+                </>
+              ) : (
+                <div className="rounded-lg border border-dashed px-4 py-10 text-center">
+                  <p className="font-medium">No leave requests yet</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Your requests will appear here after submission.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
 
-  <div className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2">
-    <span className="text-sm font-medium text-muted-foreground">
-      Holiday
-    </span>
-    <span className="rounded-md bg-background px-2 py-0.5 text-sm font-semibold">
-      {leave.holidayCount}
-    </span>
-  </div>
-
-  <div className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2">
-    <span className="text-sm font-medium text-muted-foreground">
-      Net Leave
-    </span>
-    <span className="rounded-md bg-blue-50 px-2 py-0.5 text-sm font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-      {leave.netLeaveDays}
-    </span>
-  </div>
-
-  <div className="flex items-center justify-between rounded-lg border bg-primary/5 px-3 py-2">
-    <span className="text-sm font-semibold">
-      Total
-    </span>
-    <span className="rounded-md bg-primary px-2 py-0.5 text-sm font-bold text-primary-foreground">
-      {leave.totalDays}
-    </span>
-  </div>
-</div>
-                    </TableCell>
-                    <TableCell className="max-w-[200px] truncate">{leave.reason}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          leave.status === 'APPROVED' ? 'default' :
-                            leave.status === 'REJECTED' ? 'destructive' : 'secondary'
-                        }
-                      >
-                        {leave.status}
-                      </Badge>
-                    </TableCell>
-                    {isAdmin && (
-                      <TableCell className="text-right">
-                        <ManageLeaveDialog leave={leave} />
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+      {isManager && managerResult && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Organization leave requests</CardTitle>
+            <CardDescription>
+              HR staff, Admin, and Super Admin can approve or reject any staff request in one step. Self-review is not allowed.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="border-b">
+            <form method="get" action="/dashboard/leaves" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <input
+                name="search"
+                defaultValue={search}
+                placeholder="Employee name or email"
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                aria-label="Search employee"
+              />
+              <select name="type" defaultValue={type ?? ""} className="h-9 rounded-md border border-input bg-background px-3 text-sm" aria-label="Filter by leave type">
+                <option value="">All types</option>
+                {Object.values(LeaveType).map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+              <select name="status" defaultValue={status ?? ""} className="h-9 rounded-md border border-input bg-background px-3 text-sm" aria-label="Filter by status">
+                <option value="">All statuses</option>
+                {Object.values(LeaveStatus).map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+              <select name="department" defaultValue={department ?? ""} className="h-9 rounded-md border border-input bg-background px-3 text-sm" aria-label="Filter by department">
+                <option value="">All departments</option>
+                {Object.values(Department).map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+              <label className="space-y-1 text-xs text-muted-foreground">
+                Requests overlapping from
+                <input name="fromDate" type="date" defaultValue={fromDate ?? ""} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" />
+              </label>
+              <label className="space-y-1 text-xs text-muted-foreground">
+                Requests overlapping through
+                <input name="throughDate" type="date" defaultValue={throughDate ?? ""} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" />
+              </label>
+              <div className="flex items-end gap-2">
+                <Button type="submit">Apply filters</Button>
+                <Button asChild variant="outline"><Link href="/dashboard/leaves">Clear</Link></Button>
+              </div>
+            </form>
+          </CardContent>
+          <CardContent className="pt-6">
+            {managerResult.leaves.length > 0 ? (
+              <>
+                <RequestsTable
+                  rows={managerResult.leaves}
+                  managerView
+                  viewerId={user.id}
+                />
+                <Pagination
+                  query={managerQuery}
+                  pageKey="page"
+                  page={managerPage}
+                  pageSize={managerResult.pageSize}
+                  totalCount={managerResult.totalCount}
+                />
+              </>
+            ) : (
+              <div className="rounded-lg border border-dashed px-4 py-10 text-center">
+                <p className="font-medium">No leave requests found</p>
+                <p className="mt-1 text-sm text-muted-foreground">Try changing the filters.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </DashboardContainer>
   );
 }

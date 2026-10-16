@@ -11,7 +11,7 @@ export async function GetBankAccounts() {
       headers: await headers(),
       body: {
         permissions: {
-          settings: ["read"]
+          bankAccounts: ["read"]
         }
       }
     })
@@ -36,7 +36,7 @@ export async function CreateBankAccount(data: BankAccountFormValues) {
       headers: await headers(),
       body: {
         permissions: {
-          settings: ["update"]
+          bankAccounts: ["create"]
         }
       }
     })
@@ -50,7 +50,7 @@ export async function CreateBankAccount(data: BankAccountFormValues) {
       return { error: "Invalid data", message: "Invalid data provided" }
     }
 
-    let company = await prisma.company.findFirst()
+    const company = await prisma.company.findFirst()
     if (!company) {
        return { error: "Bad Request", message: "Company profile must be created first" }
     }
@@ -85,7 +85,7 @@ export async function UpdateBankAccount(id: string, data: BankAccountFormValues)
       headers: await headers(),
       body: {
         permissions: {
-          settings: ["update"]
+          bankAccounts: ["update"]
         }
       }
     })
@@ -99,7 +99,7 @@ export async function UpdateBankAccount(id: string, data: BankAccountFormValues)
       return { error: "Invalid data", message: "Invalid data provided" }
     }
 
-    let company = await prisma.company.findFirst()
+    const company = await prisma.company.findFirst()
     if (!company) {
        return { error: "Bad Request", message: "Company profile must be created first" }
     }
@@ -134,7 +134,7 @@ export async function DeleteBankAccount(id: string) {
       headers: await headers(),
       body: {
         permissions: {
-          settings: ["update"]
+          bankAccounts: ["delete"]
         }
       }
     })
@@ -160,7 +160,7 @@ export async function SetDefaultBankAccount(id: string) {
       headers: await headers(),
       body: {
         permissions: {
-          settings: ["update"]
+          bankAccounts: ["update"]
         }
       }
     })
@@ -169,7 +169,7 @@ export async function SetDefaultBankAccount(id: string) {
       return { error: "Unauthorized", message: "You do not have permission to update settings" }
     }
 
-    let company = await prisma.company.findFirst()
+    const company = await prisma.company.findFirst()
     if (!company) {
        return { error: "Bad Request", message: "Company profile must be created first" }
     }
@@ -198,7 +198,7 @@ export async function ToggleBankAccountStatus(id: string, isActive: boolean) {
       headers: await headers(),
       body: {
         permissions: {
-          settings: ["update"]
+          bankAccounts: ["update"]
         }
       }
     })

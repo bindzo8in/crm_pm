@@ -3,19 +3,19 @@ export const metadata = {
 };
 
 import { getUsers } from "@/actions/user";
-import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query"
+import { dehydrate, HydrationBoundary } from "@tanstack/react-query"
 import UsersTable from "./UsersTable";
 import DashboardContainer from "../dashboard-container";
 import { getQueryClient } from "@/lib/query-client";
 import { requirePageAccess } from "@/lib/auth-guard";
 
-export default async function TestPage() {
+export default async function UsersPage() {
     await requirePageAccess("/dashboard/users");
 
     const queryClient = getQueryClient();
 
     await queryClient.prefetchQuery({
-        queryKey: ['users'],
+        queryKey: ["users", 0, 10, ""],
         queryFn: () => getUsers({ page: 0, pageSize: 10, search: "" }),
     })
     return (

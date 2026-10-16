@@ -1,7 +1,7 @@
 "use server";
 
 import { Prisma } from "@/app/generated/prisma/client";
-import { ActionResponse, errorResponse, successResponse } from "@/lib/action-response";
+import { errorResponse, successResponse } from "@/lib/action-response";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { getErrorMessage } from "@/lib/schemas/prisma-utils";
@@ -20,6 +20,7 @@ import {
 import { headers } from "next/headers";
 import { sendInvoiceLinkEmail } from "@/lib/email";
 import { revalidatePath } from "next/cache";
+import { hasBusinessWorkspaceAccess } from "@/lib/workspace-access";
 
 const InvoiceStatus = {
   DRAFT: "DRAFT",
@@ -51,25 +52,30 @@ async function getSessionUser() {
   if (!session?.user) {
     return null;
   }
+  if (!hasBusinessWorkspaceAccess(session.user)) {
+    return null;
+  }
   return session.user;
 }
 
 type InvoicePermissionAction = "create" | "read" | "update" | "delete" | "send" | "record-payment" | "mark-paid";
 
 async function checkInvoicePermission(action: InvoicePermissionAction) {
-  try {
-    const hasPermission = await auth.api.userHasPermission({
-      headers: await headers(),
-      body: {
-        permissions: {
-          invoices: [action],
-        },
-      },
-    });
-    return hasPermission.success;
-  } catch {
+  const requestHeaders = await headers();
+  const session = await auth.api.getSession({ headers: requestHeaders });
+  if (!session?.user || !hasBusinessWorkspaceAccess(session.user)) {
     return false;
   }
+
+  const hasPermission = await auth.api.userHasPermission({
+    headers: requestHeaders,
+    body: {
+      permissions: {
+        invoices: [action],
+      },
+    },
+  });
+  return hasPermission.success;
 }
 
 function formatInvoice<T extends Record<string, any>>(inv: T) {

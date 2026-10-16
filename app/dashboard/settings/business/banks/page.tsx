@@ -23,7 +23,7 @@ export default async function BankAccountsPage() {
   });
 
   return (
-    <DashboardContainer title="Bank Account Details">
+    <DashboardContainer title="Business Settings">
       <HydrationBoundary state={dehydrate(queryClient)}>
         <BankAccountsClient data={[]} />
       </HydrationBoundary>

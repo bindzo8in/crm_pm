@@ -14,7 +14,25 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, UsersIcon, FileTextIcon, Settings2Icon, BookUser, BoxIcon, HandshakeIcon, ScrollText, TableIcon, ReceiptText, ClockIcon, CalendarHeart, CalendarOff, WalletIcon } from "lucide-react"
+import {
+  Banknote,
+  BookUser,
+  CalendarHeart,
+  CalendarOff,
+  ChartNoAxesCombined,
+  ClockIcon,
+  FolderKanban,
+  HandshakeIcon,
+  Landmark,
+  LayoutDashboardIcon,
+  Package,
+  ReceiptText,
+  ScrollText,
+  Settings2Icon,
+  Tags,
+  UsersIcon,
+  WalletIcon,
+} from "lucide-react"
 import { env } from "@/lib/env"
 import Image from "next/image"
 import { UserRole } from "@/app/generated/prisma/enums"
@@ -66,38 +84,22 @@ const data = {
       ),
     },
     {
-      title: "Customers",
+      title: "Salary",
       section: "People",
-      url: "/dashboard/customers",
-      icon: (
-        <BookUser />
-      )
+      url: "/dashboard/salary",
+      icon: <WalletIcon />
     },
     {
       title: "Services",
       section: "Catalog",
       url: "/dashboard/services",
-      icon: (
-        <FileTextIcon />
-      )
-    },
-    {
-      title: "Packages",
-      section: "Catalog",
-      url: "/dashboard/services/packages",
-      icon: (
-        <BoxIcon
-        />
-      ),
+      icon: <Package />
     },
     {
       title: "Tariffs",
       section: "Catalog",
       url: "/dashboard/tariffs",
-      icon: (
-        <TableIcon
-        />
-      ),
+      icon: <Tags />,
     },
     {
       title: "Terms",
@@ -118,15 +120,19 @@ const data = {
       ),
     },
     {
-      title: "Salary",
+      title: "Customers",
       section: "Business",
-      url: "/dashboard/salary",
-      icon: (
-        <WalletIcon />
-      )
+      url: "/dashboard/customers",
+      icon: <BookUser />
     },
     {
-      title: "Invoice",
+      title: "Projects",
+      section: "Business",
+      url: "/dashboard/projects",
+      icon: <FolderKanban />
+    },
+    {
+      title: "Invoices",
       section: "Business",
       url: "/dashboard/invoices",
       icon: (
@@ -137,17 +143,13 @@ const data = {
       title: "Finance",
       section: "Business",
       url: "/dashboard/finance",
-      icon: (
-        <WalletIcon />
-      )
+      icon: <Banknote />
     },
     {
       title: "Reports",
       section: "Business",
       url: "/dashboard/reports",
-      icon: (
-        <TableIcon />
-      )
+      icon: <ChartNoAxesCombined />
     }
   ],
   navSecondary: [
@@ -163,7 +165,7 @@ const data = {
       title: "Bank Accounts",
       url: "/dashboard/settings/business/banks",
       icon: (
-        <BoxIcon
+        <Landmark
         />
       ),
     },
@@ -172,20 +174,27 @@ const data = {
 
 export function AppSidebar({
   userRole,
+  department,
   user,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   userRole: UserRole
+  department?: string | null
   user: { name: string; email: string; avatar: string }
 }) {
+  const homeUrl = "/dashboard"
+  const hasWorkspaceAccess =
+    userRole !== UserRole.STAFF || Boolean(department?.trim())
   const navMainItems = data.navMain.filter((item) => {
-    if (!canAccessRoute(item.url, userRole)) return false
+    if (item.url === "/dashboard") return true
+    if (!hasWorkspaceAccess) return false
+    if (!canAccessRoute(item.url, userRole, department)) return false
     if (item.url === "/dashboard/finance") return canReadFinance(userRole)
     return true
   })
-  const navSecondaryItems = data.navSecondary.filter((item) =>
-    canAccessRoute(item.url, userRole)
-  )
+  const navSecondaryItems = hasWorkspaceAccess
+    ? data.navSecondary.filter((item) => canAccessRoute(item.url, userRole, department))
+    : []
 
   return (
     <Sidebar
@@ -200,7 +209,7 @@ export function AppSidebar({
               asChild
               className="data-[slot=sidebar-menu-button]:p-1.5!"
             >
-              <a href="/dashboard">
+              <a href={homeUrl}>
                 <Image src="/logo.png" alt="" width={28} height={28} className="size-7 shrink-0 object-contain" />
                 <span className="text-base font-semibold">{env.NEXT_PUBLIC_APP_NAME}</span>
               </a>
@@ -209,7 +218,10 @@ export function AppSidebar({
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={navMainItems} />
+        <NavMain
+          items={navMainItems}
+          showQuickActions={canAccessRoute("/dashboard/proposals", userRole, department)}
+        />
         <NavSecondary items={navSecondaryItems} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>

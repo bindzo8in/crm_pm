@@ -24,6 +24,8 @@ import {
   FileEditIcon,
   HistoryIcon,
   FileSpreadsheetIcon,
+  Clock3,
+  MapPin,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -142,7 +144,10 @@ export function AttendanceTable({ userRole, userDepartment }: AttendanceTablePro
             </Badge>
             {clockOut && workMinutes !== undefined && workMinutes > 0 && workMinutes < 240 && (
               <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
-                ⏱️ &lt; 4h ({Math.floor(workMinutes / 60)}h {workMinutes % 60}m)
+                <span className="inline-flex items-center gap-1">
+                  <Clock3 aria-hidden="true" className="size-3" />
+                  &lt; 4h ({Math.floor(workMinutes / 60)}h {workMinutes % 60}m)
+                </span>
               </span>
             )}
           </div>
@@ -338,7 +343,8 @@ export function AttendanceTable({ userRole, userDepartment }: AttendanceTablePro
                     </Badge>
                     {record.workMode === "OFFICE" && record.distanceFromOffice != null && (
                       <div className="text-[10px] text-muted-foreground mt-0.5 font-medium">
-                        📍 {record.distanceFromOffice >= 1000 ? `${(record.distanceFromOffice / 1000).toFixed(2)} km` : `${record.distanceFromOffice}m`} away
+                        <MapPin aria-hidden="true" className="mr-1 size-3.5" />
+                        {record.distanceFromOffice >= 1000 ? `${(record.distanceFromOffice / 1000).toFixed(2)} km` : `${record.distanceFromOffice}m`} away
                       </div>
                     )}
                   </TableCell>

@@ -17,11 +17,18 @@ export default async function DashboardLayout({ children }: { children: React.Re
         redirect("/signin");
     }
 
+    const pathname = headersList.get("x-pathname") ?? "/dashboard";
+    const isStaffWithoutDepartment =
+        session.user.role === UserRole.STAFF && !session.user.department?.trim();
+    if (isStaffWithoutDepartment && pathname.replace(/\/+$/, "") !== "/dashboard") {
+        redirect("/dashboard");
+    }
 
     return (
         <DashboardProviders>
             <AppSidebar
                 userRole={session.user.role as UserRole}
+                department={session.user.department}
                 user={{
                     name: session.user.name,
                     email: session.user.email,

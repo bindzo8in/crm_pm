@@ -1,7 +1,6 @@
 "use client";
 
-import * as z from "zod";
-import { companySchema, CompanyFormValues } from "@/lib/schemas/company";
+import { companySchema, type CompanyFormValues } from "@/lib/schemas/company";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Controller } from "react-hook-form";
 import {
@@ -21,7 +20,7 @@ import { PhoneInput } from "@/components/reui/phone-input";
 import { ImageUpload } from "@/components/ui/image-upload";
 import { LocationAutocomplete } from "@/components/ui/location-autocomplete";
 
-export function CompanyProfileForm({ defaultValues }: { defaultValues?: any }) {
+export function CompanyProfileForm({ defaultValues }: { defaultValues?: CompanyFormValues }) {
     const queryClient = useQueryClient();
 
     const form = useForm<CompanyFormValues>({
@@ -70,8 +69,8 @@ export function CompanyProfileForm({ defaultValues }: { defaultValues?: any }) {
                 queryClient.invalidateQueries({ queryKey: ["company"] })
             }
         },
-        onError: (ctx: any) => {
-            toast.error(ctx.message || "An error occurred")
+        onError: (error) => {
+            toast.error(error.message || "An error occurred")
         }
     })
 
@@ -82,12 +81,12 @@ export function CompanyProfileForm({ defaultValues }: { defaultValues?: any }) {
     return (
         <form
             onSubmit={handleSubmit}
-            className="p-2 sm:p-5 md:p-8 w-full rounded-md gap-2 border max-w-3xl mx-auto"
+            className="w-full max-w-4xl rounded-xl border bg-card p-4 sm:p-6"
         >
             <div className="flex justify-between items-center">
-                <h1 className="mt-6 mb-1 font-extrabold text-3xl tracking-tight col-span-full">
-                    Company Profile
-                </h1>
+                <h2 className="text-xl font-semibold tracking-tight">
+                    Company profile
+                </h2>
             </div>
             <FieldSeparator className="my-4" />
 

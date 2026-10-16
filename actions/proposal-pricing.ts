@@ -1,6 +1,6 @@
 "use server";
 
-import { errorResponse, successResponse, ActionResponse } from "@/lib/action-response";
+import { errorResponse, successResponse } from "@/lib/action-response";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { getErrorMessage } from "@/lib/schemas/prisma-utils";
@@ -11,7 +11,6 @@ import {
   customLineItemCreateSchema,
   proposalTotalsUpdateSchema,
   ImportServicePackageSchema,
-  ProposalServiceEditSchema,
   ProposalLineItemEditSchema,
   CustomLineItemCreateSchema,
   ProposalTotalsUpdateSchema,
@@ -19,6 +18,7 @@ import {
 import { headers } from "next/headers";
 import { Prisma } from "@/app/generated/prisma/client";
 import { syncProposalComposerTermsAndFeatures } from "@/actions/proposal-composer";
+import { hasBusinessWorkspaceAccess } from "@/lib/workspace-access";
 
 async function checkPermission(permission: "read" | "create" | "update" | "delete") {
   const session = await auth.api.getSession({
@@ -26,6 +26,9 @@ async function checkPermission(permission: "read" | "create" | "update" | "delet
   });
   if (!session?.user) {
     return { success: false, error: "You are not authenticated" };
+  }
+  if (!hasBusinessWorkspaceAccess(session.user)) {
+    return { success: false, error: "Proposals are available to administrators and staff in HR or Sales." };
   }
 
   const hasPermission = await auth.api.userHasPermission({

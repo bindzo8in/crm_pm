@@ -47,19 +47,19 @@ export function ServicePackageSearch({ onSelectPackage, currency = "INR" }: Serv
   const packages = data?.success && data.data ? data.data : [];
 
   return (
-    <div className="relative">
+    <div className="relative w-full sm:w-auto">
       <Button
         type="button"
         variant="outline"
         onClick={() => setOpen(!open)}
-        className="gap-2"
+        className="w-full gap-2 sm:w-auto"
       >
         <PackageIcon className="h-4 w-4" />
         <span>Add Service Package</span>
       </Button>
 
       {open && (
-        <div className="absolute right-0 top-12 z-50 w-[380px] p-3 rounded-lg border bg-popover text-popover-foreground shadow-md">
+        <div className="absolute right-0 top-12 z-50 w-[min(380px,calc(100vw-2rem))] rounded-lg border bg-popover p-3 text-popover-foreground shadow-md">
           <div className="relative mb-3">
             <SearchIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { getProposals } from "@/actions/proposal";
-import { columns } from "./columns";
+import { getProposalColumns } from "./columns";
 import { Input } from "@/components/ui/input";
 import { useDebounce } from "@/hooks/use-debounce";
 import { DataTable } from "@/components/data-table";
@@ -12,7 +12,13 @@ import { DataTable } from "@/components/data-table";
 import { ProposalQuerySchema } from "@/lib/schemas/proposal-schema";
 import { proposalKeys } from "../util";
 
-export function ProposalTable({ initialQuery }: { initialQuery: ProposalQuerySchema }) {
+export function ProposalTable({
+    initialQuery,
+    canConvertToProject,
+}: {
+    initialQuery: ProposalQuerySchema;
+    canConvertToProject: boolean;
+}) {
     const [search, setSearch] = useState(initialQuery.search ?? "");
     const [pagination, setPagination] = useState({
         pageIndex: initialQuery.page,
@@ -34,6 +40,7 @@ export function ProposalTable({ initialQuery }: { initialQuery: ProposalQuerySch
         queryKey: proposalKeys.list(query),
         queryFn: () => getProposals(query),
     });
+    const columns = getProposalColumns(canConvertToProject);
 
     return (
         <div className="space-y-4">

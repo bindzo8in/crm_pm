@@ -3,9 +3,9 @@
 import { deleteTariffGrid } from "@/actions/tariffs";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
-import { MoreHorizontal, ExternalLink, Pencil, Trash2, Share2, Copy, Send } from "lucide-react";
+import { MoreHorizontal, ExternalLink, Pencil, Trash2, Share2, Copy, Send, Tags } from "lucide-react";
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import {
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import type { Prisma } from "@/app/generated/prisma/client";
 import {
   Select,
   SelectContent,
@@ -31,30 +32,27 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-export function TariffGridList({ grids }: { grids: any[] }) {
+type TariffGrid = Prisma.TariffGridGetPayload<{
+  include: { _count: { select: { packages: true } } };
+}>;
+
+export function TariffGridList({ grids }: { grids: TariffGrid[] }) {
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
-  const [shareGrid, setShareGrid] = useState<any | null>(null);
+  const [shareGrid, setShareGrid] = useState<TariffGrid | null>(null);
   const [clientName, setClientName] = useState("");
   const [currency, setCurrency] = useState("inr");
-  const [shareUrl, setShareUrl] = useState("");
+  const [shareOrigin, setShareOrigin] = useState("");
   
   const router = useRouter();
 
-  useEffect(() => {
-    if (shareGrid) {
-      const baseUrl = window.location.origin;
-      let path = `/tariffs/${shareGrid.id}`;
-      if (currency === "usd") {
-        path += "/usd";
-      }
-      
-      const url = new URL(path, baseUrl);
-      if (clientName.trim()) {
-        url.searchParams.set("client", clientName.trim());
-      }
-      setShareUrl(url.toString());
-    }
-  }, [shareGrid, clientName, currency]);
+  const shareUrl = shareGrid && shareOrigin
+    ? (() => {
+        const path = `/tariffs/${shareGrid.id}${currency === "usd" ? "/usd" : ""}`;
+        const url = new URL(path, shareOrigin);
+        if (clientName.trim()) url.searchParams.set("client", clientName.trim());
+        return url.toString();
+      })()
+    : "";
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this Tariff Grid?")) return;
@@ -68,28 +66,42 @@ export function TariffGridList({ grids }: { grids: any[] }) {
       } else {
         toast.error(String(result.error));
       }
-    } catch (error) {
+    } catch {
       toast.error("An unexpected error occurred");
     } finally {
       setIsDeleting(null);
     }
   };
 
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(shareUrl);
-    toast.success("Link copied to clipboard");
+  const copyToClipboard = async () => {
+    if (!navigator.clipboard || !shareUrl) {
+      toast.error("Clipboard access is unavailable. Select the link and copy it.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success("Link copied to clipboard");
+    } catch (error) {
+      if (error instanceof DOMException) {
+        toast.error("Could not copy the link. Select it and copy it manually.");
+        return;
+      }
+      throw error;
+    }
   };
 
   const shareToWhatsApp = () => {
     const text = `Check out our service packages${clientName.trim() ? ` for ${clientName.trim()}` : ''}:\n\n${shareUrl}`;
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
   };
 
   if (grids.length === 0) {
     return (
-      <div className="col-span-full py-12 text-center border rounded-xl border-dashed">
-        <h3 className="text-lg font-medium text-muted-foreground">No Tariff Grids created yet</h3>
-        <p className="text-sm text-muted-foreground mb-4">Create your first tariff module to compare packages.</p>
+      <div className="col-span-full flex flex-col items-center rounded-xl border border-dashed px-4 py-12 text-center">
+        <Tags aria-hidden="true" className="mb-3 size-6 text-muted-foreground" />
+        <h3 className="text-lg font-medium">No tariff grids yet</h3>
+        <p className="mb-4 text-sm text-muted-foreground">Create a grid to compare service packages.</p>
         <Link href="/dashboard/tariffs/create">
           <Button variant="outline">Create Tariff Grid</Button>
         </Link>
@@ -100,39 +112,46 @@ export function TariffGridList({ grids }: { grids: any[] }) {
   return (
     <>
       {grids.map((grid) => (
-        <div key={grid.id} className="border rounded-xl p-5 bg-card shadow-sm flex flex-col group relative">
+        <div key={grid.id} className="group relative flex flex-col rounded-xl border bg-card p-4 shadow-sm sm:p-5">
           
           <div className="absolute top-4 right-4">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                  aria-label={`More actions for ${grid.name}`}
+                  title="More actions"
+                >
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <Link href={`/tariffs/${grid.id}`} target="_blank">
-                  <DropdownMenuItem className="cursor-pointer">
-                    <ExternalLink className="mr-2 h-4 w-4" />
-                    Public View
-                  </DropdownMenuItem>
-                </Link>
+                <DropdownMenuItem asChild>
+                  <Link href={`/tariffs/${grid.id}`} target="_blank" rel="noreferrer">
+                    <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
+                    Public view
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuItem 
                   className="cursor-pointer"
                   onClick={() => {
                     setShareGrid(grid);
+                    setShareOrigin(window.location.origin);
                     setClientName("");
                     setCurrency("inr");
                   }}
                 >
                   <Share2 className="mr-2 h-4 w-4" />
-                  Share Tariff
+                  Share tariff
                 </DropdownMenuItem>
-                <Link href={`/dashboard/tariffs/${grid.id}`}>
-                  <DropdownMenuItem className="cursor-pointer">
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Manage Grid
-                  </DropdownMenuItem>
-                </Link>
+                <DropdownMenuItem asChild>
+                  <Link href={`/dashboard/tariffs/${grid.id}`}>
+                    <Pencil className="mr-2 h-4 w-4" aria-hidden="true" />
+                    Manage grid
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuItem 
                   className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive"
                   onClick={() => handleDelete(grid.id)}
@@ -150,8 +169,8 @@ export function TariffGridList({ grids }: { grids: any[] }) {
             <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{grid.description}</p>
           )}
           
-          <div className="mt-4 pt-4 border-t text-sm text-muted-foreground flex justify-between">
-            <span>{grid._count.packages} Packages</span>
+          <div className="mt-4 flex flex-wrap justify-between gap-x-3 gap-y-1 border-t pt-4 text-sm text-muted-foreground">
+            <span>{grid._count.packages} packages</span>
             <span>{format(new Date(grid.updatedAt), "MMM d, yyyy")}</span>
           </div>
           
@@ -182,9 +201,9 @@ export function TariffGridList({ grids }: { grids: any[] }) {
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="currency">Currency / Pricing Mode</Label>
+              <Label htmlFor="currency">Currency and pricing mode</Label>
               <Select value={currency} onValueChange={setCurrency}>
-                <SelectTrigger>
+                <SelectTrigger id="currency">
                   <SelectValue placeholder="Select Currency" />
                 </SelectTrigger>
                 <SelectContent>
@@ -195,10 +214,16 @@ export function TariffGridList({ grids }: { grids: any[] }) {
             </div>
 
             <div className="space-y-2">
-              <Label>Shareable Link</Label>
+              <Label htmlFor="share-url">Shareable link</Label>
               <div className="flex gap-2">
-                <Input value={shareUrl} readOnly className="bg-muted/50" />
-                <Button variant="outline" size="icon" onClick={copyToClipboard} title="Copy Link">
+                <Input id="share-url" value={shareUrl} readOnly className="min-w-0 bg-muted/50" />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={copyToClipboard}
+                  aria-label="Copy shareable link"
+                  title="Copy link"
+                >
                   <Copy className="h-4 w-4" />
                 </Button>
               </div>
@@ -209,7 +234,10 @@ export function TariffGridList({ grids }: { grids: any[] }) {
             <Button variant="secondary" onClick={() => setShareGrid(null)}>
               Close
             </Button>
-            <Button className="bg-[#25D366] hover:bg-[#128C7E] text-white" onClick={shareToWhatsApp}>
+            <Button
+              className="bg-[#25D366] text-[#052e16] hover:bg-[#128C7E] hover:text-white"
+              onClick={shareToWhatsApp}
+            >
               <Send className="mr-2 h-4 w-4" />
               WhatsApp
             </Button>

@@ -15,6 +15,34 @@ import {
   salarySlipsQuerySchema,
 } from "@/lib/schemas/salary-schema";
 
+type SalaryActor = NonNullable<
+  Awaited<ReturnType<typeof auth.api.getSession>>
+>["user"];
+type SalaryPermission =
+  | "read-own"
+  | "read-all"
+  | "create"
+  | "update"
+  | "mark-paid";
+
+async function hasSalaryPermission(permission: SalaryPermission) {
+  const result = await auth.api.userHasPermission({
+    headers: await headers(),
+    body: { permissions: { salary: [permission] } },
+  });
+  return result.success;
+}
+
+async function canPerformSalaryPermission(
+  user: SalaryActor,
+  permission: SalaryPermission,
+) {
+  if (user.role === UserRole.STAFF && user.department === "HR") {
+    return true;
+  }
+  return hasSalaryPermission(permission);
+}
+
 function hasSalaryCronAuthorization(requestHeaders: Headers) {
   const configuredSecret = env.SALARY_CRON_SECRET;
   return Boolean(
@@ -33,6 +61,14 @@ async function getAuthenticatedUser() {
   if (!session || !session.user) {
     throw new Error("Unauthorized");
   }
+  if (
+    session.user.role === UserRole.STAFF &&
+    !session.user.department?.trim()
+  ) {
+    throw new Error(
+      "Ask your administrator or HR manager to assign you to a department before using salary tools.",
+    );
+  }
   return { session };
 }
 
@@ -48,6 +84,9 @@ export async function getSalaryStructureAction(userId: string) {
       (session.user.role === UserRole.STAFF && session.user.department === 'HR');
 
     if (!isSelf && !isHrOrAdmin) {
+      return { success: false, error: "Unauthorized access to salary details." };
+    }
+    if (!(await canPerformSalaryPermission(session.user, isSelf ? "read-own" : "read-all"))) {
       return { success: false, error: "Unauthorized access to salary details." };
     }
 
@@ -73,6 +112,9 @@ export async function saveSalaryStructureAction(input: unknown) {
       (session.user.role === UserRole.STAFF && session.user.department === 'HR');
 
     if (!isHrOrAdmin) {
+      return { success: false, error: "Only Admins and HR can update salary structures." };
+    }
+    if (!(await canPerformSalaryPermission(session.user, "update"))) {
       return { success: false, error: "Only Admins and HR can update salary structures." };
     }
 
@@ -132,6 +174,12 @@ export async function generateSalarySlipAction(input: unknown) {
       (session?.user.role === UserRole.STAFF && session.user.department === "HR");
 
     if (!isHrOrAdmin && !hasSalaryCronAuthorization(requestHeaders)) {
+      return { success: false, error: "Only Admins and HR can generate salary slips." };
+    }
+    if (
+      session?.user &&
+      !(await canPerformSalaryPermission(session.user, "create"))
+    ) {
       return { success: false, error: "Only Admins and HR can generate salary slips." };
     }
 
@@ -333,6 +381,12 @@ export async function autoGenerateMonthlySalarySlipsAction(input: unknown) {
     if (!isHrOrAdmin && !hasSalaryCronAuthorization(requestHeaders)) {
       return { success: false, error: "Only Admins and HR can auto-generate salary slips." };
     }
+    if (
+      session?.user &&
+      !(await canPerformSalaryPermission(session.user, "create"))
+    ) {
+      return { success: false, error: "Only Admins and HR can auto-generate salary slips." };
+    }
 
     const validated = autoGenerateMonthlySalarySlipsSchema.safeParse(input);
     if (!validated.success) {
@@ -419,6 +473,14 @@ export async function getSalarySlipsAction(input: unknown) {
     if (!isSelf && !isHrOrAdmin) {
       return { success: false, error: "Unauthorized access to salary slips." };
     }
+    if (
+      !(await canPerformSalaryPermission(
+        session.user,
+        isHrOrAdmin ? "read-all" : "read-own",
+      ))
+    ) {
+      return { success: false, error: "Unauthorized access to salary slips." };
+    }
 
     const whereClause = {
       ...(isHrOrAdmin
@@ -451,9 +513,23 @@ export async function getSalarySlipsAction(input: unknown) {
 export async function getSalarySlipByIdAction(slipId: string) {
   try {
     const { session } = await getAuthenticatedUser();
-    
-    const slip = await prisma.salarySlip.findUnique({
-      where: { id: slipId },
+    const isHrOrAdmin =
+      session.user.role === UserRole.SUPER_ADMIN ||
+      session.user.role === UserRole.ADMIN ||
+      (session.user.role === UserRole.STAFF && session.user.department === "HR");
+    const canReadSlip = await canPerformSalaryPermission(
+      session.user,
+      isHrOrAdmin ? "read-all" : "read-own",
+    );
+    if (!canReadSlip) {
+      return { success: false, error: "Unauthorized access to salary slip." };
+    }
+
+    const slip = await prisma.salarySlip.findFirst({
+      where: {
+        id: slipId,
+        ...(!isHrOrAdmin ? { userId: session.user.id } : {}),
+      },
       include: {
         user: {
           select: {
@@ -477,16 +553,6 @@ export async function getSalarySlipByIdAction(slipId: string) {
       return { success: false, error: "Salary slip not found." };
     }
 
-    const isSelf = session.user.id === slip.userId;
-    const isHrOrAdmin = 
-      session.user.role === UserRole.SUPER_ADMIN || 
-      session.user.role === UserRole.ADMIN || 
-      (session.user.role === UserRole.STAFF && session.user.department === 'HR');
-
-    if (!isSelf && !isHrOrAdmin) {
-      return { success: false, error: "Unauthorized access to salary slip." };
-    }
-
     return { success: true, slip: JSON.parse(JSON.stringify(slip)) };
   } catch (error) {
     console.error("Error fetching salary slip by ID:", error);
@@ -503,6 +569,9 @@ export async function updateSalarySlipAdjustmentsAction(input: unknown) {
       (session.user.role === UserRole.STAFF && session.user.department === "HR");
 
     if (!isHrOrAdmin) {
+      return { success: false, error: "Only Admins and HR can adjust salary slips." };
+    }
+    if (!(await canPerformSalaryPermission(session.user, "update"))) {
       return { success: false, error: "Only Admins and HR can adjust salary slips." };
     }
 
@@ -603,6 +672,9 @@ export async function updateSalarySlipStatusAction(input: unknown) {
       (session.user.role === UserRole.STAFF && session.user.department === 'HR');
 
     if (!isHrOrAdmin) {
+      return { success: false, error: "Only Admins and HR can update salary slip status." };
+    }
+    if (!(await canPerformSalaryPermission(session.user, "mark-paid"))) {
       return { success: false, error: "Only Admins and HR can update salary slip status." };
     }
 

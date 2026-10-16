@@ -1,4 +1,7 @@
 import { getTariffGridById, getAvailableServicePackages } from "@/actions/tariffs";
+import DashboardContainer from "@/app/dashboard/dashboard-container";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ArrowLeft } from "lucide-react";
 import { notFound } from "next/navigation";
 import { TariffClientPage } from "./client-page";
 
@@ -17,10 +20,30 @@ export default async function TariffGridPage({ params }: { params: Promise<{ id:
     notFound();
   }
 
+  if (!packagesResult.success || !packagesResult.data) {
+    return (
+      <DashboardContainer title={gridResult.data.name}>
+        <Alert variant="destructive">
+          <AlertTitle>Packages could not be loaded</AlertTitle>
+          <AlertDescription>{packagesResult.message}</AlertDescription>
+        </Alert>
+      </DashboardContainer>
+    );
+  }
+
   return (
-    <TariffClientPage 
-      initialGrid={gridResult.data} 
-      availablePackages={packagesResult.success ? packagesResult.data || [] : []} 
-    />
+    <DashboardContainer
+      title={gridResult.data.name}
+      action={{
+        href: "/dashboard/tariffs",
+        label: "Back to tariffs",
+        icon: <ArrowLeft className="size-4" />,
+      }}
+    >
+      <TariffClientPage
+        initialGrid={gridResult.data}
+        availablePackages={packagesResult.data}
+      />
+    </DashboardContainer>
   );
 }

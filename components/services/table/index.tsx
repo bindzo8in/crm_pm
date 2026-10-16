@@ -11,6 +11,7 @@ import { DataTable } from "@/components/data-table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { serviceKeys } from "../util";
+import { CircleAlert, LoaderCircle } from "lucide-react";
 
 export function ServicesTable({ initialQuery }: { initialQuery: { page: number, pageSize: number, search?: string, isActive?: boolean, sortDirection: "asc" | "desc" } }) {
     const [search, setSearch] = useState(initialQuery.search ?? "");
@@ -36,17 +37,19 @@ export function ServicesTable({ initialQuery }: { initialQuery: { page: number, 
         sortDirection: initialQuery.sortDirection,
     } as const;
 
-    const { data } = useQuery({
+    const { data, isPending, isError } = useQuery({
         queryKey: serviceKeys.list(query),
         queryFn: () => GetServices(query),
     });
 
     return (
         <div className="space-y-4">
-            <div className="flex justify-center items-center gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <Input
+                    aria-label="Search services"
                     placeholder="Search services..."
                     value={search}
+                    className="sm:max-w-sm"
                     onChange={(e) => {
                         setSearch(e.target.value);
                         setPagination((prev) => ({
@@ -55,7 +58,7 @@ export function ServicesTable({ initialQuery }: { initialQuery: { page: number, 
                         }));
                     }}
                 />
-                <FieldGroup>
+                <FieldGroup className="w-full sm:w-auto">
                     <Field orientation={"horizontal"}>
                         <Checkbox id="isActive" name="isActive" checked={isActive} onCheckedChange={(value) => {
                             setIsActive(value === true);
@@ -68,13 +71,26 @@ export function ServicesTable({ initialQuery }: { initialQuery: { page: number, 
                     </Field>
                 </FieldGroup>
             </div>
-            <DataTable
-                columns={columns}
-                data={(data?.success ? data.data?.data : undefined) ?? []}
-                total={(data?.success ? data.data?.pagination.total : undefined) ?? 0}
-                pagination={pagination}
-                onPaginationChange={setPagination}
-            />
+            {isPending ? (
+                <div role="status" className="flex min-h-32 items-center justify-center gap-2 text-sm text-muted-foreground">
+                    <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
+                    Loading services
+                </div>
+            ) : isError || !data?.success ? (
+                <div role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+                    <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+                    <p>{data?.success === false ? data.message : "Services could not be loaded. Try again."}</p>
+                </div>
+            ) : (
+                <DataTable
+                    columns={columns}
+                    data={data.data?.data ?? []}
+                    total={data.data?.pagination.total ?? 0}
+                    emptyMessage={normalizedSearch ? "No services match your search." : "No services found."}
+                    pagination={pagination}
+                    onPaginationChange={setPagination}
+                />
+            )}
         </div>
     );
 }

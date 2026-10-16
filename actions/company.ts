@@ -11,7 +11,7 @@ export async function GetCompany() {
       headers: await headers(),
       body: {
         permissions: {
-          settings: ["read"]
+          company: ["read"]
         }
       }
     })
@@ -34,7 +34,7 @@ export async function UpdateCompany(data: CompanyFormValues) {
       headers: await headers(),
       body: {
         permissions: {
-          settings: ["update"]
+          company: ["update"]
         }
       }
     })

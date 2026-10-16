@@ -21,7 +21,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { signOut, useSession } from "@/lib/auth-client"
-import { EllipsisVerticalIcon, CircleUserRoundIcon, BellIcon, LogOutIcon } from "lucide-react"
+import { EllipsisVerticalIcon, CircleUserRoundIcon, LogOutIcon } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 export function NavUser({
@@ -37,7 +37,14 @@ export function NavUser({
   const { data: session } = useSession()
 
   const sessionUser = session?.user
-
+  const displayName = sessionUser?.name || user.name
+  const initials = displayName
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase() || "U"
 
   const router = useRouter()
 
@@ -65,7 +72,7 @@ export function NavUser({
             >
               <Avatar className="h-8 w-8 rounded-lg grayscale">
                 <AvatarImage src={sessionUser?.image || user.avatar} alt={sessionUser?.name || user.name} />
-                <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+                <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium" suppressHydrationWarning>{sessionUser?.name || user.name}</span>
@@ -86,7 +93,7 @@ export function NavUser({
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8 rounded-lg">
                   <AvatarImage src={sessionUser?.image || user.avatar} alt={sessionUser?.name || user.name} />
-                  <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+                  <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium" suppressHydrationWarning>{sessionUser?.name || user.name}</span>
@@ -102,11 +109,6 @@ export function NavUser({
                 <CircleUserRoundIcon
                 />
                 Account
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <BellIcon
-                />
-                Notifications
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

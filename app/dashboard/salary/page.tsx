@@ -5,6 +5,9 @@ import { requirePageAccess } from "@/lib/auth-guard";
 import { UserRole } from "@/app/generated/prisma/enums";
 import prisma from "@/lib/prisma";
 import DashboardContainer from "@/app/dashboard/dashboard-container";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Salary Management | CRM",
@@ -40,12 +43,24 @@ export default async function SalaryDashboardPage() {
   const slipsRes = await getSalarySlipsAction({});
 
   if (!slipsRes.success) {
-    throw new Error(slipsRes.error || "Failed to load salary slips.");
+    return (
+      <DashboardContainer title="Salary management">
+        <Alert variant="destructive">
+          <AlertTitle>Salary slips could not be loaded</AlertTitle>
+          <AlertDescription>
+            Refresh the page to try again. If the problem continues, contact an administrator.
+          </AlertDescription>
+          <Button asChild className="mt-3" size="sm" variant="outline">
+            <Link href="/dashboard/salary">Try again</Link>
+          </Button>
+        </Alert>
+      </DashboardContainer>
+    );
   }
 
   return (
     <DashboardContainer title="Salary Management">
-      <div className="mx-auto w-full min-w-0 max-w-7xl space-y-6 px-4 pb-6 font-sans sm:px-6 md:px-8">
+      <div className="mx-auto w-full min-w-0 max-w-7xl space-y-6 pb-6 font-sans">
         <p className="mt-1 text-sm font-medium text-muted-foreground">
           Manage employee salary structures and generate monthly salary slips.
         </p>

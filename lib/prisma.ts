@@ -13,9 +13,12 @@ const createPrismaClient = () =>
     adapter,
   });
 
+const cachedPrisma = globalForPrisma.prisma;
 const prisma =
-  globalForPrisma.prisma && (globalForPrisma.prisma as any).exchangeRateCache
-    ? globalForPrisma.prisma
+  cachedPrisma &&
+  typeof cachedPrisma.exchangeRateCache === "object" &&
+  typeof cachedPrisma.project === "object"
+    ? cachedPrisma
     : createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;

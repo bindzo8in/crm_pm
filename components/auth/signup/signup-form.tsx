@@ -2,7 +2,7 @@
 import { signupSchema, SignupSchemaType } from '@/lib/schemas/signup-schema'
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm, Controller } from "react-hook-form"
-import { AlertCircle } from "lucide-react"
+import { AlertCircle, Globe } from "lucide-react"
 import { Field, FieldGroup, FieldContent, FieldLabel, FieldError, FieldSeparator } from "@/components/ui/field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,9 +13,13 @@ import { useState } from 'react'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import Link from "next/link"
 
-const socialMediaButtons = [{ "src": "https://cdn.brandfetch.io/id6O2oGzv-/theme/dark/symbol.svg?c=1bxid64Mup7aczewSAYMX&t=1755835725776", "label": "Continue with Google", provider: "google" as const },
-  // {"src":"https://cdn.brandfetch.io/idZAyF9rlg/theme/dark/symbol.svg?c=1bxid64Mup7aczewSAYMX&t=1719469980739","label":"Continue with GitHub"}
+const socialMediaButtons = [
+  { label: "Continue with Google", provider: "google" as const },
 ]
+
+function shouldResendVerificationEmail(createdAt: Date | string): boolean {
+  return Date.now() - new Date(createdAt).getTime() > 10_000;
+}
 
 export function SignupForm() {
   const [message, setMessage] = useState<string | null>(null);
@@ -38,30 +42,25 @@ export function SignupForm() {
       setError(null);
       setMessage(null);
 
-      const { data: signUpData, error } = await signUp.email({
+      const { data: signUpData, error: signUpError } = await signUp.email({
         email: data.email,
         password: data.password,
         name: data.name,
         callbackURL: window.location.origin
       });
-      if (signUpData?.user?.emailVerified === false) {
-        const createdAtTime = new Date(signUpData?.user.createdAt).getTime();
-        const currentTime = Date.now();
+      if (signUpError) {
+        setError("We could not create your account. Please try again.");
+        return;
+      }
 
-        const isExistingUser = (currentTime - createdAtTime) > 10000;
-        console.log(currentTime - createdAtTime)
-        if (isExistingUser) {
-          console.log("Existing unverified account detected. Manually triggering email...");
+      if (signUpData?.user?.emailVerified === false) {
+        if (shouldResendVerificationEmail(signUpData.user.createdAt)) {
           const { error: verifyError } = await sendVerificationEmail({ email: data.email })
           if (verifyError) {
-            console.error("Failed to trigger verification email:", verifyError.message);
-          } else {
-            console.log("Verification email sent successfully to existing user!");
+            setError("We could not send a verification email. Try signing in to request another.");
+            return;
           }
         }
-
-      } else {
-        console.log("New user registered. The backend automatically sent the email.");
       }
 
 
@@ -70,9 +69,8 @@ export function SignupForm() {
       );
 
       form.reset();
-    } catch (error) {
-
-      setError("Something went wrong.");
+    } catch {
+      setError("We could not create your account. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -84,8 +82,8 @@ export function SignupForm() {
         provider,
         callbackURL: "/"
       })
-    } catch (error) {
-      setMessage(`an error occured while signing in with ${provider}, try again!`)
+    } catch {
+      setError(`Sign in with ${provider} could not start. Please try again.`)
     }
   }
 
@@ -109,10 +107,10 @@ export function SignupForm() {
           </AlertDescription>
         </Alert>
       )}
-      <form onSubmit={handleSubmit} className="p-2 sm:p-5 md:p-8 w-full rounded-md gap-2 border max-w-3xl mx-auto">
-        <FieldGroup className="grid md:grid-cols-6 gap-4 mb-6">
-          <h1 className="mt-6 mb-1 font-extrabold text-3xl tracking-tight col-span-full">Sign Up</h1>
-          <p className="tracking-wide text-muted-foreground mb-5 text-wrap text-sm col-span-full">You need an account to get started</p>
+      <form onSubmit={handleSubmit} className="w-full rounded-xl border bg-card p-5 shadow-sm sm:p-7">
+        <FieldGroup className="mb-6 grid gap-4 md:grid-cols-6">
+          <h1 className="col-span-full text-2xl font-semibold tracking-tight sm:text-3xl">Create an account</h1>
+          <p className="col-span-full text-sm text-muted-foreground">Register to get started.</p>
 
           <Controller
             name="name"
@@ -123,7 +121,8 @@ export function SignupForm() {
                 <Input
                   {...field}
                   id="name"
-                  type="text"
+                  type="email"
+                  autoComplete="email"
                   onChange={(e) => {
                     field.onChange(e.target.value)
                   }}
@@ -206,9 +205,7 @@ export function SignupForm() {
                 className="text-sm gap-2 px-2 h-10 grow "
                 onClick={() => { continueWith({ provider: o.provider }) }}
               >
-                <div className="place-items-center grid rounded-full bg-white size-6 p-0.5">
-                  <img src={o.src} width={16} height={16} />
-                </div>
+                <Globe aria-hidden="true" className="size-4" />
                 {o.label}
               </Button>
             ))}
@@ -235,8 +232,8 @@ export function SignupForm() {
           />
         </FieldGroup>
         <div className="flex justify-end items-center w-full">
-          <Button disabled={isLoading}>
-            {isLoading ? 'Submitting...' : 'Submit'}
+          <Button className="h-11 w-full" disabled={isLoading}>
+            {isLoading ? 'Creating account...' : 'Create account'}
           </Button>
         </div>
         <div className="mt-4 text-center text-sm">

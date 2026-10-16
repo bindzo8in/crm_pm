@@ -1,29 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { getUpcomingHolidaysAction } from "@/actions/holiday";
+import {
+  createHolidayAction,
+  deleteHolidayAction,
+  getHolidaysAction,
+  getUpcomingHolidaysAction,
+  updateHolidayAction,
+} from "@/actions/holiday";
+import { actionErrorResponse } from "@/lib/api-error";
 
 export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ action: string }> }
+  request: NextRequest,
+  { params }: { params: Promise<{ action: string }> },
 ) {
+  const { action } = await params;
+  let body: unknown;
   try {
-    const session = await auth.api.getSession({ headers: req.headers });
-    if (!session) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    }
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "Request body must contain valid JSON." },
+      { status: 400 },
+    );
+  }
 
-    const { action } = await params;
-
+  try {
     switch (action) {
-      case "upcoming": {
-        const result = await getUpcomingHolidaysAction();
-        return NextResponse.json(result);
-      }
+      case "upcoming":
+        return NextResponse.json(await getUpcomingHolidaysAction());
+      case "list":
+        return NextResponse.json(await getHolidaysAction(body));
+      case "create":
+        return NextResponse.json(await createHolidayAction(body));
+      case "update":
+        return NextResponse.json(await updateHolidayAction(body));
+      case "delete":
+        return NextResponse.json(await deleteHolidayAction(body));
       default:
-        return NextResponse.json({ success: false, error: "Invalid action" }, { status: 400 });
+        return NextResponse.json(
+          { success: false, error: "Invalid action." },
+          { status: 400 },
+        );
     }
-  } catch (error: any) {
-    console.error(`Holiday API Error:`, error);
-    return NextResponse.json({ success: false, error: error.message || "Internal Server Error" }, { status: 500 });
+  } catch (error) {
+    return actionErrorResponse(error, "Holiday API error");
   }
 }

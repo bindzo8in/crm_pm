@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createInvoice, updateInvoice, getCompanyBankAccounts } from "@/actions/invoice";
+import { createInvoice, updateInvoice, getCompanyBankAccounts, getInvoiceById } from "@/actions/invoice";
 import { getLiveExchangeRate } from "@/actions/exchange-rate";
 import { GetCustomers } from "@/actions/customer";
 import { toast } from "sonner";
@@ -14,10 +14,28 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PlusIcon, Trash2Icon, ArrowLeftIcon, SaveIcon, Loader2Icon, RefreshCwIcon } from "lucide-react";
 import Link from "next/link";
-import { InvoiceLineItemInput } from "@/lib/schemas/invoice-schema";
+import { BillingCycleEnum, InvoiceLineItemInput } from "@/lib/schemas/invoice-schema";
 import { LocationAutocomplete } from "@/components/ui/location-autocomplete";
 
-export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
+type InvoiceInitialData = NonNullable<
+  Extract<Awaited<ReturnType<typeof getInvoiceById>>, { success: true }>["data"]
+>;
+
+type InvoiceFormLineItem = {
+  id?: string;
+  servicePackageId?: string | null;
+  serviceName?: string | null;
+  name: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  taxRate: number;
+  sacCode: string;
+  billingCycle: InvoiceLineItemInput["billingCycle"];
+};
+
+export function CreateInvoiceForm({ initialData }: { initialData?: InvoiceInitialData }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [fetchingRate, setFetchingRate] = useState(false);
@@ -39,9 +57,9 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
   const [bankAccountId, setBankAccountId] = useState(initialData?.bankAccountId || "");
   const [discount, setDiscount] = useState(initialData?.discount || 0);
 
-  const [lineItems, setLineItems] = useState<any[]>(
+  const [lineItems, setLineItems] = useState<InvoiceFormLineItem[]>(
     initialData?.lineItems && initialData.lineItems.length > 0
-      ? initialData.lineItems.map((li: any) => ({
+      ? initialData.lineItems.map((li) => ({
         id: li.id,
         servicePackageId: li.servicePackageId || null,
         serviceName: li.servicePackage?.service?.name || li.servicePackage?.name || null,
@@ -86,7 +104,7 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
       }
     }
     loadData();
-  }, []);
+  }, [initialData?.bankAccountId]);
 
   const handleFetchRate = async () => {
     setFetchingRate(true);
@@ -150,7 +168,11 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
     setLineItems((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleItemChange = (index: number, field: keyof InvoiceLineItemInput | "sacCode", value: any) => {
+  const handleItemChange = <K extends keyof InvoiceFormLineItem>(
+    index: number,
+    field: K,
+    value: InvoiceFormLineItem[K]
+  ) => {
     setLineItems((prev) =>
       prev.map((item, i) => (i === index ? { ...item, [field]: value } : item))
     );
@@ -254,16 +276,16 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 max-w-5xl mx-auto pb-12">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+    <form onSubmit={handleSubmit} className="mx-auto w-full min-w-0 max-w-5xl space-y-6 pb-12">
+      <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
           <Button variant="outline" size="icon" asChild>
             <Link href="/dashboard/invoices">
               <ArrowLeftIcon className="h-4 w-4" />
             </Link>
           </Button>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
               {currency === "USD" ? "Create Export Invoice (LUT 0% Tax)" : "Create Invoice"}
             </h1>
             <p className="text-sm text-muted-foreground">
@@ -274,9 +296,9 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-start xl:w-auto xl:justify-end">
           <Select value={currency} onValueChange={handleCurrencyChange}>
-            <SelectTrigger className="w-[110px]">
+            <SelectTrigger className="w-full sm:w-[110px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -285,7 +307,7 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
             </SelectContent>
           </Select>
           <ServicePackageSearch onSelectPackage={handleAddPackage} currency={currency} />
-          <Button type="submit" disabled={loading} className="gap-2">
+          <Button type="submit" disabled={loading} className="w-full gap-2 sm:w-auto">
             {loading ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <SaveIcon className="h-4 w-4" />}
             Save Draft Invoice
           </Button>
@@ -297,7 +319,7 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
           <CardTitle>Invoice Details</CardTitle>
           <CardDescription>Select customer and basic invoice parameters</CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-visible">
+        <CardContent className="grid grid-cols-1 gap-4 overflow-visible xl:grid-cols-2">
           <div className="space-y-2">
             <label className="text-sm font-medium">Customer *</label>
             <Select value={customerId} onValueChange={setCustomerId}>
@@ -391,17 +413,17 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
       </Card>
 
       <Card className="relative z-10">
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <CardTitle>Line Items</CardTitle>
             <CardDescription>Add or customize services and items</CardDescription>
           </div>
-          <Button type="button" variant="outline" onClick={handleAddLineItem} className="gap-2">
+          <Button type="button" variant="outline" onClick={handleAddLineItem} className="w-full gap-2 sm:w-auto">
             <PlusIcon className="h-4 w-4" /> Add Item
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="hidden md:grid grid-cols-12 gap-2.5 px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/50 rounded-md border">
+          <div className="hidden xl:grid xl:grid-cols-12 gap-2.5 px-3 py-2 text-xs font-medium text-muted-foreground bg-muted/50 rounded-md border">
             <div className="col-span-3">Item & Description</div>
             <div className="col-span-2">Billing Cycle</div>
             <div className="col-span-1 text-center">Qty</div>
@@ -412,8 +434,8 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
 
           {lineItems.map((item, index) => (
             <div key={index} className="flex flex-col gap-3 p-3 rounded-lg border bg-card">
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-center">
-                <div className="md:col-span-3 space-y-1">
+              <div className="grid min-w-0 grid-cols-1 gap-2.5 xl:grid-cols-12 xl:items-center">
+                <div className="min-w-0 space-y-1 xl:col-span-3">
                   {item.serviceName && (
                     <div className="flex items-center gap-1">
                       <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
@@ -428,10 +450,10 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
                     required
                   />
                 </div>
-                <div className="md:col-span-2">
+                <div className="min-w-0 xl:col-span-2">
                   <Select
                     value={item.billingCycle || "ONE_TIME"}
-                    onValueChange={(val) => handleItemChange(index, "billingCycle", val)}
+                    onValueChange={(val) => handleItemChange(index, "billingCycle", BillingCycleEnum.parse(val))}
                   >
                     <SelectTrigger className="h-9 text-xs">
                       <SelectValue placeholder="Cycle" />
@@ -445,7 +467,7 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="md:col-span-1">
+                <div className="min-w-0 xl:col-span-1">
                   <Input
                     type="number"
                     min="1"
@@ -455,7 +477,7 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
                     required
                   />
                 </div>
-                <div className="md:col-span-2">
+                <div className="min-w-0 xl:col-span-2">
                   <Input
                     type="number"
                     min="0"
@@ -466,7 +488,7 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
                     required
                   />
                 </div>
-                <div className="md:col-span-2">
+                <div className="min-w-0 xl:col-span-2">
                   <Input
                     placeholder="SAC Code (e.g. 9983)"
                     value={item.sacCode || "9983"}
@@ -474,7 +496,7 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
                     className="font-mono text-xs"
                   />
                 </div>
-                <div className="md:col-span-2 flex items-center gap-1">
+                <div className="flex min-w-0 items-center gap-1 xl:col-span-2">
                   <div className="flex-1">
                     {currency === "USD" ? (
                       <div className="h-9 px-2.5 py-1.5 rounded-md border bg-muted text-xs flex items-center justify-center text-muted-foreground font-medium">
@@ -550,7 +572,7 @@ export function CreateInvoiceForm({ initialData }: { initialData?: any }) {
         <CardHeader>
           <CardTitle>Notes & Terms</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <CardContent className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <div className="space-y-2">
             <label className="text-sm font-medium">Client Notes</label>
             <Textarea

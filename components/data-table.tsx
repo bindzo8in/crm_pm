@@ -39,6 +39,7 @@ interface DataTableProps<TData, TValue> {
             pageSize: number;
         }>
     >;
+    emptyMessage?: string;
 }
 
 export function DataTable<TData, TValue>({
@@ -47,6 +48,7 @@ export function DataTable<TData, TValue>({
     total,
     pagination,
     onPaginationChange,
+    emptyMessage = "No results found.",
 }: DataTableProps<TData, TValue>) {
     const pageCount = Math.max(
         1,
@@ -123,7 +125,7 @@ export function DataTable<TData, TValue>({
                                 colSpan={columns.length}
                                 className="h-24 text-center text-muted-foreground"
                             >
-                                No results found.
+                                {emptyMessage}
                             </TableCell>
                         </TableRow>
                     )}
@@ -135,7 +137,7 @@ export function DataTable<TData, TValue>({
                     Showing {start} - {end} of {total}
                 </div>
 
-                <div className="flex items-center gap-6">
+                <div className="flex flex-wrap items-center justify-between gap-3 md:gap-6">
                     <div className="flex items-center gap-2">
                         <span className="text-sm text-muted-foreground">
                             Rows per page
@@ -151,7 +153,7 @@ export function DataTable<TData, TValue>({
                                 }))
                             }
                         >
-                            <SelectTrigger className="h-8 w-[80px]">
+                            <SelectTrigger aria-label="Rows per page" className="h-8 w-[80px]">
                                 <SelectValue />
                             </SelectTrigger>
 
@@ -172,7 +174,8 @@ export function DataTable<TData, TValue>({
                         <Button
                             variant="outline"
                             size="icon"
-                            className="h-8 w-8"
+                            className="h-9 w-9"
+                            aria-label="Previous page"
                             onClick={() => table.previousPage()}
                             disabled={!table.getCanPreviousPage()}
                         >
@@ -182,7 +185,8 @@ export function DataTable<TData, TValue>({
                         <Button
                             variant="outline"
                             size="icon"
-                            className="h-8 w-8"
+                            className="h-9 w-9"
+                            aria-label="Next page"
                             onClick={() => table.nextPage()}
                             disabled={!table.getCanNextPage()}
                         >
