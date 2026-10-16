@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Raleway, Instrument_Sans, Inter, Plus_Jakarta_Sans } from "next/font/google";
+import { Instrument_Sans, Inter, Plus_Jakarta_Sans } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/sonner";
 
 const instrumentSansHeading = Instrument_Sans({ subsets: ['latin'], variable: '--font-heading' });
-const raleway = Raleway({ subsets: ['latin'], variable: '--font-sans' });
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
+const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-invoice' });
 
 export const metadata: Metadata = {
@@ -31,9 +30,8 @@ export default function RootLayout({
       lang="en"
       className={cn(
         "font-sans",
-        raleway.variable,
-        instrumentSansHeading.variable,
         inter.variable,
+        instrumentSansHeading.variable,
         plusJakarta.variable
       )}
     >

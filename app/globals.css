@@ -85,7 +85,6 @@
 @theme inline {
     --font-sans: var(--font-sans);
     --font-heading: var(--font-heading);
-    --font-inter: var(--font-inter);
     --font-invoice: var(--font-invoice);
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
