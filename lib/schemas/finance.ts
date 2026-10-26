@@ -18,6 +18,12 @@ export const expenseCategorySchema = z.object({
   isActive: z.boolean().default(true),
 });
 
+export const expenseCategoryPageSchema = z.object({
+  search: z.string().trim().max(120).default(""),
+  cursor: z.string().trim().min(1).max(128).optional(),
+  pageSize: z.number().int().min(1).max(100).default(20),
+});
+
 export const expenseSchema = z.object({
   description: z.string().trim().min(1, "Expense description is required"),
   amount: z
@@ -57,5 +63,6 @@ export const financeReportSchema = z.object({
 
 export type FinancialAccountInput = z.infer<typeof financialAccountSchema>;
 export type ExpenseCategoryInput = z.infer<typeof expenseCategorySchema>;
+export type ExpenseCategoryPageInput = z.input<typeof expenseCategoryPageSchema>;
 export type ExpenseInput = z.infer<typeof expenseSchema>;
 export type FinanceReportInput = z.input<typeof financeReportSchema>;

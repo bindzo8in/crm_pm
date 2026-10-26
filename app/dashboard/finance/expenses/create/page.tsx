@@ -1,4 +1,4 @@
-import { getExpenseCategories, getFinancialAccounts } from "@/actions/finance";
+import { getFinancialAccounts } from "@/actions/finance";
 import DashboardContainer from "@/app/dashboard/dashboard-container";
 import { ExpenseEntryForm } from "@/components/finance/expense-entry-form";
 import { requirePageAccess } from "@/lib/auth-guard";
@@ -10,22 +10,14 @@ export const metadata = {
 export default async function CreateExpensePage() {
   const session = await requirePageAccess("/dashboard/finance");
 
-  const [accountsResult, categoriesResult] = await Promise.all([
-    getFinancialAccounts(),
-    getExpenseCategories(),
-  ]);
+  const accountsResult = await getFinancialAccounts();
 
-  if (!accountsResult.success || !categoriesResult.success) {
-    const errors = [
-      accountsResult.success ? null : accountsResult.message,
-      categoriesResult.success ? null : categoriesResult.message,
-    ].filter((message): message is string => message !== null);
-
+  if (!accountsResult.success) {
     return (
       <DashboardContainer title="Record Expense">
         <main className="p-4 md:p-6">
           <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-            Expense form could not be loaded: {errors.join(" ")}
+            Expense form could not be loaded: {accountsResult.message}
           </div>
         </main>
       </DashboardContainer>
@@ -33,13 +25,11 @@ export default async function CreateExpensePage() {
   }
 
   const accounts = accountsResult.data?.map(({ id, name, isActive }) => ({ id, name, isActive })) ?? [];
-  const categories = categoriesResult.data?.map(({ id, name, isActive }) => ({ id, name, isActive })) ?? [];
 
   return (
     <DashboardContainer title="Record Expense">
       <ExpenseEntryForm
         accounts={accounts}
-        categories={categories}
         uploadFolder={`finance/expenses/${session.user.id}`}
       />
     </DashboardContainer>

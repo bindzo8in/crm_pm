@@ -8,6 +8,7 @@ import { errorResponse, successResponse } from "@/lib/action-response";
 import { env } from "@/lib/env";
 import prisma from "@/lib/prisma";
 import {
+  expenseCategoryPageSchema,
   expenseCategorySchema,
   expenseSchema,
   financeReportSchema,
@@ -38,6 +39,28 @@ async function checkFinancePermission(action: "read" | "create" | "update" | "de
   } catch {
     return false;
   }
+}
+
+const defaultExpenseCategories = [
+  "Office Rent",
+  "Employee Salaries",
+  "Electricity and Utilities",
+  "Internet and Telephone",
+  "Software and Subscriptions",
+  "Advertising and Marketing",
+  "Travel and Transportation",
+  "Printing and Stationery",
+  "Equipment and Maintenance",
+  "Professional Services",
+  "Bank Charges",
+  "Other Expenses",
+];
+
+async function ensureDefaultExpenseCategories() {
+  await prisma.expenseCategory.createMany({
+    data: defaultExpenseCategories.map((name) => ({ name })),
+    skipDuplicates: true,
+  });
 }
 
 export async function deleteExpenseAttachment(input: unknown) {
@@ -287,25 +310,7 @@ export async function getExpenseCategories() {
       return errorResponse("You do not have permission to view expense categories");
     }
 
-    const defaultCategories = [
-      "Office Rent",
-      "Employee Salaries",
-      "Electricity and Utilities",
-      "Internet and Telephone",
-      "Software and Subscriptions",
-      "Advertising and Marketing",
-      "Travel and Transportation",
-      "Printing and Stationery",
-      "Equipment and Maintenance",
-      "Professional Services",
-      "Bank Charges",
-      "Other Expenses",
-    ];
-
-    await prisma.expenseCategory.createMany({
-      data: defaultCategories.map((name) => ({ name })),
-      skipDuplicates: true,
-    });
+    await ensureDefaultExpenseCategories();
 
     const categories = await prisma.expenseCategory.findMany({
       orderBy: { name: "asc" },
@@ -313,6 +318,53 @@ export async function getExpenseCategories() {
 
     return successResponse("Expense categories retrieved successfully", categories);
   } catch (error) {
+    return errorResponse("Failed to fetch expense categories", error);
+  }
+}
+
+export async function getExpenseCategoryPage(input: unknown) {
+  try {
+    const user = await getSessionUser();
+    if (!user) {
+      return errorResponse("Unauthorized");
+    }
+
+    const hasPermission = await checkFinancePermission("read");
+    if (!hasPermission) {
+      return errorResponse("You do not have permission to view expense categories");
+    }
+
+    const parsed = expenseCategoryPageSchema.safeParse(input);
+    if (!parsed.success) {
+      return errorResponse("Invalid expense category query", parsed.error.flatten());
+    }
+
+    await ensureDefaultExpenseCategories();
+
+    const { search, cursor, pageSize } = parsed.data;
+    const categories = await prisma.expenseCategory.findMany({
+      where: {
+        isActive: true,
+        ...(search
+          ? { name: { contains: search, mode: "insensitive" } }
+          : {}),
+      },
+      select: { id: true, name: true, isActive: true },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      take: pageSize + 1,
+    });
+
+    const hasNextPage = categories.length > pageSize;
+    const items = hasNextPage ? categories.slice(0, pageSize) : categories;
+
+    return successResponse("Expense categories retrieved successfully", {
+      items,
+      hasNextPage,
+      nextCursor: hasNextPage ? items[items.length - 1]?.id ?? null : null,
+    });
+  } catch (error) {
+    console.error("Failed to fetch expense category page:", error);
     return errorResponse("Failed to fetch expense categories", error);
   }
 }

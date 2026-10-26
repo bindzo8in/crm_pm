@@ -7,8 +7,9 @@ import { ArrowLeft, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { CreateCustomer } from "@/actions/customer";
-import { createExpense } from "@/actions/finance";
+import { createExpense, createExpenseCategory } from "@/actions/finance";
 import { CustomerCombobox, type CustomerOption } from "@/components/customers/customer-combobox";
+import { ExpenseCategoryCombobox, type ExpenseCategoryOption } from "@/components/finance/expense-category-combobox";
 import { ExpenseAttachmentUpload } from "@/components/finance/expense-attachment-upload";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,15 +31,8 @@ type Account = {
   isActive: boolean;
 };
 
-type Category = {
-  id: string;
-  name: string;
-  isActive: boolean;
-};
-
 type Props = {
   accounts: Account[];
-  categories: Category[];
   uploadFolder: string;
 };
 
@@ -139,21 +133,109 @@ function CreateConsumerDialog({
   );
 }
 
-export function ExpenseEntryForm({ accounts, categories, uploadFolder }: Props) {
+function CreateExpenseCategoryDialog({
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated: (category: ExpenseCategoryOption) => void;
+}) {
+  const [isSaving, setIsSaving] = React.useState(false);
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    setIsSaving(true);
+
+    try {
+      const response = await createExpenseCategory({
+        name: String(formData.get("name") ?? "").trim(),
+        description: String(formData.get("description") ?? "").trim() || null,
+        isActive: true,
+      });
+
+      if (!response.success || !response.data) {
+        toast.error(response.message);
+        return;
+      }
+
+      onCreated({
+        id: response.data.id,
+        name: response.data.name,
+        isActive: response.data.isActive,
+      });
+      toast.success("Expense category created");
+      onOpenChange(false);
+      form.reset();
+    } catch (error) {
+      console.error("Failed to create expense category:", error);
+      toast.error("Could not create this category. Try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Create expense category</DialogTitle>
+          <DialogDescription>
+            Add a category and select it for this expense.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="expense-category-name">Category name *</Label>
+            <Input id="expense-category-name" name="name" required maxLength={160} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="expense-category-description">Description</Label>
+            <Textarea
+              id="expense-category-description"
+              name="description"
+              maxLength={200}
+              rows={3}
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? "Creating…" : "Create and select"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function ExpenseEntryForm({ accounts, uploadFolder }: Props) {
   const router = useRouter();
   const [createConsumerOpen, setCreateConsumerOpen] = React.useState(false);
+  const [createCategoryOpen, setCreateCategoryOpen] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
   const [selectedConsumer, setSelectedConsumer] = React.useState<CustomerOption | null>(null);
+  const [selectedCategory, setSelectedCategory] = React.useState<ExpenseCategoryOption | null>(null);
   const [attachment, setAttachment] = React.useState<{
     url: string;
     publicId: string;
     resourceType: "image" | "raw";
   } | null>(null);
   const activeAccounts = accounts.filter((account) => account.isActive);
-  const activeCategories = categories.filter((category) => category.isActive);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!selectedCategory) {
+      toast.error("Select an expense category");
+      return;
+    }
+
     const form = event.currentTarget;
     const formData = new FormData(form);
     setIsSaving(true);
@@ -163,7 +245,7 @@ export function ExpenseEntryForm({ accounts, categories, uploadFolder }: Props) 
         description: formData.get("description"),
         amount: formData.get("amount"),
         expenseDate: formData.get("expenseDate"),
-        categoryId: formData.get("categoryId"),
+        categoryId: selectedCategory.id,
         financialAccountId: formData.get("financialAccountId"),
         paymentMethod: formData.get("paymentMethod"),
         vendorName: formData.get("vendorName"),
@@ -189,7 +271,10 @@ export function ExpenseEntryForm({ accounts, categories, uploadFolder }: Props) 
     }
   }
 
-  const canRecord = activeAccounts.length > 0 && activeCategories.length > 0;
+  function handleCategoryCreated(category: ExpenseCategoryOption) {
+    setSelectedCategory(category);
+  }
+
   const selectClassName = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
   return (
@@ -210,11 +295,9 @@ export function ExpenseEntryForm({ accounts, categories, uploadFolder }: Props) 
         </div>
       </div>
 
-      {!canRecord ? (
+      {activeAccounts.length === 0 ? (
         <div role="alert" className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">
-          {activeAccounts.length === 0
-            ? "No active financial account is available. Add a company bank account or set up Office Cash before recording an expense."
-            : "No active expense categories are available."}
+          No active financial account is available. Add a company bank account or set up Office Cash before recording an expense.
         </div>
       ) : (
         <Card>
@@ -239,21 +322,22 @@ export function ExpenseEntryForm({ accounts, categories, uploadFolder }: Props) 
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="expense-category">Category *</Label>
-                  <select id="expense-category" name="categoryId" required defaultValue="" className={selectClassName}>
-                    <option value="" disabled>Select a category</option>
-                    {activeCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-                  </select>
+                  <ExpenseCategoryCombobox
+                    selectedCategory={selectedCategory}
+                    onValueChange={setSelectedCategory}
+                    onCreateCategory={() => setCreateCategoryOpen(true)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="expense-account">Paid from account *</Label>
-                  <select id="expense-account" name="financialAccountId" required defaultValue="" className={selectClassName}>
+                  <select id="expense-account" name="financialAccountId" required defaultValue="" className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                     <option value="" disabled>Select an account</option>
                     {activeAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
                   </select>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="expense-payment-method">Payment method *</Label>
-                  <select id="expense-payment-method" name="paymentMethod" defaultValue="BANK_TRANSFER" className={selectClassName}>
+                  <select id="expense-payment-method" name="paymentMethod" defaultValue="BANK_TRANSFER" className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                     {paymentMethods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                   </select>
                 </div>
@@ -330,6 +414,11 @@ export function ExpenseEntryForm({ accounts, categories, uploadFolder }: Props) 
         open={createConsumerOpen}
         onOpenChange={setCreateConsumerOpen}
         onCreated={setSelectedConsumer}
+      />
+      <CreateExpenseCategoryDialog
+        open={createCategoryOpen}
+        onOpenChange={setCreateCategoryOpen}
+        onCreated={handleCategoryCreated}
       />
     </main>
   );
