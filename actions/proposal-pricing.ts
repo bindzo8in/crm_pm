@@ -177,6 +177,27 @@ export async function getProposalPricing(proposalId: string, isPublic = false) {
       return errorResponse("Proposal not found");
     }
 
+    const packageItemIds = [
+      ...new Set(
+        proposal.proposalServices.flatMap((service) =>
+          service.items.flatMap((item) => (item.packageItemId ? [item.packageItemId] : []))
+        )
+      ),
+    ];
+    const packageItems = packageItemIds.length
+      ? await prisma.servicePackageItem.findMany({
+          where: { id: { in: packageItemIds } },
+          select: {
+            id: true,
+            sacCode: true,
+            package: {
+              select: { sacCode: true },
+            },
+          },
+        })
+      : [];
+    const packageItemsById = new Map(packageItems.map((item) => [item.id, item]));
+
     // Fetch active service names for the cover footer fallback
     const activeServices = await prisma.service.findMany({
       where: { isActive: true, deletedAt: null },
@@ -199,14 +220,21 @@ export async function getProposalPricing(proposalId: string, isPublic = false) {
       grandTotal: proposal.grandTotal.toNumber(),
       proposalServices: proposal.proposalServices.map((service) => ({
         ...service,
-        items: service.items.map((item) => ({
-          ...item,
-          unitPrice: item.unitPrice.toNumber(),
-          total: item.total.toNumber(),
-          discountValue: item.discountValue ? item.discountValue.toNumber() : null,
-          taxRate: proposal.currency === "USD" ? 0 : (item.taxRate ?? 18),
-          sacCode: item.sacCode || "9983",
-        })),
+        items: service.items.map((item) => {
+          const packageItem = item.packageItemId ? packageItemsById.get(item.packageItemId) : undefined;
+          return {
+            ...item,
+            unitPrice: item.unitPrice.toNumber(),
+            total: item.total.toNumber(),
+            discountValue: item.discountValue ? item.discountValue.toNumber() : null,
+            taxRate: proposal.currency === "USD" ? 0 : (item.taxRate ?? 18),
+            sacCode:
+              packageItem?.sacCode?.trim() ||
+              packageItem?.package.sacCode?.trim() ||
+              item.sacCode?.trim() ||
+              null,
+          };
+        }),
       })),
       activeServiceNames,
       company,

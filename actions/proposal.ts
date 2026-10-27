@@ -330,7 +330,8 @@ export async function DuplicateProposal(id: string) {
                         isCustom: item.isCustom,
                         discountType: item.discountType,
                         discountValue: item.discountValue,
-                        taxRate: item.taxRate
+                        taxRate: item.taxRate,
+                        sacCode: item.sacCode
                     }
                 });
             }

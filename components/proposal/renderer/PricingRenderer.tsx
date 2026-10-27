@@ -119,7 +119,7 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
                           )}
                         </td>
                         <td className="text-right whitespace-nowrap align-top text-black">
-                          <div className="text-xs font-mono font-semibold text-black">{item.sacCode || "998361"}</div>
+                          {item.sacCode && <div className="text-xs font-mono font-semibold text-black">{item.sacCode}</div>}
                           <div className="text-[11px] font-medium text-black mt-0.5">{isUSD ? "0% (Nil)" : `${item.taxRate}%`}</div>
                         </td>
                         <td className="text-right font-bold text-black whitespace-nowrap align-top">
