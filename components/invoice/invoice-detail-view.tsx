@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { assignInvoicePaymentAccount, getInvoiceById, getInvoicePaymentAccounts, getPublicInvoiceById, recordInvoicePayment, updateInvoiceStatus, sendInvoiceEmailAction, softDeleteInvoice } from "@/actions/invoice";
@@ -210,6 +210,26 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
   const companyLogoUrl = getImageUrl(invoice.company?.logo);
   const companySignatureUrl = getImageUrl(invoice.company?.signatureImage);
   const companySealUrl = getImageUrl(invoice.company?.sealImage);
+  const lineItemGroups = invoice.lineItems.reduce<
+    Array<{
+      key: string;
+      title: string | null;
+      items: Array<{ item: (typeof invoice.lineItems)[number]; index: number }>;
+    }>
+  >((groups, item, index) => {
+    const key = item.servicePackageId ? `package:${item.servicePackageId}` : `item:${item.id}`;
+    const lastGroup = groups[groups.length - 1];
+    if (lastGroup?.key === key) {
+      lastGroup.items.push({ item, index });
+    } else {
+      groups.push({
+        key,
+        title: item.servicePackage?.name || item.servicePackage?.service?.name || null,
+        items: [{ item, index }],
+      });
+    }
+    return groups;
+  }, []);
 
   const handleDownloadPdf = async () => {
     try {
@@ -623,59 +643,60 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {invoice.lineItems.map((item: any, index: number) => {
-                const isGenericName = !item.name || item.name.toLowerCase() === "package";
-                const displayName = isGenericName
-                  ? (item.servicePackage?.name ? `${item.servicePackage.service?.name ? `${item.servicePackage.service.name} - ` : ""}${item.servicePackage.name}` : "Service Package")
-                  : item.name;
+              {lineItemGroups.map((group) => (
+                <Fragment key={group.key}>
+                  {group.title && (
+                    <tr key={`${group.key}-heading`} className="bg-gray-50">
+                      <td colSpan={7} className="px-3 py-2 font-bold text-gray-900">
+                        {group.title}
+                      </td>
+                    </tr>
+                  )}
+                  {group.items.map(({ item, index }) => {
+                    const isGenericName = !item.name || item.name.toLowerCase() === "package";
+                    const displayName = isGenericName
+                      ? (group.title ? "" : "Service Package")
+                      : item.name;
+                    const normalizeStr = (s: string) => s.toLowerCase().replace(/[-—\s]+/g, "");
+                    const isDuplicateDescription = Boolean(
+                      item.description &&
+                      displayName &&
+                      normalizeStr(item.description) === normalizeStr(displayName)
+                    );
+                    const showDescription = item.description && !isDuplicateDescription;
 
-                const rawCategorySubtitle = !isGenericName && (item.servicePackage?.service?.name || item.servicePackage?.name)
-                  ? `${item.servicePackage.service?.name ? `${item.servicePackage.service.name} — ` : ""}${item.servicePackage.name}`
-                  : null;
-
-                const normalizeStr = (s: string) => s.toLowerCase().replace(/[-—\s]+/g, "");
-                const isDuplicateSubtitle = rawCategorySubtitle && normalizeStr(displayName) === normalizeStr(rawCategorySubtitle);
-                const categorySubtitle = !isDuplicateSubtitle ? rawCategorySubtitle : null;
-
-                const isDuplicateDescription = item.description && (
-                  normalizeStr(item.description) === normalizeStr(displayName) ||
-                  (rawCategorySubtitle && normalizeStr(item.description) === normalizeStr(rawCategorySubtitle))
-                );
-                const showDescription = item.description && !isDuplicateDescription;
-
-                return (
-                  <tr key={item.id} className="align-top">
-                    <td className="py-2.5 px-2 text-center text-gray-900 font-bold text-xs">{index + 1}</td>
-                    <td className="py-2.5 px-3">
-                      <div className="font-bold text-gray-900 leading-snug">{displayName}</div>
-                      {categorySubtitle && (
-                        <div className="text-[11px] font-semibold text-gray-700 mt-0.5">{categorySubtitle}</div>
-                      )}
-                      {showDescription && (
-                        <div className="text-[11px] font-medium text-gray-700 mt-0.5 leading-relaxed">{item.description}</div>
-                      )}
-                    </td>
-                    <td className="py-2.5 px-3 text-center font-mono text-[11px] font-semibold text-gray-900 whitespace-nowrap">
-                      {item.sacCode || "9983"}
-                    </td>
-                    <td className="py-2.5 px-3 text-center text-gray-900 font-semibold whitespace-nowrap">
-                      <span>{item.quantity} {item.unit}</span>
-                      {item.billingCycle && (
-                        <div className="text-[10px] text-gray-700 font-bold uppercase tracking-tight">{item.billingCycle.replace("_", " ")}</div>
-                      )}
-                    </td>
-                    <td className="py-2.5 px-3 text-right text-gray-900 font-semibold whitespace-nowrap">{symbol}{item.unitPrice.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
-                    <td className="py-2.5 px-3 text-right whitespace-nowrap text-[11px] font-semibold text-gray-800">
-                      {isUSD
-                        ? "0% (Nil)"
-                        : isIntraState
-                          ? `CGST ${halfTaxRate}% + SGST ${halfTaxRate}%`
-                          : `IGST ${item.taxRate}%`}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-bold text-gray-900 whitespace-nowrap">{symbol}{item.total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
-                  </tr>
-                );
-              })}
+                    return (
+                      <tr key={item.id} className="align-top">
+                        <td className="py-2.5 px-2 text-center text-gray-900 font-bold text-xs">{index + 1}</td>
+                        <td className="py-2.5 px-3">
+                          {displayName && <div className="font-bold text-gray-900 leading-snug">{displayName}</div>}
+                          {showDescription && (
+                            <div className="text-[11px] font-medium text-gray-700 mt-0.5 leading-relaxed">{item.description}</div>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-center font-mono text-[11px] font-semibold text-gray-900 whitespace-nowrap">
+                          {item.sacCode || "9983"}
+                        </td>
+                        <td className="py-2.5 px-3 text-center text-gray-900 font-semibold whitespace-nowrap">
+                          <span>{item.quantity} {item.unit}</span>
+                          {item.billingCycle && (
+                            <div className="text-[10px] text-gray-700 font-bold uppercase tracking-tight">{item.billingCycle.replace("_", " ")}</div>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-gray-900 font-semibold whitespace-nowrap">{symbol}{item.unitPrice.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap text-[11px] font-semibold text-gray-800">
+                          {isUSD
+                            ? "0% (Nil)"
+                            : isIntraState
+                              ? `CGST ${halfTaxRate}% + SGST ${halfTaxRate}%`
+                              : `IGST ${item.taxRate}%`}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-gray-900 whitespace-nowrap">{symbol}{item.total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
+              ))}
             </tbody>
           </table>
         </div>
