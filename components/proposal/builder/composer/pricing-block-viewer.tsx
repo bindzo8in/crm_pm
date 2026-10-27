@@ -130,8 +130,8 @@ export function PricingBlockViewer({ proposal }: PricingBlockViewerProps) {
                             <span className="font-bold text-foreground text-sm">
                               {service.packageName
                                 ? (service.packageName.trim().toLowerCase() === service.serviceName.trim().toLowerCase()
-                                    ? service.packageName
-                                    : `${service.packageName} (${service.serviceName})`)
+                                    ? service.serviceName
+                                    : `${service.serviceName} (${service.packageName})`)
                                 : service.serviceName}
                             </span>
                             {item.name &&

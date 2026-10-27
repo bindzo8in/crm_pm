@@ -125,8 +125,8 @@ export function PdfRichTextRenderer({
         const serviceName = isFeaturesBlock
           ? (currentService?.packageName
               ? (currentService.packageName.trim().toLowerCase() === currentService.serviceName.trim().toLowerCase()
-                  ? currentService.packageName
-                  : `${currentService.packageName} (${currentService.serviceName})`)
+                  ? currentService.serviceName
+                  : `${currentService.serviceName} (${currentService.packageName})`)
               : currentService?.serviceName)
           : null;
 

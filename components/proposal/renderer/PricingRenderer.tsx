@@ -96,8 +96,8 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
                           <div className="font-bold text-black text-sm">
                             {service.packageName
                               ? (service.packageName.trim().toLowerCase() === service.serviceName.trim().toLowerCase()
-                                  ? service.packageName
-                                  : `${service.packageName} (${service.serviceName})`)
+                                  ? service.serviceName
+                                  : `${service.serviceName} (${service.packageName})`)
                               : service.serviceName}
                           </div>
                           {item.name &&

@@ -109,7 +109,9 @@ export default async function ProposalPreviewPage({ params }: ProposalPreviewPag
           validUntil: proposal.validUntil?.toISOString() ?? null,
           services: proposalDetails.proposalServices?.map((service) => ({
             name: service.packageName
-              ? `${service.packageName} (${service.serviceName})`
+              ? service.packageName.trim().toLowerCase() === service.serviceName.trim().toLowerCase()
+                ? service.serviceName
+                : `${service.serviceName} (${service.packageName})`
               : service.serviceName,
             items: service.items.map((item) => ({
               name: item.name,
