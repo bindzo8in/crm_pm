@@ -222,9 +222,16 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
     if (lastGroup?.key === key) {
       lastGroup.items.push({ item, index });
     } else {
+      const serviceName = item.servicePackage?.service?.name?.trim();
+      const packageName = item.servicePackage?.name?.trim();
+      const title =
+        serviceName && packageName && serviceName.toLowerCase() !== packageName.toLowerCase()
+          ? `${serviceName} (${packageName})`
+          : serviceName || packageName || null;
+
       groups.push({
         key,
-        title: item.servicePackage?.name || item.servicePackage?.service?.name || null,
+        title,
         items: [{ item, index }],
       });
     }
