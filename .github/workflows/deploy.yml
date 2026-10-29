@@ -30,6 +30,10 @@ jobs:
             environment: crm-designhub
             image_tag: crm-designhub
 
+          - client: b8-aerooceanx-crm
+            environment: b8-aerooceanx-crm
+            image_tag: b8-aerooceanx-crm
+
     runs-on: ubuntu-latest
 
     environment: ${{ matrix.environment }}
@@ -139,6 +143,12 @@ jobs:
             image_tag: crm-designhub
             app_dir: crm-designhub
             container_name: crm-designhub
+
+          - client: b8-aerooceanx-crm
+            environment: b8-aerooceanx-crm
+            image_tag: b8-aerooceanx-crm
+            app_dir: b8-aerooceanx-crm
+            container_name: b8-aerooceanx-crm
 
     runs-on: ubuntu-latest
 
