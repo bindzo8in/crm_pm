@@ -237,6 +237,23 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
     }
     return groups;
   }, []);
+  const getLineItemDisplay = (item: (typeof invoice.lineItems)[number], groupTitle: string | null) => {
+    const isGenericName = !item.name || item.name.toLowerCase() === "package";
+    const displayName = isGenericName
+      ? (groupTitle ? "" : "Service Package")
+      : item.name;
+    const normalizeStr = (value: string) => value.toLowerCase().replace(/[-—\s]+/g, "");
+    const isDuplicateDescription = Boolean(
+      item.description &&
+      displayName &&
+      normalizeStr(item.description) === normalizeStr(displayName)
+    );
+
+    return {
+      displayName,
+      showDescription: item.description && !isDuplicateDescription,
+    };
+  };
 
   const handleDownloadPdf = async () => {
     try {
@@ -310,7 +327,7 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
   };
 
   return (
-    <div className={`space-y-6 max-w-5xl mx-auto ${isPdfMode ? "p-0 bg-white" : "pb-12"}`}>
+    <div className={`w-full min-w-0 max-w-5xl mx-auto space-y-6 ${isPdfMode ? "p-0 bg-white" : "pb-12"}`}>
       {/* Header Actions */}
       {!isPdfMode && (
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden border-b pb-4">
@@ -333,7 +350,7 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap md:flex-nowrap justify-end">
+          <div className="flex w-full min-w-0 items-center gap-2 flex-wrap justify-start md:w-auto md:flex-nowrap md:justify-end">
             <Button
               variant="default"
               onClick={handleDownloadPdf}
@@ -543,9 +560,9 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
       )}
 
       {/* Printable Invoice Card */}
-      <Card id="invoice-printable-card" className={`bg-card font-[family-name:var(--font-invoice)] p-5 md:p-6 space-y-3 shadow-sm border ${isPdfMode ? "p-5 space-y-3 border-none shadow-none bg-white" : ""}`}>
-        <div className="flex justify-between items-start gap-6 border-b pb-2">
-          <div className="flex flex-col items-start gap-1.5 max-w-md">
+      <Card id="invoice-printable-card" className={`w-full min-w-0 bg-card font-[family-name:var(--font-invoice)] p-4 sm:p-5 md:p-6 space-y-3 shadow-sm border ${isPdfMode ? "p-5 space-y-3 border-none shadow-none bg-white" : ""}`}>
+        <div className="flex flex-col sm:flex-row sm:justify-between items-start gap-3 sm:gap-6 border-b pb-2">
+          <div className="flex w-full min-w-0 flex-col items-start gap-1.5 sm:max-w-md">
             {companyLogoUrl && (
               <img
                 src={companyLogoUrl}
@@ -568,7 +585,7 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
                 )}
                 {invoice.company?.country && <p>{invoice.company.country}</p>}
               </div>
-              <div className="text-[10px] md:text-[11px] text-gray-800 mt-1 font-mono font-medium flex items-center gap-2 whitespace-nowrap">
+              <div className={`mt-1 text-[10px] font-mono font-medium text-gray-800 md:text-[11px] ${isPdfMode ? "flex items-center gap-2 whitespace-nowrap" : "flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 break-words"}`}>
                 {invoice.company?.gstNumber && <span>GSTIN: {invoice.company.gstNumber}</span>}
                 {invoice.company?.iecCode && <span>| IEC: {invoice.company.iecCode}</span>}
                 {invoice.company?.phone && <span>| Phone: {invoice.company.phone}</span>}
@@ -578,7 +595,7 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
             </div>
           </div>
 
-          <div className="text-left md:text-right space-y-0.5">
+          <div className="w-full min-w-0 space-y-0.5 text-left sm:w-auto sm:shrink-0 sm:text-right">
             <h2 className="text-lg font-bold tracking-tight text-gray-900 leading-tight">
               {invoice.currency === "USD" ? "TAX INVOICE" : "TAX INVOICE"}
             </h2>
@@ -600,7 +617,7 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
         </div>
 
         {/* Client & Bank Details */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <h3 className="text-[11px] font-bold text-gray-900 uppercase tracking-wider mb-0.5">Billed To</h3>
             <div className="font-bold text-sm leading-snug text-gray-900">{clientName}</div>
@@ -636,7 +653,7 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
         </div>
 
         {/* Line Items Table */}
-        <div className="border border-gray-300 rounded-md overflow-hidden">
+        <div className={isPdfMode ? "overflow-hidden border border-gray-300 rounded-md" : "hidden overflow-x-auto border border-gray-300 rounded-md lg:block"}>
           <table className="w-full text-xs">
             <thead className="bg-gray-100 text-gray-900 font-bold border-b border-gray-300">
               <tr>
@@ -660,17 +677,7 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
                     </tr>
                   )}
                   {group.items.map(({ item, index }) => {
-                    const isGenericName = !item.name || item.name.toLowerCase() === "package";
-                    const displayName = isGenericName
-                      ? (group.title ? "" : "Service Package")
-                      : item.name;
-                    const normalizeStr = (s: string) => s.toLowerCase().replace(/[-—\s]+/g, "");
-                    const isDuplicateDescription = Boolean(
-                      item.description &&
-                      displayName &&
-                      normalizeStr(item.description) === normalizeStr(displayName)
-                    );
-                    const showDescription = item.description && !isDuplicateDescription;
+                    const { displayName, showDescription } = getLineItemDisplay(item, group.title);
 
                     return (
                       <tr key={item.id} className="align-top">
@@ -708,9 +715,72 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
           </table>
         </div>
 
+        <div className={`divide-y divide-gray-200 overflow-hidden rounded-md border border-gray-300 ${isPdfMode ? "hidden" : "lg:hidden"}`}>
+          {lineItemGroups.map((group) => (
+            <div key={group.key}>
+              {group.title && (
+                <div className="bg-gray-100 px-3 py-2 text-xs font-bold text-gray-900">
+                  {group.title}
+                </div>
+              )}
+              {group.items.map(({ item, index }) => {
+                const { displayName, showDescription } = getLineItemDisplay(item, group.title);
+                const taxRate = isUSD
+                  ? "0% (Nil)"
+                  : isIntraState
+                    ? `CGST ${halfTaxRate}% + SGST ${halfTaxRate}%`
+                    : `IGST ${item.taxRate}%`;
+
+                return (
+                  <div key={item.id} className="space-y-3 p-3">
+                    <div className="flex min-w-0 items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-semibold text-gray-500">Item {index + 1}</div>
+                        {displayName && <div className="break-words font-bold leading-snug text-gray-900">{displayName}</div>}
+                        {showDescription && (
+                          <div className="mt-0.5 break-words text-[11px] leading-relaxed text-gray-700">{item.description}</div>
+                        )}
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="text-[10px] font-semibold text-gray-500">Amount</div>
+                        <div className="text-sm font-bold text-gray-900">
+                          {symbol}{item.total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                    </div>
+                    <dl className="grid grid-cols-2 gap-x-3 gap-y-2 border-t border-gray-200 pt-2 text-[11px]">
+                      <div>
+                        <dt className="text-gray-500">HSN / SAC</dt>
+                        <dd className="break-words font-medium text-gray-900">{item.sacCode || "9983"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-gray-500">Quantity</dt>
+                        <dd className="font-medium text-gray-900">
+                          {item.quantity} {item.unit}
+                          {item.billingCycle && ` · ${item.billingCycle.replace("_", " ")}`}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-gray-500">Rate</dt>
+                        <dd className="break-words font-medium text-gray-900">
+                          {symbol}{item.unitPrice.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-gray-500">Tax rate</dt>
+                        <dd className="break-words font-medium text-gray-900">{taxRate}</dd>
+                      </div>
+                    </dl>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+
         {/* Totals & Payments */}
-        <div className="flex justify-between items-start gap-6 pt-2.5 border-t border-gray-300">
-          <div className="flex-1 min-w-0 space-y-2 text-xs">
+        <div className="flex flex-col items-start gap-4 border-t border-gray-300 pt-2.5 sm:flex-row sm:justify-between sm:gap-6">
+          <div className="w-full min-w-0 space-y-2 text-xs sm:flex-1">
             {invoice.bankAccount && (
               <div className="space-y-1 text-[11px] text-gray-800 pt-0.5">
                 <div className="font-bold text-xs uppercase tracking-wider text-gray-900 flex items-center gap-1 mb-0.5">
@@ -741,7 +811,7 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
             )}
           </div>
 
-          <div className="w-64 shrink-0 space-y-1.5 text-xs">
+          <div className="w-full min-w-0 space-y-1.5 text-xs sm:w-64 sm:shrink-0">
             <div className="flex justify-between text-gray-800 font-medium">
               <span>Subtotal</span>
               <span className="font-semibold text-gray-900">{symbol}{invoice.subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
@@ -810,8 +880,8 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
         </div>
 
         {/* Company Signature & Seal Block */}
-        <div className={`border-t border-gray-300 flex justify-between items-end gap-6 break-inside-avoid ${isPdfMode ? "pt-4" : "pt-6"}`}>
-          <div className="text-xs text-gray-800 font-medium max-w-md space-y-1.5">
+        <div className={`flex flex-col items-start gap-5 border-t border-gray-300 break-inside-avoid sm:flex-row sm:justify-between sm:items-end sm:gap-6 ${isPdfMode ? "pt-4" : "pt-6"}`}>
+          <div className="w-full min-w-0 space-y-1.5 text-xs font-medium text-gray-800 sm:max-w-md">
             {invoice.notes && (
               <div>
                 <span className="font-bold text-gray-900 uppercase tracking-wider text-[11px]">Notes:</span>
@@ -823,7 +893,7 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
             </p>
           </div>
 
-          <div className="w-64 space-y-2 text-right">
+          <div className="w-full min-w-0 space-y-2 text-right sm:w-64">
             <div className={`relative border-b border-gray-400 flex items-end justify-end pb-2 ${isPdfMode ? "h-20" : "h-24"}`}>
               {companySealUrl && (
                 <img
@@ -930,17 +1000,17 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
             </div>
             <div className="space-y-2">
               {invoice.activities.map((act: any) => (
-                <div key={act.id} className="flex items-center justify-between p-3 rounded-md bg-muted/60 border text-xs">
-                  <div className="flex items-center gap-2">
+                <div key={act.id} className="flex flex-col gap-2 p-3 rounded-md bg-muted/60 border text-xs sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <span className="font-semibold px-2 py-0.5 rounded bg-gray-200 text-gray-800 text-[10px] uppercase">
                       {act.action.replace("_", " ")}
                     </span>
-                    <span className="text-foreground">{act.details}</span>
+                    <span className="break-words text-foreground">{act.details}</span>
                     {act.user?.name && (
                       <span className="text-muted-foreground">by {act.user.name}</span>
                     )}
                   </div>
-                  <div className="text-muted-foreground whitespace-nowrap">
+                  <div className="text-muted-foreground sm:whitespace-nowrap">
                     {new Date(act.createdAt).toLocaleString("en-IN", {
                       dateStyle: "medium",
                       timeStyle: "short",

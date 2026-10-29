@@ -4,18 +4,17 @@ import { Phone, Globe, Mail, MapPin } from "lucide-react";
 export function CoverFooter({ proposal, company, config, showPageNumber }: { proposal?: any; company: any; config: any; showPageNumber?: boolean }) {
   if (!config.coverFooterEnabled) return null;
 
-  // Render services - use config.services if available, else active services from DB, else static fallback
-  const servicesList = Array.isArray(config.services) && config.services.length > 0
-    ? config.services
-    : (proposal?.activeServiceNames && proposal.activeServiceNames.length > 0)
-      ? proposal.activeServiceNames
-      : ["Branding", "Digital Marketing", "DV360", "Design Solution", "Website Development", "Mobile App Development", "Google Ads", "SEO", "Software Development"];
+  const activeServiceNames: string[] = proposal?.activeServiceNames ?? [];
+  const allowedServices = new Set(activeServiceNames);
+  const servicesList: string[] = Array.isArray(config.services) && config.services.length > 0
+    ? config.services.filter((service: string) => allowedServices.has(service))
+    : activeServiceNames;
 
   return (
     <div className="w-full flex flex-col z-20 mt-auto shrink-0">
 
       {/* Services Section */}
-      {config.showServices && (
+      {config.showServices && servicesList.length > 0 && (
         <div className="w-full bg-white py-6 flex flex-col items-center">
           <div className="flex items-center w-full max-w-4xl mx-auto mb-4">
             <div className="flex-1 border-t border-gray-300"></div>

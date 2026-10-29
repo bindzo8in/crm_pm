@@ -56,10 +56,12 @@ export async function CreateService(data: ServiceSchema): Promise<ActionResponse
                     name: validatedData.data.name,
                     slug,
                     description: validatedData.data.description,
-                    isActive: validatedData.data.isActive
+                    isActive: validatedData.data.isActive,
+                    showInProposal: validatedData.data.showInProposal ?? true,
                 }
             })
 
+            revalidatePath("/dashboard/services", "layout");
             return successResponse(
                 "Previously deleted service restored"
             );
@@ -70,6 +72,7 @@ export async function CreateService(data: ServiceSchema): Promise<ActionResponse
                 name: validatedData.data.name,
                 slug,
                 description: validatedData.data.description,
+                showInProposal: validatedData.data.showInProposal ?? true,
             }
         })
         revalidatePath("/dashboard/services", "layout");
@@ -107,7 +110,7 @@ export async function EditService(data: ServiceSchema) {
                 validatedData.error?.issues
             );
         }
-        const { id, name, description } = validatedData.data;
+        const { id, name, description, showInProposal } = validatedData.data;
         const service = await prisma.service.findUnique({
             where: { id },
             select: { id: true },
@@ -142,6 +145,7 @@ export async function EditService(data: ServiceSchema) {
                 name,
                 slug,
                 description,
+                showInProposal,
             },
         });
 
@@ -164,7 +168,13 @@ export async function GetService(id: string) {
 
         const service = await prisma.service.findUnique({
             where: { id },
-            select: { id: true, name: true, description: true, isActive: true },
+            select: {
+                id: true,
+                name: true,
+                description: true,
+                isActive: true,
+                showInProposal: true,
+            },
         });
 
         if (!service) {
@@ -240,6 +250,7 @@ export async function GetServices(query: ServiceQuerySchema) {
                     name: true,
                     description: true,
                     isActive: true,
+                    showInProposal: true,
                     packages: {
                         select: {
                             id: true,

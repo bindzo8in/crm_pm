@@ -27,6 +27,7 @@ import {
   ChartContainer,
   type ChartConfig,
 } from "@/components/ui/chart";
+import { type ReceivableAgeFilter } from "@/lib/reports/report-catalog";
 import {
   Tooltip,
   TooltipContent,
@@ -41,7 +42,7 @@ type DashboardData = {
   customerCount: number;
   pendingInvoiceCount: number;
   receivableTotal: number;
-  receivableAging: Array<{ label: string; amount: number; tone: string }>;
+  receivableAging: Array<{ label: string; age: ReceivableAgeFilter; amount: number; tone: string }>;
   salesReceiptsDues: Array<{
     period: string;
     sales: number;
@@ -151,6 +152,25 @@ function getBarValue(value: number | [number, number]) {
   return typeof value === "number" ? value : value[1] - value[0];
 }
 
+function SectionTooltip({ label, description }: { label: string; description: string }) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label={`About ${label}`}
+            className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Info aria-hidden="true" className="size-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>{description}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 export function DashboardOverview({
   firstName,
   greeting,
@@ -210,107 +230,169 @@ export function DashboardOverview({
   }
 
   return (
-    <main className="space-y-5 px-4 pb-8 md:px-6">
+    <main className="mx-auto w-full max-w-[1760px] space-y-4 pb-32 sm:space-y-5 md:pb-8">
       <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <p className="text-sm text-muted-foreground">{formatDate(new Date().toISOString())}</p>
+          <p className="text-xs text-muted-foreground sm:text-sm">{formatDate(new Date().toISOString())}</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
             {greeting}, {firstName}
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">Here’s the latest across your customers and invoices.</p>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">Here’s the latest across your customers and invoices.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" asChild>
+        <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 grid grid-cols-2 gap-2 border-t bg-background/95 p-3 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] backdrop-blur supports-[backdrop-filter]:bg-background/85 md:static md:flex md:border-0 md:bg-transparent md:p-0 md:shadow-none md:backdrop-blur-none md:bottom-auto md:z-auto">
+          <Button className="min-h-11 w-full md:w-auto" variant="outline" asChild>
             <Link href="/dashboard/customers/create"><Plus className="size-4" /> Add customer</Link>
           </Button>
-          <Button asChild>
+          <Button className="min-h-11 w-full md:w-auto" asChild>
             <Link href="/dashboard/invoices/create"><FilePlus2 className="size-4" /> Create invoice</Link>
           </Button>
         </div>
       </header>
 
-      <section aria-label="Outstanding receivables" className="w-full max-w-[850px]">
-        <Card className="gap-0 shadow-none">
+      <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+        <section aria-label="Outstanding receivables" className="min-w-0">
+        <Card className="gap-0 overflow-hidden shadow-none">
           <CardHeader className="flex flex-row items-center justify-between gap-3 border-b bg-muted/30 py-3">
             <div className="min-w-0">
-              <CardTitle className="text-sm font-medium">Total Receivables</CardTitle>
+              <div className="flex items-center gap-1.5">
+                <CardTitle className="text-sm font-medium">Total receivables</CardTitle>
+                <SectionTooltip
+                  label="total receivables"
+                  description="Outstanding balances on issued invoices that have not been fully paid."
+                />
+              </div>
             </div>
             <Button className="shrink-0" variant="ghost" size="sm" asChild>
-              <Link href="/dashboard/invoices/create"><Plus className="size-4 text-sky-500" /> New</Link>
+              <Link href="/dashboard/invoices/create"><Plus className="size-4 text-sky-500" /> New invoice</Link>
             </Button>
           </CardHeader>
-          <CardContent className="space-y-3 pt-3">
-            <p className="text-xs text-muted-foreground">
-              Total Receivables {formatTooltipCurrency(data.receivableTotal)}
-            </p>
-            <div
-              aria-label="Receivables by overdue age"
-              className="flex h-3 overflow-hidden rounded-sm bg-muted"
-              role="group"
-            >
-              <TooltipProvider>
-                {data.receivableAging.map((bucket) => (
-                  <Tooltip key={bucket.label}>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        aria-label={`${bucket.label}: ${formatCurrency(bucket.amount)}`}
-                        className={`${bucket.tone} block h-full min-w-0 shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-ring`}
-                        style={{ width: `${data.receivableTotal > 0 ? (bucket.amount / data.receivableTotal) * 100 : 0}%` }}
-                      />
-                    </TooltipTrigger>
-                    <TooltipContent className="flex-col items-start gap-0.5 px-3 py-2">
-                      <span className="text-base font-medium tabular-nums">{formatCurrency(bucket.amount)}</span>
-                      <span className="text-xs opacity-80">
-                        {bucket.label === "Current"
-                          ? "Outstanding · not overdue"
-                          : `Outstanding · overdue ${bucket.label.toLowerCase()}`}
-                      </span>
-                    </TooltipContent>
-                  </Tooltip>
-                ))}
-              </TooltipProvider>
-            </div>
-          </CardContent>
-          <div className="grid gap-3 border-t px-4 py-3 sm:grid-cols-2 lg:grid-cols-5">
-            {data.receivableAging.map((bucket) => (
-              <div key={bucket.label} className="border-l border-border pl-3 first:border-sky-500">
-                <p className={`text-[11px] uppercase ${bucket.label === "Current" ? "text-sky-600" : "text-orange-600"}`}>
-                  {bucket.label === "Current" ? "Current" : bucket.label === "1–15 days" ? "Overdue" : "\u00a0"}
-                </p>
-                <p className="mt-1 text-lg font-medium tabular-nums">{formatTooltipCurrency(bucket.amount)}</p>
-                {bucket.label !== "Current" && (
-                  <p className="text-xs text-muted-foreground">{bucket.label}</p>
-                )}
+          {data.pendingInvoiceCount === 0 ? (
+            <CardContent className="flex items-center gap-3 py-6" role="status">
+              <CheckCircle2 aria-hidden="true" className="size-5 shrink-0 text-emerald-600" />
+              <div>
+                <p className="text-sm font-medium">All receivables are settled</p>
+                <p className="text-xs text-muted-foreground">There are no outstanding invoice balances.</p>
               </div>
-            ))}
-          </div>
+            </CardContent>
+          ) : (
+            <>
+              <CardContent className="space-y-3 pt-4 sm:pt-5">
+                <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+                  <div>
+                    <p className="text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">
+                      {formatTooltipCurrency(data.receivableTotal)}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">Outstanding across all accounts</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{data.pendingInvoiceCount.toLocaleString("en-IN")} open invoices</p>
+                </div>
+                <div
+                  aria-label="Receivables by overdue age"
+                  className="flex h-2.5 overflow-hidden rounded-full bg-muted"
+                  role="group"
+                >
+                  <TooltipProvider>
+                    {data.receivableAging.map((bucket) => (
+                      <Tooltip key={bucket.label}>
+                        <TooltipTrigger asChild>
+                          <Link
+                            href={`/dashboard/reports?report=receivable-details&age=${bucket.age}`}
+                            aria-label={`${bucket.label}: ${formatCurrency(bucket.amount)}. View matching invoices`}
+                            className={`${bucket.tone} block h-full min-w-0 shrink-0 cursor-pointer outline-none hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring`}
+                            style={{ width: `${data.receivableTotal > 0 ? (bucket.amount / data.receivableTotal) * 100 : 0}%` }}
+                          />
+                        </TooltipTrigger>
+                        <TooltipContent className="flex-col items-start gap-0.5 px-3 py-2">
+                          <span className="text-base font-medium tabular-nums">{formatCurrency(bucket.amount)}</span>
+                          <span className="text-xs opacity-80">
+                            {bucket.label === "Current"
+                              ? "Outstanding · not overdue"
+                              : `Outstanding · overdue ${bucket.label.toLowerCase()}`}
+                          </span>
+                        </TooltipContent>
+                      </Tooltip>
+                    ))}
+                  </TooltipProvider>
+                </div>
+              </CardContent>
+              <div className="grid grid-cols-2 gap-2 border-t px-3 py-3 sm:grid-cols-3 sm:gap-3 sm:px-4 lg:grid-cols-5">
+                {data.receivableAging.map((bucket) => (
+                  <Link
+                    key={bucket.label}
+                    href={`/dashboard/reports?report=receivable-details&age=${bucket.age}`}
+                    aria-label={bucket.label === "Current"
+                      ? "View current invoices with an outstanding balance"
+                      : `View invoices overdue ${bucket.label}`}
+                    className="block min-w-0 rounded-lg border border-border/80 bg-muted/20 px-2.5 py-2 outline-none transition-colors hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring lg:rounded-none lg:border-0 lg:border-l lg:bg-transparent lg:px-2 lg:py-1 lg:first:border-sky-500"
+                  >
+                    <p className={`truncate text-[10px] font-medium uppercase tracking-wide ${bucket.label === "Current" ? "text-sky-600" : "text-orange-600"}`}>
+                      {bucket.label}
+                    </p>
+                    <p className="mt-1 truncate text-sm font-semibold tabular-nums sm:text-base">{formatCurrency(bucket.amount)}</p>
+                    <p className="truncate text-[11px] text-muted-foreground">{bucket.label === "Current" ? "Not due yet" : "Overdue"}</p>
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
         </Card>
+        </section>
+
+        <aside aria-label="Financial summary" className="grid min-w-0 grid-cols-3 gap-2 xl:grid-cols-2 xl:gap-3">
+          {[
+            { label: "Total sales", value: chartTotals.sales, tone: "text-blue-600 dark:text-blue-400" },
+            { label: "Receipts", value: chartTotals.receipts, tone: "text-emerald-700 dark:text-emerald-400" },
+            { label: "Expenses", value: chartTotals.expenses, tone: "text-orange-600 dark:text-orange-400" },
+          ].map((metric) => (
+            <Card key={metric.label} className="min-w-0 shadow-none">
+              <CardContent className="px-3 py-3 sm:px-4 sm:py-4">
+                <div className="flex items-center gap-1">
+                  <p className={`truncate text-[10px] font-medium uppercase tracking-wide sm:text-xs ${metric.tone}`}>{metric.label}</p>
+                  <SectionTooltip
+                    label={metric.label.toLowerCase()}
+                    description={metric.label === "Total sales"
+                      ? "Invoice sales for the selected chart period, excluding drafts and void invoices."
+                      : metric.label === "Receipts"
+                        ? "Payments received for invoices during the selected chart period."
+                        : "Completed expenses during the selected chart period."}
+                  />
+                </div>
+                <p className="mt-1 truncate text-sm font-semibold tabular-nums sm:text-lg">
+                  {formatCurrency(metric.value)}
+                </p>
+                <p className="mt-1 hidden truncate text-xs text-muted-foreground sm:block">{data.chartRangeLabel}</p>
+              </CardContent>
+            </Card>
+          ))}
+          <Card className="hidden min-w-0 shadow-none xl:block">
+            <CardContent className="px-4 py-4">
+              <div className="flex items-center gap-1">
+                <p className="truncate text-xs font-medium uppercase tracking-wide text-violet-600 dark:text-violet-400">Outstanding due</p>
+                <SectionTooltip
+                  label="outstanding due"
+                  description="Current unpaid balance across all issued invoices."
+                />
+              </div>
+              <p className="mt-1 truncate text-lg font-semibold tabular-nums">{formatCurrency(data.receivableTotal)}</p>
+              <p className="mt-1 truncate text-xs text-muted-foreground">
+                {data.pendingInvoiceCount.toLocaleString("en-IN")} open invoices
+              </p>
+            </CardContent>
+          </Card>
+        </aside>
       </section>
 
-      <section className="w-full max-w-[850px]">
+      <section aria-label="Sales and expenses" className="w-full">
         <Card className="min-w-0 gap-0 shadow-none">
           <CardHeader className="flex flex-col justify-between gap-3 border-b bg-muted/30 py-3 sm:flex-row sm:items-center">
             <div className="flex min-w-0 items-center gap-1.5">
               <div>
                 <CardTitle className="text-sm font-medium">Sales and Expenses</CardTitle>
               </div>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label="About sales and expenses"
-                      className="inline-flex size-5 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <Info className="size-3.5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    Sales are invoiced totals, receipts are payments received, and expenses are completed expenses.
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <SectionTooltip
+                label="sales and expenses"
+                description="Compare invoiced sales, payments received, and completed expenses over the selected period."
+              />
             </div>
             <div className="w-full sm:w-auto">
               <DashboardChartDateFilter
@@ -320,8 +402,8 @@ export function DashboardOverview({
               />
             </div>
           </CardHeader>
-          <div className="grid min-w-0 lg:grid-cols-[minmax(0,3fr)_minmax(220px,1fr)]">
-            <CardContent className="min-w-0 border-b py-4 lg:border-b-0 lg:border-r lg:py-5">
+          <div className="min-w-0">
+            <CardContent className="min-w-0 py-4 sm:py-5">
               {data.chartRangeError && (
                 <p role="alert" className="mb-2 text-sm text-destructive">{data.chartRangeError}</p>
               )}
@@ -333,7 +415,7 @@ export function DashboardOverview({
                 <div className="relative">
                   <ChartContainer
                     config={chartConfig}
-                    className="h-[210px] w-full [&_.recharts-surface:focus:not(:focus-visible)]:outline-none"
+                    className="h-[190px] w-full sm:h-[240px] lg:h-[280px] [&_.recharts-surface:focus:not(:focus-visible)]:outline-none"
                   >
                     <BarChart
                       data={data.monthlyTrend}
@@ -422,36 +504,30 @@ export function DashboardOverview({
                   )}
                 </div>
               )}
-              <p className="mt-2 text-xs text-muted-foreground">
+              <p className="mt-2 text-[11px] text-muted-foreground sm:text-xs">
                 * Sales value displayed is inclusive of tax and includes credits.
               </p>
             </CardContent>
-            <div className="flex min-w-0 flex-col justify-center gap-5 border-t px-5 py-4 text-right lg:border-t-0 lg:border-l">
-              <div>
-                <p className="text-xs text-blue-500">Total Sales</p>
-                <p className="mt-1 text-lg font-medium tabular-nums">{formatTooltipCurrency(chartTotals.sales)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-emerald-600">Total Receipts</p>
-                <p className="mt-1 text-lg font-medium tabular-nums">{formatTooltipCurrency(chartTotals.receipts)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-orange-500">Total Expenses</p>
-                <p className="mt-1 text-lg font-medium tabular-nums">{formatTooltipCurrency(chartTotals.expenses)}</p>
-              </div>
-            </div>
           </div>
         </Card>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <Card className="shadow-none">
-          <CardHeader className="flex-row items-center justify-between pb-3">
+      <section className="grid min-w-0 gap-4 md:grid-cols-2 2xl:grid-cols-2">
+        <Card className="min-w-0 shadow-none">
+          <CardHeader className="flex flex-col items-stretch gap-3 pb-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle className="text-base">Recent payments</CardTitle>
+              <div className="flex items-center gap-1.5">
+                <CardTitle className="text-base">Recent payments</CardTitle>
+                <SectionTooltip
+                  label="recent payments"
+                  description="The latest payments received against customer invoices."
+                />
+              </div>
               <p className="mt-1 text-sm text-muted-foreground">Latest invoice receipts</p>
             </div>
-            <Button variant="ghost" size="sm" asChild><Link href="/dashboard/finance">View all</Link></Button>
+            <Button className="w-full sm:w-auto" variant="default" size="sm" asChild>
+              <Link href="/dashboard/finance">View all</Link>
+            </Button>
           </CardHeader>
           <CardContent>
             {data.recentPayments.length === 0 ? (
@@ -486,10 +562,16 @@ export function DashboardOverview({
             )}
           </CardContent>
         </Card>
-        <Card className="shadow-none">
+        <Card className="min-w-0 shadow-none">
           <CardHeader className="flex-row items-center justify-between pb-3">
             <div>
-              <CardTitle className="text-base">This month</CardTitle>
+              <div className="flex items-center gap-1.5">
+                <CardTitle className="text-base">This month</CardTitle>
+                <SectionTooltip
+                  label="this month"
+                  description="Revenue received, change from last month, and new customer activity for the current month."
+                />
+              </div>
               <p className="mt-1 text-sm text-muted-foreground">A quick view of current activity</p>
             </div>
           </CardHeader>
@@ -515,10 +597,16 @@ export function DashboardOverview({
         </Card>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-3">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <Card className="shadow-none">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Customer sources</CardTitle>
+            <div className="flex items-center gap-1.5">
+              <CardTitle className="text-base">Customer sources</CardTitle>
+              <SectionTooltip
+                label="customer sources"
+                description="How many customers are associated with each recorded source."
+              />
+            </div>
             <p className="text-sm text-muted-foreground">Where your customer relationships begin</p>
           </CardHeader>
           <CardContent>
@@ -549,12 +637,20 @@ export function DashboardOverview({
         </Card>
 
         <Card className="shadow-none">
-          <CardHeader className="flex-row items-center justify-between pb-3">
+          <CardHeader className="flex flex-col items-stretch gap-3 pb-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle className="text-base">Recent customers</CardTitle>
+              <div className="flex items-center gap-1.5">
+                <CardTitle className="text-base">Recent customers</CardTitle>
+                <SectionTooltip
+                  label="recent customers"
+                  description="Customers most recently added to the CRM."
+                />
+              </div>
               <p className="mt-1 text-sm text-muted-foreground">Recently added to your CRM</p>
             </div>
-            <Button variant="ghost" size="sm" asChild><Link href="/dashboard/customers">View all</Link></Button>
+            <Button className="w-full sm:w-auto" variant="default" size="sm" asChild>
+              <Link href="/dashboard/customers">View all</Link>
+            </Button>
           </CardHeader>
           <CardContent>
             {data.recentCustomers.length === 0 ? (
@@ -581,12 +677,20 @@ export function DashboardOverview({
         </Card>
 
         <Card className="shadow-none">
-          <CardHeader className="flex-row items-center justify-between pb-3">
+          <CardHeader className="flex flex-col items-stretch gap-3 pb-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle className="text-base">Invoices coming due</CardTitle>
+              <div className="flex items-center gap-1.5">
+                <CardTitle className="text-base">Invoices coming due</CardTitle>
+                <SectionTooltip
+                  label="invoices coming due"
+                  description="Issued invoices with an unpaid balance, including overdue invoices."
+                />
+              </div>
               <p className="mt-1 text-sm text-muted-foreground">Keep an eye on outstanding balances</p>
             </div>
-            <Button variant="ghost" size="sm" asChild><Link href="/dashboard/invoices">View all</Link></Button>
+            <Button className="w-full sm:w-auto" variant="default" size="sm" asChild>
+              <Link href="/dashboard/invoices">View all</Link>
+            </Button>
           </CardHeader>
           <CardContent>
             {data.dueInvoices.length === 0 ? (
@@ -633,26 +737,14 @@ export function DashboardOverview({
       <Card className="overflow-hidden rounded-xl border shadow-none">
         <CardHeader className="flex flex-row items-center gap-1.5 border-b bg-muted/30 px-4 py-3">
           <CardTitle className="text-sm font-medium">Sales, Receipts, and Dues</CardTitle>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  aria-label="About sales, receipts, and dues"
-                  className="inline-flex size-5 items-center justify-center rounded-full text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <Info className="size-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                Sales are invoiced totals, receipts are payments received, and dues are outstanding balances by invoice due date.
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <SectionTooltip
+            label="sales, receipts, and dues"
+            description="Sales are invoiced totals, receipts are payments received, and dues are outstanding balances by invoice due date."
+          />
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[480px] text-sm">
+          <div className="hidden overflow-x-auto xl:block">
+            <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   <th scope="col" className="px-4 py-2.5 text-left font-medium"></th>
@@ -672,6 +764,24 @@ export function DashboardOverview({
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="divide-y px-3 xl:hidden">
+            {data.salesReceiptsDues.map((row) => (
+              <article key={row.period} className="space-y-2 py-3 first:pt-4 last:pb-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-medium">{row.period}</h3>
+                  <p className="text-sm font-semibold tabular-nums">{formatCurrency(row.sales)}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <p className="text-muted-foreground">
+                    Receipts <span className="font-medium tabular-nums text-foreground">{formatCurrency(row.receipts)}</span>
+                  </p>
+                  <p className="text-right text-muted-foreground">
+                    Due <span className="font-medium tabular-nums text-foreground">{formatCurrency(row.due)}</span>
+                  </p>
+                </div>
+              </article>
+            ))}
           </div>
         </CardContent>
       </Card>

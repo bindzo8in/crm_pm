@@ -26,18 +26,24 @@ import { useRouter } from "next/navigation"
 
 export function NavUser({
   user,
+  role,
+  department,
 }: {
   user: {
     name: string
     email: string
     avatar: string
   }
+  role: string
+  department?: string | null
 }) {
   const { isMobile } = useSidebar()
   const { data: session } = useSession()
 
   const sessionUser = session?.user
   const displayName = sessionUser?.name || user.name
+  const roleLabel = formatAccountLabel(role)
+  const departmentLabel = formatAccountLabel(department)
   const initials = displayName
     .trim()
     .split(/\s+/)
@@ -68,17 +74,18 @@ export function NavUser({
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              className="h-auto min-h-12 py-2 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <Avatar className="h-8 w-8 rounded-lg grayscale">
                 <AvatarImage src={sessionUser?.image || user.avatar} alt={sessionUser?.name || user.name} />
                 <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
               </Avatar>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium" suppressHydrationWarning>{sessionUser?.name || user.name}</span>
-                <span className="truncate text-xs text-muted-foreground" suppressHydrationWarning>
-                  {sessionUser?.email || user.email}
+              <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate font-medium" suppressHydrationWarning>{sessionUser?.name || user.name}</span>
+                  <span className="shrink-0 truncate text-[11px] text-sidebar-foreground/80">({roleLabel})</span>
                 </span>
+                <span className="truncate text-xs text-muted-foreground">{departmentLabel}</span>
               </div>
               <EllipsisVerticalIcon className="ml-auto size-4" />
             </SidebarMenuButton>
@@ -95,11 +102,12 @@ export function NavUser({
                   <AvatarImage src={sessionUser?.image || user.avatar} alt={sessionUser?.name || user.name} />
                   <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
                 </Avatar>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium" suppressHydrationWarning>{sessionUser?.name || user.name}</span>
-                  <span className="truncate text-xs text-muted-foreground" suppressHydrationWarning>
-                    {sessionUser?.email || user.email}
+                <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate font-medium" suppressHydrationWarning>{sessionUser?.name || user.name}</span>
+                    <span className="shrink-0 truncate text-[11px] text-muted-foreground">({roleLabel})</span>
                   </span>
+                  <span className="truncate text-xs text-muted-foreground">{departmentLabel}</span>
                 </div>
               </div>
             </DropdownMenuLabel>
@@ -122,4 +130,14 @@ export function NavUser({
       </SidebarMenuItem>
     </SidebarMenu>
   )
+}
+
+function formatAccountLabel(value: string | null | undefined) {
+  if (!value) return "Not assigned"
+
+  return value
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
 }

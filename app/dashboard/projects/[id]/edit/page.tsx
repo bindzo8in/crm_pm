@@ -1,9 +1,7 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProjectEditContext } from "@/actions/project";
 import DashboardContainer from "@/app/dashboard/dashboard-container";
 import { ProjectForm } from "@/components/projects/project-form";
-import { Button } from "@/components/ui/button";
 import { requirePageAccess } from "@/lib/auth-guard";
 
 type RouteParams = Promise<{ id: string }>;
@@ -20,13 +18,10 @@ export default async function EditProjectPage({
   const context = await getProjectEditContext(id);
   if (!context.success) {
     return (
-      <DashboardContainer title="Edit project">
+      <DashboardContainer title="Edit project" back={{ href: `/dashboard/projects/${id}`, label: "Back to project" }}>
         <section role="alert" className="mx-auto w-full max-w-3xl rounded-xl border border-destructive/30 bg-destructive/5 p-5">
           <h2 className="font-semibold">Project cannot be edited</h2>
           <p className="mt-2 text-sm text-muted-foreground">{context.message}</p>
-          <Button asChild variant="outline" className="mt-4">
-            <Link href={`/dashboard/projects/${id}`}>Back to project</Link>
-          </Button>
         </section>
       </DashboardContainer>
     );
@@ -36,7 +31,7 @@ export default async function EditProjectPage({
   const { project } = data;
 
   return (
-    <DashboardContainer title={`Edit ${project.projectCode}`}>
+    <DashboardContainer title={`Edit ${project.projectCode}`} back={{ href: `/dashboard/projects/${id}`, label: "Back to project" }}>
       <ProjectForm
         customers={data.customers}
         initialUsers={data.users}

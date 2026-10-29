@@ -14,7 +14,7 @@ export default async function CreateExpensePage() {
 
   if (!accountsResult.success) {
     return (
-      <DashboardContainer title="Record Expense">
+      <DashboardContainer title="Record Expense" back={{ href: "/dashboard/finance", label: "Back to finance" }}>
         <main className="p-4 md:p-6">
           <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             Expense form could not be loaded: {accountsResult.message}

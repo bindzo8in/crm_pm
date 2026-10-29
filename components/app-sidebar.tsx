@@ -5,6 +5,7 @@ import * as React from "react"
 import { NavMain } from "@/components/nav-main"
 import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
+import { MobileBottomNav } from "@/components/mobile-bottom-nav"
 import {
   Sidebar,
   SidebarContent,
@@ -38,6 +39,7 @@ import Image from "next/image"
 import { UserRole } from "@/app/generated/prisma/enums"
 import { canReadFinance } from "@/lib/permissions"
 import { canAccessRoute } from "@/lib/route-permissions"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 const data = {
   navMain: [
@@ -182,6 +184,7 @@ export function AppSidebar({
   department?: string | null
   user: { name: string; email: string; avatar: string }
 }) {
+  const isMobile = useIsMobile()
   const homeUrl = "/dashboard"
   const hasWorkspaceAccess =
     userRole !== UserRole.STAFF || Boolean(department?.trim())
@@ -195,6 +198,10 @@ export function AppSidebar({
   const navSecondaryItems = hasWorkspaceAccess
     ? data.navSecondary.filter((item) => canAccessRoute(item.url, userRole, department))
     : []
+
+  if (isMobile) {
+    return <MobileBottomNav items={navMainItems} secondaryItems={navSecondaryItems} />
+  }
 
   return (
     <Sidebar
@@ -225,7 +232,7 @@ export function AppSidebar({
         <NavSecondary items={navSecondaryItems} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={user} />
+        <NavUser user={user} role={userRole} department={department} />
       </SidebarFooter>
     </Sidebar>
   )

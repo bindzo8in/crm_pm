@@ -13,7 +13,8 @@ export const serviceSchema = z.object({
   name: z.string({ error: 'This field is required' }).min(2, 'Service name is too short').max(255, 'Service name is too long').trim(),
   slug: z.string().optional(),
   description: z.string({ error: 'This field is required' }).optional(),
-  isActive: z.boolean()
+  isActive: z.boolean(),
+  showInProposal: z.boolean().optional(),
 });
 
 export const serviceQuerySchema = z.object({

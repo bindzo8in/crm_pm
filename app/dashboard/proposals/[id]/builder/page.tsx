@@ -10,7 +10,7 @@ export default async function ProposalPriceBuilder({ params }: PageProps<'/dashb
     await requirePageAccess("/dashboard/proposals");
     const { id } = await params
     return (
-        <DashboardContainer title={`Proposal Builder`}>
+        <DashboardContainer title="Proposal Builder" back={{ href: `/dashboard/proposals/${id}/preview`, label: "Back to proposal preview" }}>
             <PriceBuilderComponent proposalId={id} />
         </DashboardContainer>
     )

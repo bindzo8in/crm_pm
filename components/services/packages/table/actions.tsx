@@ -15,7 +15,6 @@ import {
 
 import {
   MoreHorizontal,
-  Eye,
   Pencil,
   Copy,
   CopyCheck,
@@ -113,15 +112,6 @@ export function ServicePackageActions({
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end">
-        <DropdownMenuItem asChild>
-          <Link
-            href={`/dashboard/packages/${servicePackage.id}`}
-          >
-            <Eye />
-            View
-          </Link>
-        </DropdownMenuItem>
-
         <DropdownMenuItem asChild>
           <Link
             href={`/dashboard/services/${servicePackage.service.id}/edit-package?packageId=${servicePackage.id}`}

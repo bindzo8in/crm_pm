@@ -4,18 +4,13 @@ export const metadata = {
 
 import { ServiceForm } from "@/components/services/create-edit";
 import DashboardContainer from "../../dashboard-container";
-import { ArrowLeft } from "lucide-react";
 import { requirePageAccess } from "@/lib/auth-guard";
 
 export default async function CreateServicePage() {
     await requirePageAccess("/dashboard/services");
 
     return (
-        <DashboardContainer title="Create Service" action={{
-            href: "/dashboard/services",
-            label: "Back",
-            icon: <ArrowLeft className="size-4" />
-        }}>
+        <DashboardContainer title="Create Service" back={{ href: "/dashboard/services", label: "Back to services" }}>
             <ServiceForm />
         </DashboardContainer>
     )

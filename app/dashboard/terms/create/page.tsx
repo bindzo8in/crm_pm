@@ -14,7 +14,7 @@ export default async function CreateTerms() {
     const activePackages = packagesResponse.success && packagesResponse.data ? packagesResponse.data : [];
 
     return (
-        <DashboardContainer title="Create Terms">
+        <DashboardContainer title="Create Terms" back={{ href: "/dashboard/terms", label: "Back to terms" }}>
             <ProposalTermForm activePackages={activePackages} />
         </DashboardContainer>
     )

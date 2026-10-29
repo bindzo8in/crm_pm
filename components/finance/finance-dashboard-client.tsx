@@ -19,6 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useRouter } from "next/navigation";
 
 type Overview = {
   receivedIncome: number;
@@ -185,6 +186,8 @@ export function FinanceReportPanel({
   });
   const [isLoading, setIsLoading] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+
+
 
   async function runReport(nextFilters: ReportFilters) {
     setIsLoading(true);
@@ -370,7 +373,68 @@ export function FinanceReportPanel({
               </div>
             </div>
 
-            <div className="overflow-x-auto rounded-lg border">
+            <div className="divide-y rounded-lg border lg:hidden">
+              {report.rows.length ? report.rows.map((row) => (
+                <article key={row.id} className="space-y-3 px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="break-words font-medium">{row.reference}</p>
+                      <p className="break-words text-xs text-muted-foreground">{row.description}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{formatDate(row.date)}</p>
+                    </div>
+                    <p className={`shrink-0 text-right text-sm font-semibold tabular-nums ${row.type === "INCOME" ? "text-emerald-700 dark:text-emerald-400" : ""}`}>
+                      {row.type === "INCOME" ? "+" : "−"}{formatCurrency(row.amount)}
+                    </p>
+                  </div>
+                  <dl className="grid grid-cols-2 gap-3 rounded-md bg-muted/40 p-3 sm:grid-cols-3">
+                    <div className="space-y-1">
+                      <dt className="text-[10px] text-muted-foreground">Type / category</dt>
+                      <dd className="break-words text-xs font-medium">
+                        {row.type === "INCOME" ? "Income" : "Expense"} · {row.category}
+                      </dd>
+                    </div>
+                    <div className="space-y-1">
+                      <dt className="text-[10px] text-muted-foreground">Consumer / vendor</dt>
+                      <dd className="break-words text-xs font-medium">{row.party ?? "—"}</dd>
+                    </div>
+                    <div className="space-y-1">
+                      <dt className="text-[10px] text-muted-foreground">Attachment</dt>
+                      <dd className="text-xs font-medium">
+                        {row.attachment_url ? (
+                          <a href={row.attachment_url} target="_blank" rel="noreferrer" className="text-primary underline-offset-4 hover:underline">
+                            View attachment
+                          </a>
+                        ) : "—"}
+                      </dd>
+                    </div>
+                    <div className="space-y-1">
+                      <dt className="text-[10px] text-muted-foreground">Method</dt>
+                      <dd className="break-words text-xs font-medium">{row.payment_method.replaceAll("_", " ")}</dd>
+                    </div>
+                    <div className="space-y-1">
+                      <dt className="text-[10px] text-muted-foreground">Account</dt>
+                      <dd className="break-words text-xs font-medium">{row.account}</dd>
+                    </div>
+                    <div className="space-y-1">
+                      <dt className="text-[10px] text-muted-foreground">Created by</dt>
+                      <dd className="break-words text-xs font-medium">{row.creator ?? "—"}</dd>
+                    </div>
+                    <div className="col-span-2 space-y-1 sm:col-span-1">
+                      <dt className="text-[10px] text-muted-foreground">Status</dt>
+                      <dd>
+                        <Badge variant={row.status === "COMPLETED" ? "secondary" : "outline"}>
+                          {row.status.charAt(0) + row.status.slice(1).toLowerCase()}
+                        </Badge>
+                      </dd>
+                    </div>
+                  </dl>
+                </article>
+              )) : (
+                <p className="px-4 py-10 text-center text-sm text-muted-foreground">No transactions match these filters.</p>
+              )}
+            </div>
+
+            <div className="hidden overflow-x-auto rounded-lg border lg:block">
               <Table className="min-w-[1120px]">
                 <TableHeader>
                   <TableRow>
@@ -490,6 +554,8 @@ export function FinanceDashboardClient({
     { label: "Pending expenses", value: overview?.pendingExpenses, icon: ReceiptText, color: "text-amber-700 dark:text-amber-400" },
     { label: "Pending invoice income", value: overview?.outstandingReceivables, icon: ReceiptText, color: "text-violet-700 dark:text-violet-400" },
   ];
+
+    const router = useRouter();
 
   return (
     <main className="min-w-0 space-y-6">
@@ -627,7 +693,7 @@ export function FinanceDashboardClient({
                 ) : (
                   <div className="divide-y">
                     {invoicePayments.map((payment) => (
-                      <div key={payment.id} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+                      <div key={payment.id} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0" onClick={() => router.push(`dashboard/invoices/${payment.invoice.invoiceNumber}`)}>
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium">{payment.invoice.customerDisplayName}</p>
                           <p className="truncate text-xs text-muted-foreground">

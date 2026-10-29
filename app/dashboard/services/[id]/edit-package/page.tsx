@@ -5,7 +5,6 @@ export const metadata = {
 import DashboardContainer from "@/app/dashboard/dashboard-container";
 import { CreateEditServicePackageForm } from "@/components/services/create-edit-service-package";
 import { GetServiceNameById, getServicePackage } from "@/actions/services";
-import { ArrowLeft } from "lucide-react";
 import { requirePageAccess } from "@/lib/auth-guard";
 
 export default async function EditServicePackagePage({ params, searchParams }: PageProps<'/dashboard/services/[id]/edit-package'>) {
@@ -18,11 +17,7 @@ export default async function EditServicePackagePage({ params, searchParams }: P
     return (
         <DashboardContainer
             title={service.success && service.data ? `Edit Service Package for ${service.data.name}` : "Edit Service Package"}
-            action={{
-                href: "/dashboard/services",
-                label: "Back",
-                icon: <ArrowLeft />
-            }}>
+            back={{ href: "/dashboard/services/packages", label: "Back to packages" }}>
             <CreateEditServicePackageForm serviceId={id} defaultValues={servicePackage.success ? servicePackage.data : undefined} />
         </DashboardContainer>
     )

@@ -14,7 +14,7 @@ export default async function ProposalComposerPage({ params }: PageProps) {
   await requirePageAccess("/dashboard/proposals");
   const { id } = await params;
   return (
-    <DashboardContainer title="Proposal Composer">
+    <DashboardContainer title="Proposal Composer" back={{ href: `/dashboard/proposals/${id}/preview`, label: "Back to proposal preview" }}>
       <ComposerComponent proposalId={id} />
     </DashboardContainer>
   );

@@ -7,7 +7,7 @@ import { errorResponse, successResponse } from "@/lib/action-response";
 import prisma from "@/lib/prisma";
 import { headers } from "next/headers";
 import { z } from "zod";
-import type { ReportId } from "@/lib/reports/report-catalog";
+import { receivableAgeSchema, type ReportId } from "@/lib/reports/report-catalog";
 
 const reportInputSchema = z.object({
   reportId: z.enum([
@@ -29,6 +29,7 @@ const reportInputSchema = z.object({
   ]),
   startDate: z.union([z.literal(""), z.iso.date()]).default(""),
   endDate: z.union([z.literal(""), z.iso.date()]).default(""),
+  age: receivableAgeSchema.default("ALL"),
   search: z.string().trim().max(120).default(""),
   status: z.enum([
     "ALL",
@@ -108,15 +109,22 @@ export async function getBusinessReport(input: unknown) {
     const parsed = reportInputSchema.safeParse(input);
     if (!parsed.success) return errorResponse("Invalid report filters", parsed.error.flatten());
     const filters = parsed.data;
+    if (filters.age !== "ALL" && filters.reportId !== "receivable-details") {
+      return errorResponse("Aging periods are only available for the receivables details report");
+    }
 
     if (!(await canReadReport(filters.reportId))) {
       return errorResponse("You do not have permission to view this report");
     }
 
     const now = new Date();
+    const ageFilterActive = filters.reportId === "receivable-details" && filters.age !== "ALL";
+    const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
     const startDate = filters.startDate
       ? new Date(`${filters.startDate}T00:00:00.000Z`)
-      : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      : ageFilterActive
+        ? todayStart
+        : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     const endExclusive = filters.endDate
       ? new Date(`${filters.endDate}T00:00:00.000Z`)
       : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
@@ -255,9 +263,42 @@ export async function getBusinessReport(input: unknown) {
       }
       case "receivables-aging":
       case "receivable-details": {
+        const ageDateConditions: Prisma.InvoiceWhereInput[] = [];
+        if (filters.age !== "ALL") {
+          const subtractDays = (days: number) => {
+            const date = new Date(todayStart);
+            date.setUTCDate(date.getUTCDate() - days);
+            return date;
+          };
+          const dueDateRanges = {
+            DAYS_1_15: { gte: subtractDays(15), lt: todayStart },
+            DAYS_16_30: { gte: subtractDays(30), lt: subtractDays(15) },
+            DAYS_31_45: { gte: subtractDays(45), lt: subtractDays(30) },
+            OVER_45: { lt: subtractDays(45) },
+          };
+          if (filters.age === "CURRENT") {
+            ageDateConditions.push({
+              OR: [{ dueDate: null }, { dueDate: { gte: todayStart } }],
+            });
+          } else {
+            ageDateConditions.push({ dueDate: dueDateRanges[filters.age] });
+          }
+          if (filters.startDate) {
+            ageDateConditions.push({
+              dueDate: { gte: new Date(`${filters.startDate}T00:00:00.000Z`) },
+            });
+          }
+          if (filters.endDate) {
+            const selectedEnd = new Date(`${filters.endDate}T00:00:00.000Z`);
+            selectedEnd.setUTCDate(selectedEnd.getUTCDate() + 1);
+            ageDateConditions.push({ dueDate: { lt: selectedEnd } });
+          }
+        }
         const invoices = await prisma.invoice.findMany({
           where: {
-            dueDate: { gte: startDate, lt: endExclusive },
+            ...(filters.age === "ALL"
+              ? { dueDate: { gte: startDate, lt: endExclusive } }
+              : { AND: ageDateConditions }),
             deletedAt: null,
             status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
             amountPaid: { lt: prisma.invoice.fields.grandTotal },

@@ -58,6 +58,10 @@ export async function getUpcomingHolidaysAction() {
 export async function createHolidayAction(input: unknown) {
   await requireHolidayManager("create");
   const parsed = holidaySchema.parse(input);
+  const currentMonthStart = `${formatInIST(new Date(), "yyyy-MM")}-01`;
+  if (parsed.date.toISOString().slice(0, 10) < currentMonthStart) {
+    throw new Error("Choose a holiday date in the current month or later.");
+  }
   const holiday = await addHoliday({
     name: parsed.name,
     date: parsed.date,

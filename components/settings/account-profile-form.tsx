@@ -25,7 +25,23 @@ const profileSchema = z.object({
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
 
-export function AccountProfileForm() {
+function formatAccountLabel(value: string | null | undefined) {
+    if (!value) return "Not assigned";
+
+    return value
+        .toLowerCase()
+        .split("_")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+}
+
+export function AccountProfileForm({
+    role,
+    department,
+}: {
+    role?: string | null;
+    department?: string | null;
+}) {
     const { data: session, isPending: isSessionLoading } = useSession();
     const [isSaving, setIsSaving] = useState(false);
 
@@ -101,6 +117,24 @@ export function AccountProfileForm() {
                 <Field className="gap-1 col-span-full md:col-span-4">
                     <FieldLabel>Email (Read-only)</FieldLabel>
                     <Input value={session?.user?.email || ""} disabled />
+                </Field>
+
+                <Field className="gap-1 col-span-full md:col-span-2">
+                    <FieldLabel htmlFor="accountRole">Role (Read-only)</FieldLabel>
+                    <Input
+                        id="accountRole"
+                        value={formatAccountLabel(role)}
+                        disabled
+                    />
+                </Field>
+
+                <Field className="gap-1 col-span-full md:col-span-2">
+                    <FieldLabel htmlFor="accountDepartment">Department (Read-only)</FieldLabel>
+                    <Input
+                        id="accountDepartment"
+                        value={formatAccountLabel(department)}
+                        disabled
+                    />
                 </Field>
 
             </FieldGroup>

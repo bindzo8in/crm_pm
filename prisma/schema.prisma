@@ -233,6 +233,7 @@ model Service {
   description String?
 
   isActive Boolean @default(true)
+  showInProposal Boolean @default(true)
 
   packages ServicePackage[]
 

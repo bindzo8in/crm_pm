@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SlidersHorizontal } from "lucide-react";
 import { Department, LeaveStatus, LeaveType, UserRole } from "@/app/generated/prisma/enums";
 import {
   getAllLeaveRequestsAction,
@@ -131,6 +132,64 @@ function LeaveTableRow({
   );
 }
 
+function LeaveRequestCard({
+  leave,
+  managerUser,
+  viewerId,
+}: {
+  leave: LeaveRequestRow;
+  managerUser?: ManagerLeaveRequestRow["user"];
+  viewerId: string;
+}) {
+  const canReview = Boolean(
+    managerUser &&
+    leave.status === LeaveStatus.PENDING &&
+    managerUser.id !== viewerId,
+  );
+
+  return (
+    <article className="space-y-3 border-b px-4 py-4 last:border-b-0">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          {managerUser && (
+            <div>
+              <p className="font-medium">{managerUser.name || managerUser.email}</p>
+              <p className="text-xs text-muted-foreground">{managerUser.department ?? "No department"}</p>
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">{leave.type}</Badge>
+            <Badge variant={statusVariant(leave.status)}>{leave.status}</Badge>
+          </div>
+        </div>
+        <div className="shrink-0">
+          {canReview && managerUser
+            ? <LeaveReviewDialog leave={{ ...leave, user: managerUser }} />
+            : managerUser && leave.status === LeaveStatus.PENDING
+              ? <span className="text-xs text-muted-foreground">Self-review blocked</span>
+              : !managerUser && leave.status === LeaveStatus.PENDING
+                ? <CancelLeaveButton id={leave.id} />
+                : null}
+        </div>
+      </div>
+      <p className="text-sm font-medium">
+        {formatDate(leave.startDate)} <span className="text-muted-foreground">to</span> {formatDate(leave.endDate)}
+      </p>
+      <LeaveDays
+        totalDays={leave.totalDays}
+        netLeaveDays={leave.netLeaveDays}
+        sundayCount={leave.sundayCount}
+        holidayCount={leave.holidayCount}
+      />
+      <p className="break-words text-sm">{leave.reason}</p>
+      <p className="break-words text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">Manager comment: </span>
+          {leave.managerComment || "—"}
+      </p>
+    </article>
+  );
+}
+
 function Pagination({
   query,
   pageKey,
@@ -187,7 +246,25 @@ function RequestsTable({
     : [];
 
   return (
-    <div className="overflow-x-auto">
+    <>
+      <div className="divide-y rounded-lg border lg:hidden">
+        {managerView
+          ? managerRows.map((leave) => (
+              <LeaveRequestCard
+                key={leave.id}
+                leave={leave}
+                managerUser={leave.user}
+                viewerId={viewerId}
+              />
+            ))
+          : rows.map((leave) => (
+              <LeaveRequestCard key={leave.id} leave={leave} viewerId={viewerId} />
+            ))}
+        {rows.length === 0 && (
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground">No leave requests found.</p>
+        )}
+      </div>
+      <div className="hidden overflow-x-auto lg:block">
       <Table>
         <TableHeader>
           <TableRow>
@@ -216,7 +293,8 @@ function RequestsTable({
               ))}
         </TableBody>
       </Table>
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -238,6 +316,14 @@ export default async function LeavesPage({
   const department = first(query.department) || undefined;
   const fromDate = first(query.fromDate) || undefined;
   const throughDate = first(query.throughDate) || undefined;
+  const activeFilterCount = [
+    search,
+    type,
+    status,
+    department,
+    fromDate,
+    throughDate,
+  ].filter(Boolean).length;
 
   const managerResult = isManager
     ? await getAllLeaveRequestsAction({
@@ -358,39 +444,50 @@ export default async function LeavesPage({
             </CardDescription>
           </CardHeader>
           <CardContent className="border-b">
-            <form method="get" action="/dashboard/leaves" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <details className="group lg:contents">
+              <summary className="mb-3 flex min-h-11 cursor-pointer list-none items-center justify-between rounded-md border bg-background px-3 text-sm font-medium outline-none marker:hidden focus-visible:ring-2 focus-visible:ring-ring lg:hidden">
+                <span className="inline-flex items-center gap-2">
+                  <SlidersHorizontal aria-hidden="true" className="size-4 text-primary" />
+                  Filter requests
+                </span>
+                <span className="text-xs font-normal text-muted-foreground">
+                  {activeFilterCount ? `${activeFilterCount} active` : "Optional"}
+                </span>
+              </summary>
+            <form method="get" action="/dashboard/leaves" className="hidden grid-cols-2 gap-3 group-open:grid lg:grid lg:grid-cols-4">
               <input
                 name="search"
                 defaultValue={search}
                 placeholder="Employee name or email"
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                className="col-span-2 h-10 min-w-0 rounded-md border border-input bg-background px-3 text-sm lg:col-span-1"
                 aria-label="Search employee"
               />
-              <select name="type" defaultValue={type ?? ""} className="h-9 rounded-md border border-input bg-background px-3 text-sm" aria-label="Filter by leave type">
+              <select name="type" defaultValue={type ?? ""} className="h-10 min-w-0 rounded-md border border-input bg-background px-2 text-sm sm:px-3" aria-label="Filter by leave type">
                 <option value="">All types</option>
                 {Object.values(LeaveType).map((value) => <option key={value} value={value}>{value}</option>)}
               </select>
-              <select name="status" defaultValue={status ?? ""} className="h-9 rounded-md border border-input bg-background px-3 text-sm" aria-label="Filter by status">
+              <select name="status" defaultValue={status ?? ""} className="h-10 min-w-0 rounded-md border border-input bg-background px-2 text-sm sm:px-3" aria-label="Filter by status">
                 <option value="">All statuses</option>
                 {Object.values(LeaveStatus).map((value) => <option key={value} value={value}>{value}</option>)}
               </select>
-              <select name="department" defaultValue={department ?? ""} className="h-9 rounded-md border border-input bg-background px-3 text-sm" aria-label="Filter by department">
+              <select name="department" defaultValue={department ?? ""} className="h-10 min-w-0 rounded-md border border-input bg-background px-2 text-sm sm:px-3" aria-label="Filter by department">
                 <option value="">All departments</option>
                 {Object.values(Department).map((value) => <option key={value} value={value}>{value}</option>)}
               </select>
-              <label className="space-y-1 text-xs text-muted-foreground">
+              <label className="min-w-0 space-y-1 text-xs text-muted-foreground">
                 Requests overlapping from
-                <input name="fromDate" type="date" defaultValue={fromDate ?? ""} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" />
+                <input name="fromDate" type="date" defaultValue={fromDate ?? ""} className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-2 text-sm text-foreground sm:px-3" />
               </label>
-              <label className="space-y-1 text-xs text-muted-foreground">
+              <label className="min-w-0 space-y-1 text-xs text-muted-foreground">
                 Requests overlapping through
-                <input name="throughDate" type="date" defaultValue={throughDate ?? ""} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" />
+                <input name="throughDate" type="date" defaultValue={throughDate ?? ""} className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-2 text-sm text-foreground sm:px-3" />
               </label>
-              <div className="flex items-end gap-2">
-                <Button type="submit">Apply filters</Button>
-                <Button asChild variant="outline"><Link href="/dashboard/leaves">Clear</Link></Button>
+              <div className="col-span-2 flex items-end gap-2 lg:col-span-1">
+                <Button type="submit" className="min-h-10 flex-1 lg:flex-none">Apply filters</Button>
+                <Button asChild variant="outline" className="min-h-10 flex-1 lg:flex-none"><Link href="/dashboard/leaves">Clear</Link></Button>
               </div>
             </form>
+            </details>
           </CardContent>
           <CardContent className="pt-6">
             {managerResult.leaves.length > 0 ? (

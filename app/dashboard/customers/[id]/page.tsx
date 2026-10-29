@@ -27,6 +27,7 @@ export default async function CustomerDetailsPage({
   return (
     <DashboardContainer
       title={customer.displayName}
+      back={{ href: "/dashboard/customers", label: "Back to customers" }}
       action={projectResult.success && projectResult.data?.canCreateProjects
         ? {
             href: `/dashboard/projects/new?customerId=${encodeURIComponent(customer.id)}`,

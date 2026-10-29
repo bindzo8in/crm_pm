@@ -1,3 +1,25 @@
+import { z } from "zod";
+
+export const receivableAgeSchema = z.enum([
+  "ALL",
+  "CURRENT",
+  "DAYS_1_15",
+  "DAYS_16_30",
+  "DAYS_31_45",
+  "OVER_45",
+]);
+export type ReceivableAge = z.infer<typeof receivableAgeSchema>;
+export type ReceivableAgeFilter = Exclude<ReceivableAge, "ALL">;
+
+export const receivableAgeOptions: Array<{ value: ReceivableAge; label: string }> = [
+  { value: "ALL", label: "All outstanding invoices" },
+  { value: "CURRENT", label: "Current" },
+  { value: "DAYS_1_15", label: "1–15 days overdue" },
+  { value: "DAYS_16_30", label: "16–30 days overdue" },
+  { value: "DAYS_31_45", label: "31–45 days overdue" },
+  { value: "OVER_45", label: "Over 45 days overdue" },
+];
+
 export type ReportId =
   | "sales-by-customer"
   | "sales-by-item"

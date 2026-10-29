@@ -21,7 +21,8 @@ export function ServiceForm({ service }: { service?: Extract<Awaited<ReturnType<
       id: service?.id || "",
       name: service?.name || "",
       description: service?.description || "",
-      isActive: service?.isActive || true
+      isActive: service?.isActive ?? true,
+      showInProposal: service?.showInProposal ?? true,
     }
   })
   const { formState: { isSubmitting } } = form;
@@ -129,6 +130,29 @@ export function ServiceForm({ service }: { service?: Extract<Awaited<ReturnType<
                 />
                 <FieldLabel htmlFor="isActive">Active Status </FieldLabel>
 
+                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+              </FieldContent>
+            </Field>
+          )}
+        />
+        <Controller
+          name="showInProposal"
+          control={form.control}
+          render={({ field, fieldState }) => (
+            <Field orientation="horizontal" data-invalid={fieldState.invalid} className="col-span-full">
+              <FieldContent className="flex flex-row gap-1">
+                <Checkbox
+                  aria-invalid={fieldState.invalid}
+                  id="showInProposal"
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+                <div className="space-y-1">
+                  <FieldLabel htmlFor="showInProposal">Show in proposals</FieldLabel>
+                  <p className="text-sm text-muted-foreground">
+                    Include this service in the proposal&apos;s Core Services list.
+                  </p>
+                </div>
                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
               </FieldContent>
             </Field>

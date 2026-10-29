@@ -92,7 +92,22 @@ export default async function HolidaysPage({
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+              <div className="divide-y lg:hidden">
+                {holidays.map((holiday) => (
+                  <article key={holiday.id} className="space-y-2 py-4 first:pt-0 last:pb-0">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="font-semibold">{holiday.name}</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">{formatDate(holiday.date)}</p>
+                      </div>
+                      {isManager && <ManageHolidayDialog holiday={holiday} />}
+                    </div>
+                    <p className="break-words text-sm text-muted-foreground">{holiday.description || "No description"}</p>
+                  </article>
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto lg:block">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -117,7 +132,8 @@ export default async function HolidaysPage({
                   ))}
                 </TableBody>
               </Table>
-            </div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

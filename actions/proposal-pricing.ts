@@ -198,9 +198,9 @@ export async function getProposalPricing(proposalId: string, isPublic = false) {
       : [];
     const packageItemsById = new Map(packageItems.map((item) => [item.id, item]));
 
-    // Fetch active service names for the cover footer fallback
+    // Fetch services enabled for the proposal cover's Core Services list.
     const activeServices = await prisma.service.findMany({
-      where: { isActive: true, deletedAt: null },
+      where: { isActive: true, showInProposal: true, deletedAt: null },
       select: { name: true },
       orderBy: { name: 'asc' }
     });

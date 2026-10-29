@@ -2,20 +2,12 @@
 
 import { Button } from "@/components/ui/button";
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
-import {
-    ColumnDef,
-    flexRender,
+    type ColumnDef,
+    type RowData,
     getCoreRowModel,
     useReactTable,
 } from "@tanstack/react-table";
-import { Dispatch, SetStateAction } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import {
     Select,
     SelectContent,
@@ -24,8 +16,9 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { DataTableView } from "@/components/data-table-view";
 
-interface DataTableProps<TData, TValue> {
+interface DataTableProps<TData extends RowData, TValue> {
     columns: ColumnDef<TData, TValue>[];
     data: TData[];
     total: number;
@@ -39,14 +32,16 @@ interface DataTableProps<TData, TValue> {
             pageSize: number;
         }>
     >;
+    mobileTitleColumnId?: string;
 }
 
-export function DataTable<TData, TValue>({
+export function DataTable<TData extends RowData, TValue>({
     columns,
     data,
     total,
     pagination,
     onPaginationChange,
+    mobileTitleColumnId = "displayName",
 }: DataTableProps<TData, TValue>) {
     const pageCount = Math.max(
         1,
@@ -80,55 +75,7 @@ export function DataTable<TData, TValue>({
 
     return (
         <div className="overflow-hidden rounded-lg border">
-            <Table>
-                <TableHeader>
-                    {table.getHeaderGroups().map((headerGroup) => (
-                        <TableRow key={headerGroup.id}>
-                            {headerGroup.headers.map((header) => (
-                                <TableHead key={header.id}>
-                                    {header.isPlaceholder
-                                        ? null
-                                        : flexRender(
-                                            header.column.columnDef.header,
-                                            header.getContext()
-                                        )}
-                                </TableHead>
-                            ))}
-                        </TableRow>
-                    ))}
-                </TableHeader>
-
-                <TableBody>
-                    {table.getRowModel().rows.length ? (
-                        table.getRowModel().rows.map((row) => (
-                            <TableRow
-                                key={row.id}
-                                data-state={
-                                    row.getIsSelected() && "selected"
-                                }
-                            >
-                                {row.getVisibleCells().map((cell) => (
-                                    <TableCell key={cell.id}>
-                                        {flexRender(
-                                            cell.column.columnDef.cell,
-                                            cell.getContext()
-                                        )}
-                                    </TableCell>
-                                ))}
-                            </TableRow>
-                        ))
-                    ) : (
-                        <TableRow>
-                            <TableCell
-                                colSpan={columns.length}
-                                className="h-24 text-center text-muted-foreground"
-                            >
-                                No results found.
-                            </TableCell>
-                        </TableRow>
-                    )}
-                </TableBody>
-            </Table>
+            <DataTableView table={table} emptyMessage="No results found." mobileTitleColumnId={mobileTitleColumnId} />
 
             <div className="flex flex-col gap-4 border-t p-4 md:flex-row md:items-center md:justify-between">
                 <div className="text-sm text-muted-foreground">

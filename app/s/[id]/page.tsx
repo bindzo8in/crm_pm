@@ -3,6 +3,8 @@ import { SalarySlipRenderer } from "@/components/salary/salary-slip-renderer";
 import DashboardProviders from "@/app/dashboard/providers";
 import { Metadata } from "next";
 import prisma from "@/lib/prisma";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
 export async function generateMetadata(props: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const params = await props.params;
@@ -57,7 +59,14 @@ export default async function SalarySlipPage({ params, searchParams }: SalarySli
   return (
     <DashboardProviders>
       <div className="min-h-screen bg-gray-50/50 p-4 md:p-8">
-        <div className="max-w-4xl mx-auto mb-6 flex justify-end">
+        <div className="mx-auto mb-6 flex max-w-4xl items-center justify-between gap-3">
+          <Link
+            href="/dashboard/salary"
+            className="inline-flex h-10 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted"
+          >
+            <ArrowLeft aria-hidden="true" className="size-4" />
+            Back to salary
+          </Link>
           <a
             href={`/api/salary/slips/${id}/pdf`}
             target="_blank"

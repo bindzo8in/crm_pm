@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   MoreHorizontal,
-  Eye,
   Pencil,
   Package,
   Plus,
@@ -24,7 +23,7 @@ import {
 
 import { DeleteService } from "@/actions/services";
 import { useQueryClient } from "@tanstack/react-query";
-import { serviceKeys, servicePackageKeys } from "../util";
+import { serviceKeys } from "../util";
 
 interface ServiceActionsProps {
   service: {
@@ -80,13 +79,6 @@ export function ServiceActions({
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end">
-        <DropdownMenuItem asChild>
-          <Link href={`/dashboard/services/${service.id}`}>
-            <Eye />
-            View
-          </Link>
-        </DropdownMenuItem>
-
         <DropdownMenuItem asChild>
           <Link
             href={`/dashboard/services/${service.id}/edit`}

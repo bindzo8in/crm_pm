@@ -3,7 +3,11 @@ import DashboardContainer from "@/app/dashboard/dashboard-container";
 import { ReportsCenter } from "@/components/reports/reports-center";
 import { auth } from "@/lib/auth";
 import { requirePageAccess } from "@/lib/auth-guard";
-import { reportCatalog, type ReportId } from "@/lib/reports/report-catalog";
+import {
+  receivableAgeSchema,
+  reportCatalog,
+  type ReportId,
+} from "@/lib/reports/report-catalog";
 import { headers } from "next/headers";
 
 export const metadata = {
@@ -30,6 +34,8 @@ export default async function ReportsPage({
   const requestedReportId = requestedDefinition?.id ?? null;
   const startDate = first(query.startDate) ?? "";
   const endDate = first(query.endDate) ?? "";
+  const parsedAge = receivableAgeSchema.safeParse(first(query.age) ?? "ALL");
+  const age = parsedAge.success ? parsedAge.data : "ALL";
   const search = first(query.search) ?? "";
   const status = first(query.status) ?? "ALL";
   const headersList = await headers();
@@ -53,7 +59,9 @@ export default async function ReportsPage({
   let initialReport = null;
   let initialError: string | null = null;
   let initialReportId: ReportId | null = requestedReportId;
-  if (requestedReportId && !allowedReports.includes(requestedReportId)) {
+  if (!parsedAge.success) {
+    initialError = "This receivables period is not available.";
+  } else if (requestedReportId && !allowedReports.includes(requestedReportId)) {
     initialReportId = null;
     initialError = "You do not have permission to view this report.";
   } else if (requestedReportId) {
@@ -61,6 +69,7 @@ export default async function ReportsPage({
       reportId: requestedReportId,
       startDate,
       endDate,
+      age,
       search,
       status,
       page: 0,
@@ -83,7 +92,7 @@ export default async function ReportsPage({
         <ReportsCenter
           allowedReports={allowedReports}
           initialReportId={initialReportId}
-          initialFilters={{ startDate, endDate, search, status }}
+          initialFilters={{ startDate, endDate, age, search, status }}
           initialReport={initialReport}
           initialError={initialError}
         />

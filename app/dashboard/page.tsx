@@ -4,12 +4,13 @@ import { DashboardOverview } from "@/components/dashboard/dashboard-overview";
 import { StaffDashboardHome } from "./staff-dashboard-home";
 import { requirePageAccess } from "@/lib/auth-guard";
 import { canReadDashboard } from "@/lib/permissions";
+import type { ReceivableAgeFilter } from "@/lib/reports/report-catalog";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 import DashboardContainer from "./dashboard-container";
 
 const chartFilterSchema = z.object({
-  period: z.enum(["last6months", "thisFiscalYear", "previousFiscalYear", "custom"]).default("previousFiscalYear"),
+  period: z.enum(["last6months", "thisFiscalYear", "previousFiscalYear", "custom"]).default("thisFiscalYear"),
   fromDate: z.preprocess((value) => value === "" ? undefined : value, z.iso.date().optional()),
   toDate: z.preprocess((value) => value === "" ? undefined : value, z.iso.date().optional()),
 }).superRefine((filters, context) => {
@@ -101,7 +102,7 @@ export default async function Page({
   const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const query = await searchParams;
   const first = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
-  const rawPeriod = first(query.period) ?? "previousFiscalYear";
+  const rawPeriod = first(query.period) ?? "thisFiscalYear";
   const rawFromDate = first(query.fromDate);
   const rawToDate = first(query.toDate);
   const parsedChartFilters = chartFilterSchema.safeParse({
@@ -110,21 +111,21 @@ export default async function Page({
     toDate: rawToDate,
   });
   const parsedPeriod = chartFilterSchema.shape.period.safeParse(rawPeriod);
-  const chartPeriod: ChartPeriod = parsedPeriod.success ? parsedPeriod.data : "previousFiscalYear";
+  const chartPeriod: ChartPeriod = parsedPeriod.success ? parsedPeriod.data : "thisFiscalYear";
   const chartRange = parsedChartFilters.success
     ? getChartRange(chartPeriod, now, parsedChartFilters.data.fromDate, parsedChartFilters.data.toDate)
-    : getChartRange(chartPeriod === "custom" ? "previousFiscalYear" : chartPeriod, now);
+    : getChartRange(chartPeriod === "custom" ? "thisFiscalYear" : chartPeriod, now);
   const chartRangeError = parsedChartFilters.success
     ? null
     : parsedChartFilters.error.issues[0]?.message ?? "Invalid chart date range";
   const chartRangeLabel = chartRange
     ? getChartRangeLabel(
-        parsedChartFilters.success ? chartPeriod : chartPeriod === "custom" ? "previousFiscalYear" : chartPeriod,
+        parsedChartFilters.success ? chartPeriod : chartPeriod === "custom" ? "thisFiscalYear" : chartPeriod,
         chartRange,
         parsedChartFilters.success ? parsedChartFilters.data.toDate : undefined,
       )
     : "Last 6 months";
-  const activeChartRange = chartRange ?? getChartRange("previousFiscalYear", now)!;
+  const activeChartRange = chartRange ?? getChartRange("thisFiscalYear", now)!;
   const chartStartDate = activeChartRange.start.toISOString().slice(0, 10);
   const chartEndDate = new Date(activeChartRange.endExclusive.getTime() - 1).toISOString().slice(0, 10);
   const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -388,6 +389,14 @@ export default async function Page({
   const formatAmountInInr = (amount: Prisma.Decimal, currency: string, exchangeRate: Prisma.Decimal | null) =>
     amount.toNumber() * (currency === "INR" ? 1 : exchangeRate?.toNumber() ?? 83.5);
 
+  const receivableAging = [
+    { label: "Current", age: "CURRENT", amount: receivableTotal[0]?.current.toNumber() ?? 0, tone: "bg-sky-500" },
+    { label: "1–15 days", age: "DAYS_1_15", amount: receivableTotal[0]?.days1to15.toNumber() ?? 0, tone: "bg-amber-400" },
+    { label: "16–30 days", age: "DAYS_16_30", amount: receivableTotal[0]?.days16to30.toNumber() ?? 0, tone: "bg-orange-500" },
+    { label: "31–45 days", age: "DAYS_31_45", amount: receivableTotal[0]?.days31to45.toNumber() ?? 0, tone: "bg-rose-500" },
+    { label: "Over 45 days", age: "OVER_45", amount: receivableTotal[0]?.over45Days.toNumber() ?? 0, tone: "bg-red-700" },
+  ] satisfies Array<{ label: string; age: ReceivableAgeFilter; amount: number; tone: string }>;
+
   const dashboardData = {
     currentRevenue,
     revenueChange,
@@ -395,13 +404,7 @@ export default async function Page({
     customerCount,
     pendingInvoiceCount: Number(receivableTotal[0]?.count ?? BigInt(0)),
     receivableTotal: receivableTotal[0]?.amount.toNumber() ?? 0,
-    receivableAging: [
-      { label: "Current", amount: receivableTotal[0]?.current.toNumber() ?? 0, tone: "bg-sky-500" },
-      { label: "1–15 days", amount: receivableTotal[0]?.days1to15.toNumber() ?? 0, tone: "bg-amber-400" },
-      { label: "16–30 days", amount: receivableTotal[0]?.days16to30.toNumber() ?? 0, tone: "bg-orange-500" },
-      { label: "31–45 days", amount: receivableTotal[0]?.days31to45.toNumber() ?? 0, tone: "bg-rose-500" },
-      { label: "Over 45 days", amount: receivableTotal[0]?.over45Days.toNumber() ?? 0, tone: "bg-red-700" },
-    ],
+    receivableAging,
     salesReceiptsDues: salesReceiptsDues.map((row) => ({
       period: row.period,
       sales: row.sales.toNumber(),

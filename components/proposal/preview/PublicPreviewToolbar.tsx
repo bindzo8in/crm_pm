@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Printer, FileDown, ZoomIn, ZoomOut, Maximize, Loader2 } from "lucide-react";
+import { Printer, FileDown, ZoomIn, ZoomOut, Maximize, Loader2, ArrowLeft } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 interface PublicPreviewToolbarProps {
   proposalId: string;
@@ -10,8 +11,18 @@ interface PublicPreviewToolbarProps {
 }
 
 export function PublicPreviewToolbar({ proposalId, proposalNumber }: PublicPreviewToolbarProps) {
+  const router = useRouter();
   const [zoom, setZoom] = useState(100);
   const [isDownloading, setIsDownloading] = useState(false);
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      router.back();
+      return;
+    }
+
+    router.push("/");
+  };
 
   const handlePrint = () => {
     window.print();
@@ -68,8 +79,20 @@ export function PublicPreviewToolbar({ proposalId, proposalNumber }: PublicPrevi
 
   return (
     <div className="proposal-preview-toolbar sticky top-0 z-50 w-full bg-white border-b shadow-sm py-2 sm:py-3 px-2 sm:px-6 flex flex-wrap items-center justify-between gap-y-2 print:hidden">
-      <div className="font-semibold text-lg text-slate-800 hidden sm:block">
-        Proposal View
+      <div className="flex min-w-0 items-center gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={handleBack}
+          aria-label="Go back"
+          className="size-9 shrink-0"
+        >
+          <ArrowLeft aria-hidden="true" className="size-4" />
+        </Button>
+        <span className="hidden truncate text-lg font-semibold text-slate-800 sm:block">
+          Proposal View
+        </span>
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2 border-x px-2 sm:px-4 mx-2">

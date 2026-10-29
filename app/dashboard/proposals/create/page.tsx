@@ -19,7 +19,7 @@ export default async function ProposalCreatePage() {
         queryFn: () => GetCustomerOptions("")
     })
     return (
-        <DashboardContainer title="Create Proposal">
+        <DashboardContainer title="Create Proposal" back={{ href: "/dashboard/proposals", label: "Back to proposals" }}>
             <HydrationBoundary state={dehydrate(queryClient)}>
                 <ProposalCreateEditForm />
             </HydrationBoundary>

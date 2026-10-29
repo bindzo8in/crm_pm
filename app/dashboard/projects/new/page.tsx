@@ -1,9 +1,7 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getProjectCreationContext } from "@/actions/project";
 import DashboardContainer from "@/app/dashboard/dashboard-container";
 import { ProjectForm } from "@/components/projects/project-form";
-import { Button } from "@/components/ui/button";
 import { requirePageAccess } from "@/lib/auth-guard";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -26,13 +24,10 @@ export default async function NewProjectPage({
 
   if (!context.success) {
     return (
-      <DashboardContainer title="Create project">
+      <DashboardContainer title="Create project" back={{ href: "/dashboard/projects", label: "Back to projects" }}>
         <section role="alert" className="mx-auto w-full max-w-3xl rounded-xl border border-destructive/30 bg-destructive/5 p-5">
           <h2 className="font-semibold">Project form is unavailable</h2>
           <p className="mt-2 text-sm text-muted-foreground">{context.message}</p>
-          <Button asChild variant="outline" className="mt-4">
-            <Link href="/dashboard/projects">Back to projects</Link>
-          </Button>
         </section>
       </DashboardContainer>
     );
@@ -44,7 +39,7 @@ export default async function NewProjectPage({
   }
 
   return (
-    <DashboardContainer title={data.proposal ? "Convert proposal to project" : "Create project"}>
+    <DashboardContainer title={data.proposal ? "Convert proposal to project" : "Create project"} back={{ href: "/dashboard/projects", label: "Back to projects" }}>
       <ProjectForm
         customers={data.customers}
         initialUsers={data.users}

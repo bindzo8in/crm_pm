@@ -736,7 +736,102 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="divide-y lg:hidden">
+          {loading ? (
+            <p className="px-4 py-12 text-center text-sm text-muted-foreground">
+              <RefreshCwIcon className="mx-auto mb-2 size-5 animate-spin text-primary" />
+              Loading attendance records...
+            </p>
+          ) : reportData.records.length === 0 ? (
+            <p className="px-4 py-12 text-center text-sm text-muted-foreground">
+              No attendance records found matching current filters.
+            </p>
+          ) : reportData.records.map((rec, idx) => {
+            const clockInFormatted = rec.clockIn ? formatInIST(new Date(rec.clockIn), "hh:mm a") : "-";
+            const clockOutFormatted = rec.clockOut
+              ? formatInIST(new Date(rec.clockOut), "hh:mm a")
+              : rec.isAutoCheckedOut
+                ? "Auto-Closed"
+                : "Active";
+            const grossMins = rec.clockIn && rec.clockOut
+              ? Math.max(0, Math.round((new Date(rec.clockOut).getTime() - new Date(rec.clockIn).getTime()) / (1000 * 60)))
+              : 0;
+            const statusClass = rec.status === "PRESENT"
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600"
+              : rec.status === "LATE"
+                ? "border-destructive/30 bg-destructive/10 text-destructive"
+                : rec.status === "HALF_DAY"
+                  ? "border-amber-500/30 bg-amber-500/10 text-amber-600"
+                  : "border-rose-500/30 bg-rose-500/10 text-rose-600";
+            const deviation = rec.overtimeMinutes > 0
+              ? `+${Math.floor(rec.overtimeMinutes / 60)}h ${rec.overtimeMinutes % 60}m overtime`
+              : rec.lateMinutes > 0
+                ? `${rec.lateMinutes}m late`
+                : "—";
+
+            return (
+              <article key={rec.id} className="space-y-3 px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h4 className="break-words font-semibold">{rec.user?.name || "N/A"}</h4>
+                    <p className="break-all text-xs text-muted-foreground">
+                      {rec.user?.employeeId ? `${rec.user.employeeId} · ` : ""}{rec.user?.email}
+                    </p>
+                    <p className="mt-1 text-sm font-medium">
+                      {rec.date ? formatInIST(new Date(rec.date), "dd MMM yyyy") : "-"}
+                    </p>
+                  </div>
+                  <Badge variant="outline" className={`shrink-0 text-[10px] font-bold ${statusClass}`}>
+                    {rec.status === "LATE" ? `LATE (${rec.lateMinutes}m)` : rec.status.replace("_", " ")}
+                  </Badge>
+                </div>
+                <dl className="grid grid-cols-2 gap-3 rounded-md bg-muted/40 p-3 sm:grid-cols-3">
+                  <div className="space-y-1">
+                    <dt className="text-[10px] text-muted-foreground">Department</dt>
+                    <dd className="break-words text-xs font-medium">{rec.department || rec.user?.department || "N/A"}</dd>
+                  </div>
+                  <div className="space-y-1">
+                    <dt className="text-[10px] text-muted-foreground">Work mode</dt>
+                    <dd className="text-xs font-medium">{rec.workMode}</dd>
+                  </div>
+                  <div className="space-y-1">
+                    <dt className="text-[10px] text-muted-foreground">Clock in</dt>
+                    <dd className="text-xs font-medium text-emerald-600 dark:text-emerald-400">{clockInFormatted}</dd>
+                  </div>
+                  <div className="space-y-1">
+                    <dt className="text-[10px] text-muted-foreground">Clock out</dt>
+                    <dd className="text-xs font-medium text-rose-600 dark:text-rose-400">{clockOutFormatted}</dd>
+                  </div>
+                  <div className="space-y-1">
+                    <dt className="text-[10px] text-muted-foreground">Gross work</dt>
+                    <dd className="text-xs font-medium">{grossMins > 0 ? `${Math.floor(grossMins / 60)}h ${grossMins % 60}m` : "—"}</dd>
+                  </div>
+                  <div className="space-y-1">
+                    <dt className="text-[10px] text-muted-foreground">Breaks</dt>
+                    <dd className="text-xs font-medium">{rec.breakMinutes > 0 ? `${rec.breakMinutes}m` : "0m"}</dd>
+                  </div>
+                  <div className="space-y-1">
+                    <dt className="text-[10px] text-muted-foreground">Net hours</dt>
+                    <dd className="text-xs font-bold">{rec.workMinutes > 0 ? `${Math.floor(rec.workMinutes / 60)}h ${rec.workMinutes % 60}m` : "—"}</dd>
+                  </div>
+                  <div className="space-y-1">
+                    <dt className="text-[10px] text-muted-foreground">Late / overtime</dt>
+                    <dd className="text-xs font-medium">{deviation}</dd>
+                  </div>
+                  <div className="space-y-1">
+                    <dt className="text-[10px] text-muted-foreground">Record status</dt>
+                    <dd className="text-xs font-medium">
+                      {rec.regularized ? "Regularized" : rec.isManuallyEdited ? "Edited" : "Not adjusted"}
+                    </dd>
+                  </div>
+                </dl>
+                <span className="sr-only">Record {((page - 1) * 25) + idx + 1}</span>
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="hidden overflow-x-auto lg:block">
           <Table>
             <TableHeader className="bg-muted/50">
               <TableRow className="text-xs">

@@ -21,7 +21,7 @@ export default async function EditTerms({ params }: PageProps<'/dashboard/terms/
     const activePackages = packagesResponse.success && packagesResponse.data ? packagesResponse.data : [];
 
     return (
-        <DashboardContainer title="Edit Terms">
+        <DashboardContainer title="Edit Terms" back={{ href: "/dashboard/terms", label: "Back to terms" }}>
             <ProposalTermForm initialData={term} activePackages={activePackages} />
         </DashboardContainer>
     )

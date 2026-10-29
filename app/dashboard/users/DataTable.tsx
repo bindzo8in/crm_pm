@@ -79,58 +79,129 @@ export function DataTable<TData, TValue>({
         (pagination.pageIndex + 1) * pagination.pageSize,
         total
     );
+    const tableHeaders = table.getHeaderGroups().flatMap((headerGroup) => headerGroup.headers);
 
     return (
         <div className="overflow-hidden rounded-lg border">
-            <Table>
-                <TableHeader>
-                    {table.getHeaderGroups().map((headerGroup) => (
-                        <TableRow key={headerGroup.id}>
-                            {headerGroup.headers.map((header) => (
-                                <TableHead key={header.id}>
-                                    {header.isPlaceholder
-                                        ? null
-                                        : flexRender(
-                                            header.column.columnDef.header,
-                                            header.getContext()
-                                        )}
-                                </TableHead>
-                            ))}
-                        </TableRow>
-                    ))}
-                </TableHeader>
+            <div className="divide-y lg:hidden">
+                {table.getRowModel().rows.length ? (
+                    table.getRowModel().rows.map((row) => {
+                        const cells = row.getVisibleCells();
+                        const nameCell = cells.find((cell) => cell.column.id === "name");
+                        const emailCell = cells.find((cell) => cell.column.id === "email");
+                        const actionCell = cells.find((cell) => cell.column.id === "actions");
+                        const detailCells = cells.filter(
+                            (cell) => !["name", "email", "actions"].includes(cell.column.id),
+                        );
 
-                <TableBody>
-                    {table.getRowModel().rows.length ? (
-                        table.getRowModel().rows.map((row) => (
-                            <TableRow
+                        return (
+                            <article
                                 key={row.id}
-                                data-state={
-                                    row.getIsSelected() && "selected"
-                                }
+                                className="space-y-3 bg-card px-3 py-3.5 sm:px-4"
                             >
-                                {row.getVisibleCells().map((cell) => (
-                                    <TableCell key={cell.id}>
-                                        {flexRender(
-                                            cell.column.columnDef.cell,
-                                            cell.getContext()
+                                <div className="flex min-w-0 items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        {nameCell && (
+                                            <h3 className="truncate text-sm font-semibold">
+                                                {flexRender(nameCell.column.columnDef.cell, nameCell.getContext())}
+                                            </h3>
                                         )}
-                                    </TableCell>
+                                        {emailCell && (
+                                            <p className="mt-1 break-all text-xs text-muted-foreground">
+                                                {flexRender(emailCell.column.columnDef.cell, emailCell.getContext())}
+                                            </p>
+                                        )}
+                                    </div>
+                                    {actionCell && (
+                                        <div className="-mr-2 -mt-2 shrink-0">
+                                            {flexRender(actionCell.column.columnDef.cell, actionCell.getContext())}
+                                        </div>
+                                    )}
+                                </div>
+                                {detailCells.length > 0 && (
+                                    <dl className="grid grid-cols-2 gap-x-3 gap-y-3 rounded-md bg-muted/40 p-3 sm:grid-cols-3">
+                                        {detailCells.map((cell) => {
+                                            const header = tableHeaders.find(
+                                                (tableHeader) => tableHeader.column.id === cell.column.id,
+                                            );
+                                            const label = header && !header.isPlaceholder
+                                                ? flexRender(header.column.columnDef.header, header.getContext())
+                                                : cell.column.id;
+
+                                            return (
+                                                <div key={cell.id} className="min-w-0 space-y-1">
+                                                    <dt className="truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                                        {label}
+                                                    </dt>
+                                                    <dd className="min-w-0 truncate text-xs font-medium">
+                                                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                                    </dd>
+                                                </div>
+                                            );
+                                        })}
+                                    </dl>
+                                )}
+                            </article>
+                        );
+                    })
+                ) : (
+                    <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+                        {emptyState}
+                    </p>
+                )}
+            </div>
+
+            <div className="hidden lg:block">
+                <Table>
+                    <TableHeader>
+                        {table.getHeaderGroups().map((headerGroup) => (
+                            <TableRow key={headerGroup.id}>
+                                {headerGroup.headers.map((header) => (
+                                    <TableHead key={header.id}>
+                                        {header.isPlaceholder
+                                            ? null
+                                            : flexRender(
+                                                header.column.columnDef.header,
+                                                header.getContext()
+                                            )}
+                                    </TableHead>
                                 ))}
                             </TableRow>
-                        ))
-                    ) : (
-                        <TableRow>
-                            <TableCell
-                                colSpan={columns.length}
-                                className="h-24 text-center text-muted-foreground"
-                            >
-                                {emptyState}
-                            </TableCell>
-                        </TableRow>
-                    )}
-                </TableBody>
-            </Table>
+                        ))}
+                    </TableHeader>
+
+                    <TableBody>
+                        {table.getRowModel().rows.length ? (
+                            table.getRowModel().rows.map((row) => (
+                                <TableRow
+                                    key={row.id}
+                                    data-state={
+                                        row.getIsSelected() && "selected"
+                                    }
+                                >
+                                    {row.getVisibleCells().map((cell) => (
+                                        <TableCell key={cell.id}>
+                                            {flexRender(
+                                                cell.column.columnDef.cell,
+                                                cell.getContext()
+                                            )}
+                                        </TableCell>
+                                    ))}
+                                </TableRow>
+                            ))
+                        ) : (
+                            <TableRow>
+                                <TableCell
+                                    colSpan={columns.length}
+                                    className="h-24 text-center text-muted-foreground"
+                                >
+                                    {emptyState}
+                                </TableCell>
+                            </TableRow>
+                        )}
+                    </TableBody>
+                </Table>
+            </div>
 
             <div className="flex flex-col gap-3 border-t p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
                 <div className="text-sm text-muted-foreground">

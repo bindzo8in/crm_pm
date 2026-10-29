@@ -1,0 +1,2 @@
+ALTER TABLE "Service"
+ADD COLUMN "showInProposal" BOOLEAN NOT NULL DEFAULT true;

@@ -46,6 +46,16 @@ export const columns: ColumnDef<ServiceRow>[] = [
         ),
     },
     {
+        id: "showInProposal",
+        accessorKey: "showInProposal",
+        header: "Proposal Visibility",
+        cell: ({ row }) => (
+            <Badge variant={row.original.showInProposal ? "default" : "secondary"} className="text-xs">
+                {row.original.showInProposal ? "Shown" : "Hidden"}
+            </Badge>
+        ),
+    },
+    {
         id: "actions",
         cell: ({ row }) => (
             <ServiceActions service={row.original} />

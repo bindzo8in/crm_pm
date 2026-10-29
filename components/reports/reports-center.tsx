@@ -18,7 +18,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { reportCatalog, reportGroups, type ReportId } from "@/lib/reports/report-catalog";
+import {
+  receivableAgeOptions,
+  receivableAgeSchema,
+  reportCatalog,
+  reportGroups,
+  type ReceivableAge,
+  type ReportId,
+} from "@/lib/reports/report-catalog";
 
 type ReportRow = { id: string; [key: string]: string | number | null };
 type ReportResult = {
@@ -35,6 +42,7 @@ type ReportResult = {
 type ReportFilters = {
   startDate: string;
   endDate: string;
+  age: ReceivableAge;
   search: string;
   status: string;
   page: number;
@@ -163,7 +171,12 @@ export function ReportsCenter({
 
   function selectReport(reportId: ReportId) {
     setSelectedReportId(reportId);
-    const nextFilters = { ...filters, status: "ALL", page: 0 };
+    const nextFilters = {
+      ...filters,
+      age: reportId === "receivable-details" ? filters.age : "ALL",
+      status: "ALL",
+      page: 0,
+    };
     setReport(null);
     setErrorMessage(null);
     const params = new URLSearchParams({ report: reportId });
@@ -176,10 +189,16 @@ export function ReportsCenter({
     event.preventDefault();
     if (!selectedReportId) return;
     const formData = new FormData(event.currentTarget);
+    const parsedAge = receivableAgeSchema.safeParse(String(formData.get("age") ?? "ALL"));
+    if (!parsedAge.success) {
+      setErrorMessage("Choose a valid invoice age period.");
+      return;
+    }
     const nextFilters: ReportFilters = {
       ...filters,
       startDate: String(formData.get("startDate") ?? ""),
       endDate: String(formData.get("endDate") ?? ""),
+      age: parsedAge.data,
       search: String(formData.get("search") ?? "").trim(),
       status: String(formData.get("status") ?? "ALL"),
       page: 0,
@@ -234,6 +253,7 @@ export function ReportsCenter({
   function addFiltersToUrl(params: URLSearchParams, currentFilters: ReportFilters) {
     if (currentFilters.startDate) params.set("startDate", currentFilters.startDate);
     if (currentFilters.endDate) params.set("endDate", currentFilters.endDate);
+    if (currentFilters.age !== "ALL") params.set("age", currentFilters.age);
     if (currentFilters.search) params.set("search", currentFilters.search);
     if (currentFilters.status !== "ALL") params.set("status", currentFilters.status);
   }
@@ -292,6 +312,27 @@ export function ReportsCenter({
                     placeholder="Search this report…"
                   />
                 </div>
+                {selectedReportId === "receivable-details" && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="report-age">Invoice age</Label>
+                    <select
+                      id="report-age"
+                      name="age"
+                      value={filters.age}
+                      onChange={(event) => {
+                        const parsedAge = receivableAgeSchema.safeParse(event.target.value);
+                        if (parsedAge.success) {
+                          setFilters((current) => ({ ...current, age: parsedAge.data }));
+                        }
+                      }}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {receivableAgeOptions.map(({ value, label }) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 {statusOptions && (
                   <div className="space-y-1.5">
                     <Label htmlFor="report-status">Status</Label>
@@ -346,14 +387,42 @@ export function ReportsCenter({
               <Card className="shadow-none">
                 <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 border-b bg-muted/30 py-3">
                   <CardTitle className="text-sm font-medium">
-                    {dateLabelFormatter.format(new Date(`${report.startDate}T00:00:00.000Z`))}
-                    {" – "}
-                    {dateLabelFormatter.format(new Date(`${report.endDate}T00:00:00.000Z`))}
+                    {filters.age !== "ALL"
+                      ? receivableAgeOptions.find(({ value }) => value === filters.age)?.label
+                      : `${dateLabelFormatter.format(new Date(`${report.startDate}T00:00:00.000Z`))} – ${dateLabelFormatter.format(new Date(`${report.endDate}T00:00:00.000Z`))}`}
                   </CardTitle>
                   <Badge variant="outline">{report.totalCount.toLocaleString("en-IN")} results</Badge>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <div className="overflow-x-auto">
+                  <div className="divide-y lg:hidden">
+                    {report.rows.length ? report.rows.map((row) => {
+                      const [primaryColumn, ...detailColumns] = selectedDefinition.columns;
+                      return (
+                        <article key={row.id} className="space-y-3 px-4 py-4">
+                          {primaryColumn && (
+                            <h3 className="break-words text-sm font-semibold">
+                              {displayValue(row[primaryColumn.key], primaryColumn.key)}
+                            </h3>
+                          )}
+                          <dl className="grid grid-cols-2 gap-3 rounded-md bg-muted/40 p-3 sm:grid-cols-3">
+                            {detailColumns.map((column) => (
+                              <div key={column.key} className="min-w-0 space-y-1">
+                                <dt className="text-[10px] font-medium text-muted-foreground">{column.label}</dt>
+                                <dd className={`break-words text-xs ${column.align === "right" ? "tabular-nums" : ""} ${column.key === "status" || column.key === "segment" ? "font-medium" : ""}`}>
+                                  {displayValue(row[column.key], column.key)}
+                                </dd>
+                              </div>
+                            ))}
+                          </dl>
+                        </article>
+                      );
+                    }) : (
+                      <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+                        No results match these filters.
+                      </p>
+                    )}
+                  </div>
+                  <div className="hidden overflow-x-auto lg:block">
                     <Table className="min-w-[720px]">
                       <TableHeader>
                         <TableRow>

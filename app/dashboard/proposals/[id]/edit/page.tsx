@@ -30,7 +30,7 @@ export default async function ProposalEditPage({ params }: ProposalEditPageProps
 
     if (!proposal) {
         return (
-            <DashboardContainer title="Edit Proposal">
+            <DashboardContainer title="Edit Proposal" back={{ href: "/dashboard/proposals", label: "Back to proposals" }}>
                 <div className="flex h-64 items-center justify-center text-gray-500">
                     <p>Proposal not found.</p>
                 </div>
@@ -40,7 +40,7 @@ export default async function ProposalEditPage({ params }: ProposalEditPageProps
 
     if (proposal.status !== "DRAFT") {
         return (
-            <DashboardContainer title="Edit Proposal">
+            <DashboardContainer title="Edit Proposal" back={{ href: "/dashboard/proposals", label: "Back to proposals" }}>
                 <div className="flex h-64 items-center justify-center text-gray-500">
                     <p>Only proposals in DRAFT status can be edited.</p>
                 </div>
@@ -74,7 +74,7 @@ export default async function ProposalEditPage({ params }: ProposalEditPageProps
     };
 
     return (
-        <DashboardContainer title={`Edit Proposal - ${proposal.title}`}>
+        <DashboardContainer title={`Edit Proposal - ${proposal.title}`} back={{ href: "/dashboard/proposals", label: "Back to proposals" }}>
             <HydrationBoundary state={dehydrate(queryClient)}>
                 <ProposalCreateEditForm initialData={initialData} />
             </HydrationBoundary>

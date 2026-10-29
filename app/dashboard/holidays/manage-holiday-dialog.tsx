@@ -27,6 +27,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { CalendarPlus, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { formatInIST } from "@/lib/date";
 
 const holidayFormSchema = z.object({
   name: z.string().trim().min(1, "Enter a holiday name.").max(120),
@@ -40,11 +41,13 @@ export function ManageHolidayDialog({ holiday }: { holiday?: Holiday }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const today = formatInIST(new Date(), "yyyy-MM-dd");
+  const minimumDate = `${today.slice(0, 7)}-01`;
   const form = useForm<HolidayFormValues>({
     resolver: zodResolver(holidayFormSchema),
     defaultValues: {
       name: holiday?.name ?? "",
-      date: holiday?.date.toISOString().slice(0, 10) ?? "",
+      date: holiday?.date.toISOString().slice(0, 10) ?? today,
       description: holiday?.description ?? "",
     },
   });
@@ -58,7 +61,7 @@ export function ManageHolidayDialog({ holiday }: { holiday?: Holiday }) {
       setError(null);
       toast.success(holiday ? "Holiday updated." : "Holiday added.");
       if (!holiday) {
-        form.reset({ name: "", date: "", description: "" });
+        form.reset({ name: "", date: today, description: "" });
       }
       setOpen(false);
       router.refresh();
@@ -82,6 +85,13 @@ export function ManageHolidayDialog({ holiday }: { holiday?: Holiday }) {
   });
 
   const onSubmit = form.handleSubmit((values) => {
+    if (!holiday && values.date < minimumDate) {
+      form.setError("date", {
+        type: "validate",
+        message: "Choose a date in the current month or later.",
+      });
+      return;
+    }
     setError(null);
     saveMutation.mutate(values);
   });
@@ -118,7 +128,12 @@ export function ManageHolidayDialog({ holiday }: { holiday?: Holiday }) {
           </label>
           <label className="block space-y-2 text-sm font-medium">
             Date
-            <Input type="date" {...form.register("date")} aria-invalid={Boolean(form.formState.errors.date)} />
+            <Input
+              type="date"
+              min={holiday ? undefined : minimumDate}
+              {...form.register("date")}
+              aria-invalid={Boolean(form.formState.errors.date)}
+            />
             {form.formState.errors.date && (
               <span className="block text-xs text-destructive">{form.formState.errors.date.message}</span>
             )}
