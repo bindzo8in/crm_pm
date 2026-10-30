@@ -151,9 +151,18 @@ model Customer {
   customerNumber      Int     @unique @default(autoincrement())
   displayName         String
   companyName         String?
+  primaryContactSalutation String?
   primaryContactName  String?
   primaryContactEmail String?
   primaryContactPhone String?
+  currency            String            @default("INR")
+  customerLanguage    String            @default("English")
+  gstTreatment        String?
+  placeOfSupply       String?
+  taxPreference       String            @default("TAXABLE")
+  paymentTerms        String            @default("DUE_ON_RECEIPT")
+  portalEnabled       Boolean           @default(false)
+  documents           Json?
   website             String?
   addressLine1        String?
   addressLine2        String?
@@ -1004,6 +1013,14 @@ model Expense {
   referenceNumber   String?
   notes             String?
   receiptUrl        String?
+  expenseType       String        @default("SERVICES")
+  sacCode           String?
+  gstTreatment      String?
+  sourceOfSupply    String?
+  destinationOfSupply String?
+  reverseCharge     Boolean       @default(false)
+  taxRate           Int?
+  taxInclusive      Boolean       @default(false)
 
   categoryId String
   category   ExpenseCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)

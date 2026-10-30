@@ -2,6 +2,7 @@
 
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { Prisma } from "@/app/generated/prisma/client";
 import { CustomerQuerySchema, customerSchema, CustomerSchema } from "@/lib/schemas/customer-schema";
 import { headers } from "next/headers";
 import { hasBusinessWorkspaceAccess } from "@/lib/workspace-access";
@@ -34,8 +35,12 @@ export async function CreateCustomer(data: CustomerSchema) {
     if (!validatedData.success) {
       return { error: "Invalid data", message: "Invalid data provided" }
     }
+    const { documents, ...customerData } = validatedData.data;
     const customer = await prisma.customer.create({
-      data: validatedData.data
+      data: {
+        ...customerData,
+        documents: documents as Prisma.InputJsonValue,
+      },
     })
 
     return {
@@ -67,11 +72,15 @@ export async function UpdateCustomer(data: CustomerSchema) {
     if (!validatedData.success) {
       return { error: "Invalid data", message: "Invalid data provided" }
     }
+    const { documents, ...customerData } = validatedData.data;
     await prisma.customer.update({
       where: {
         id: validatedData.data.id
       },
-      data: validatedData.data
+      data: {
+        ...customerData,
+        documents: documents as Prisma.InputJsonValue,
+      },
     })
 
     return { success: true, message: "Customer updated successfully" }

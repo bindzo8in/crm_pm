@@ -1,11 +1,8 @@
 "use server";
 
 import { Prisma } from "@/app/generated/prisma/client";
-import { v2 as cloudinary } from "cloudinary";
-import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { errorResponse, successResponse } from "@/lib/action-response";
-import { env } from "@/lib/env";
 import prisma from "@/lib/prisma";
 import {
   expenseCategoryPageSchema,
@@ -61,68 +58,6 @@ async function ensureDefaultExpenseCategories() {
     data: defaultExpenseCategories.map((name) => ({ name })),
     skipDuplicates: true,
   });
-}
-
-export async function deleteExpenseAttachment(input: unknown) {
-  try {
-    const user = await getSessionUser();
-    if (!user) {
-      return errorResponse("Unauthorized");
-    }
-
-    const hasPermission = await checkFinancePermission("create");
-    if (!hasPermission) {
-      return errorResponse("You do not have permission to remove expense attachments");
-    }
-
-    const parsed = z.object({
-      publicId: z.string().trim().min(1).max(500),
-      resourceType: z.enum(["image", "raw"]),
-    }).safeParse(input);
-    if (!parsed.success) {
-      return errorResponse("Invalid expense attachment");
-    }
-
-    const userFolder = `finance/expenses/${user.id}`;
-    const publicId = parsed.data.publicId;
-    const assetPath = publicId.split("/");
-    const expectedFolder = userFolder.split("/");
-    if (
-      !publicId.startsWith(`${userFolder}/`)
-      || assetPath.some((part) => part === "." || part === "..")
-      || assetPath.slice(0, expectedFolder.length).join("/") !== userFolder
-      || publicId.includes("\\")
-    ) {
-      return errorResponse("This attachment cannot be removed");
-    }
-
-    if (!env.CLOUDINARY_API_KEY || !env.CLOUDINARY_API_SECRET) {
-      console.error("Cloudinary API credentials are not configured for expense attachment removal");
-      return errorResponse("Attachment removal is unavailable. Contact your administrator.");
-    }
-
-    cloudinary.config({
-      cloud_name: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
-      api_key: env.CLOUDINARY_API_KEY,
-      api_secret: env.CLOUDINARY_API_SECRET,
-      secure: true,
-    });
-
-    const result = await cloudinary.uploader.destroy(publicId, {
-      resource_type: parsed.data.resourceType,
-      type: "upload",
-      invalidate: true,
-    });
-    if (result.result !== "ok" && result.result !== "not found") {
-      console.error("Cloudinary did not confirm expense attachment removal:", result.result);
-      return errorResponse("Cloudinary could not remove this attachment");
-    }
-
-    return successResponse("Expense attachment removed");
-  } catch (error) {
-    console.error("Failed to remove expense attachment:", error);
-    return errorResponse("Failed to remove expense attachment", error);
-  }
 }
 
 function numberValue(value: number | string | { toNumber: () => number } | null | undefined) {
@@ -967,6 +902,14 @@ export async function createExpense(input: unknown) {
         referenceNumber: payload.referenceNumber,
         notes: payload.notes,
         receiptUrl: payload.receiptUrl || null,
+        expenseType: payload.expenseType,
+        sacCode: payload.sacCode || null,
+        gstTreatment: payload.gstTreatment || null,
+        sourceOfSupply: payload.sourceOfSupply || null,
+        destinationOfSupply: payload.destinationOfSupply || null,
+        reverseCharge: payload.reverseCharge,
+        taxRate: payload.taxRate ?? null,
+        taxInclusive: payload.taxInclusive,
         vendorName: payload.vendorName,
         customer: payload.customerId ? { connect: { id: payload.customerId } } : undefined,
         category: { connect: { id: payload.categoryId } },

@@ -3,12 +3,20 @@ import * as z from "zod";
 
 const optionalText = z.string().trim().optional();
 
+export const customerDocumentsSchema = z.array(z.object({
+    url: z.url(),
+    publicId: z.string().trim().min(1),
+    resourceType: z.enum(["image", "raw"]),
+    fileName: z.string().trim().max(255).optional(),
+})).max(3);
+
 export const customerSchema = z.object({
     id: z.string().optional(),
     customerNumber: z.number().optional(),
     displayName: z.string().trim().min(1, "Display name is required"),
     companyName: optionalText,
 
+    primaryContactSalutation: optionalText,
     primaryContactName: optionalText,
 
     primaryContactEmail: z
@@ -28,6 +36,27 @@ export const customerSchema = z.object({
             (v) => !v || /^\+?[1-9]\d{9,14}$/.test(v),
             "Please enter a valid phone number"
         ),
+    currency: z.string().trim().min(3).max(3).default("INR"),
+    customerLanguage: z.string().trim().min(1).max(40).default("English"),
+    gstTreatment: z.enum([
+        "REGISTERED_REGULAR",
+        "REGISTERED_COMPOSITION",
+        "UNREGISTERED",
+        "CONSUMER",
+        "OVERSEAS",
+        "SEZ",
+    ]).optional(),
+    placeOfSupply: optionalText,
+    taxPreference: z.enum(["TAXABLE", "TAX_EXEMPT"]).default("TAXABLE"),
+    paymentTerms: z.enum([
+        "DUE_ON_RECEIPT",
+        "NET_15",
+        "NET_30",
+        "NET_45",
+        "NET_60",
+    ]).default("DUE_ON_RECEIPT"),
+    portalEnabled: z.boolean().default(false),
+    documents: customerDocumentsSchema.default([]),
 
     website: z
         .string()
@@ -77,3 +106,4 @@ export type CustomerQuerySchema = z.infer<
 >;
 
 export type CustomerSchema = z.infer<typeof customerSchema>;
+export type CustomerSchemaInput = z.input<typeof customerSchema>;

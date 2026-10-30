@@ -51,7 +51,15 @@ function getImageUrl(field: any): string | null {
   return null;
 }
 
-export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId: string; isPdfMode?: boolean }) {
+export function InvoiceDetailView({
+  invoiceId,
+  isPdfMode = false,
+  isPublic = false,
+}: {
+  invoiceId: string;
+  isPdfMode?: boolean;
+  isPublic?: boolean;
+}) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [paymentOpen, setPaymentOpen] = useState(false);
@@ -70,7 +78,7 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
 
   const { data, isLoading } = useQuery({
     queryKey: invoiceKeys.detail(invoiceId),
-    queryFn: () => (isPdfMode ? getPublicInvoiceById(invoiceId) : getInvoiceById(invoiceId)),
+    queryFn: () => (isPdfMode || isPublic ? getPublicInvoiceById(invoiceId) : getInvoiceById(invoiceId)),
   });
 
   const {
@@ -79,7 +87,7 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
   } = useQuery({
     queryKey: ["invoice-payment-accounts"],
     queryFn: getInvoicePaymentAccounts,
-    enabled: !isPdfMode,
+    enabled: !isPdfMode && !isPublic,
   });
 
   const invoice = data?.success ? data.data : null;
@@ -329,7 +337,7 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
   return (
     <div className={`w-full min-w-0 max-w-5xl mx-auto space-y-6 ${isPdfMode ? "p-0 bg-white" : "pb-12"}`}>
       {/* Header Actions */}
-      {!isPdfMode && (
+      {!isPdfMode && !isPublic && (
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden border-b pb-4">
           <div className="flex items-center gap-3 shrink-0">
             <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" asChild>
@@ -928,7 +936,7 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
         </div>
 
         {/* Payments Audit List */}
-        {invoice.payments.length > 0 && (
+        {!isPublic && invoice.payments.length > 0 && (
           <div className="pt-6 border-t space-y-3 print:hidden">
             <h3 className="text-sm font-semibold">Recorded Payment Transactions</h3>
             <div className="space-y-2">
@@ -992,7 +1000,7 @@ export function InvoiceDetailView({ invoiceId, isPdfMode = false }: { invoiceId:
         )}
 
         {/* Activity & Audit Log */}
-        {invoice.activities && invoice.activities.length > 0 && (
+        {!isPublic && invoice.activities && invoice.activities.length > 0 && (
           <div className="pt-6 border-t space-y-3 print:hidden">
             <div className="flex items-center gap-2">
               <HistoryIcon className="h-4 w-4 text-muted-foreground" />

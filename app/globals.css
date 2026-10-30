@@ -146,3 +146,79 @@
     background: color-mix(in oklch, var(--primary) 20%, transparent);
   }
 }
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .tablet-sidebar {
+    --sidebar: #20243a;
+    --sidebar-accent: #2b3048;
+    --sidebar-primary: #f04f5d;
+    --sidebar-border: #343950;
+  }
+
+  .group[data-collapsible="icon"]:has(.tablet-sidebar) > [data-slot="sidebar-gap"],
+  .group[data-collapsible="icon"] .tablet-sidebar {
+    width: 4.5rem !important;
+  }
+
+  .group[data-collapsible="icon"] .tablet-sidebar {
+    padding: 0 !important;
+  }
+
+  .group[data-collapsible="icon"] .tablet-sidebar [data-sidebar="header"] [data-sidebar="menu-button"] {
+    width: 100% !important;
+    height: 44px !important;
+    justify-content: center;
+  }
+
+  .group[data-collapsible="icon"] .tablet-sidebar [data-sidebar="header"] [data-sidebar="menu-button"] > span {
+    display: none;
+  }
+
+  .group[data-collapsible="icon"] .tablet-sidebar [data-sidebar="content"] {
+    overflow-x: hidden;
+    overflow-y: auto !important;
+  }
+
+  .group[data-collapsible="icon"] .tablet-sidebar .tablet-sidebar-quick-actions {
+    display: none;
+  }
+
+  .group[data-collapsible="icon"] .tablet-sidebar [data-sidebar="content"] [data-sidebar="menu-button"] {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 52px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 2px !important;
+    text-align: center;
+  }
+
+  .group[data-collapsible="icon"] .tablet-sidebar [data-sidebar="content"] [data-sidebar="menu-button"] > span:last-child {
+    display: -webkit-box;
+    width: 100%;
+    overflow: hidden;
+    font-size: 10px;
+    line-height: 1.1;
+    text-align: center;
+    text-overflow: clip;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .group[data-collapsible="icon"] .tablet-sidebar [data-sidebar="content"] [data-sidebar="menu-button"][data-active="true"] {
+    background-color: var(--sidebar-primary);
+    color: var(--sidebar-primary-foreground);
+  }
+}
+
+@layer utilities {
+  @media (min-width: 768px) and (max-width: 1023px) {
+    .group[data-collapsible="icon"] .tablet-sidebar [data-sidebar="content"] [data-sidebar="menu-button"][data-slot="sidebar-menu-button"] {
+      width: 100% !important;
+      height: auto !important;
+      padding: 6px 2px !important;
+    }
+  }
+}

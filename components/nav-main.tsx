@@ -37,7 +37,7 @@ export function NavMain({
     <SidebarGroup>
       <SidebarGroupContent className="flex flex-col gap-2">
         {showQuickActions && (
-          <SidebarMenu>
+          <SidebarMenu className="tablet-sidebar-quick-actions">
             <SidebarMenuItem className="flex items-center gap-1.5">
               <SidebarMenuButton
                 asChild

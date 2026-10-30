@@ -8,7 +8,7 @@ export const metadata = {
 };
 
 export default async function CreateExpensePage() {
-  const session = await requirePageAccess("/dashboard/finance");
+  await requirePageAccess("/dashboard/finance");
 
   const accountsResult = await getFinancialAccounts();
 
@@ -30,7 +30,6 @@ export default async function CreateExpensePage() {
     <DashboardContainer title="Record Expense">
       <ExpenseEntryForm
         accounts={accounts}
-        uploadFolder={`finance/expenses/${session.user.id}`}
       />
     </DashboardContainer>
   );

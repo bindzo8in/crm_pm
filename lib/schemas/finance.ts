@@ -41,6 +41,27 @@ export const expenseSchema = z.object({
   notes: z.string().trim().max(1000).optional().nullable(),
   status: expenseStatusSchema.default("PENDING"),
   receiptUrl: z.union([z.literal(""), z.url()]).optional().nullable(),
+  expenseType: z.enum(["GOODS", "SERVICES"]).default("SERVICES"),
+  sacCode: z.string().trim().max(20).optional().nullable(),
+  gstTreatment: z.enum([
+    "REGISTERED_REGULAR",
+    "REGISTERED_COMPOSITION",
+    "UNREGISTERED",
+    "CONSUMER",
+    "OVERSEAS",
+    "SEZ",
+    "DEEMED_EXPORT",
+    "NON_GST_SUPPLY",
+    "OUT_OF_SCOPE",
+    "TAX_DEDUCTOR",
+    "SEZ_DEVELOPER",
+    "INPUT_SERVICE_DISTRIBUTOR",
+  ]).optional().nullable(),
+  sourceOfSupply: z.string().trim().max(80).optional().nullable(),
+  destinationOfSupply: z.string().trim().max(80).optional().nullable(),
+  reverseCharge: z.boolean().default(false),
+  taxRate: z.number().int().min(0).max(28).optional().nullable(),
+  taxInclusive: z.boolean().default(false),
 });
 
 export const financeReportSchema = z.object({

@@ -14,6 +14,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import {
   Banknote,
@@ -142,7 +143,7 @@ const data = {
       )
     },
     {
-      title: "Finance",
+      title: "Expences",
       section: "Business",
       url: "/dashboard/finance",
       icon: <Banknote />
@@ -185,7 +186,27 @@ export function AppSidebar({
   user: { name: string; email: string; avatar: string }
 }) {
   const isMobile = useIsMobile()
+  const [isTablet, setIsTablet] = React.useState(false)
+  const { setOpen } = useSidebar()
+  const setOpenRef = React.useRef(setOpen)
   const homeUrl = "/dashboard"
+
+  React.useEffect(() => {
+    setOpenRef.current = setOpen
+  }, [setOpen])
+
+  React.useEffect(() => {
+    const tabletQuery = window.matchMedia("(min-width: 768px) and (max-width: 1023px)")
+    const syncSidebar = () => {
+      setIsTablet(tabletQuery.matches)
+      setOpenRef.current(!tabletQuery.matches)
+    }
+
+    syncSidebar()
+    tabletQuery.addEventListener("change", syncSidebar)
+    return () => tabletQuery.removeEventListener("change", syncSidebar)
+  }, [])
+
   const hasWorkspaceAccess =
     userRole !== UserRole.STAFF || Boolean(department?.trim())
   const navMainItems = data.navMain.filter((item) => {
@@ -205,8 +226,8 @@ export function AppSidebar({
 
   return (
     <Sidebar
-      collapsible="offcanvas"
-      className="[--sidebar:#111b2d] [--sidebar-foreground:#f1f5f9] [--sidebar-primary:#5b4bea] [--sidebar-primary-foreground:#ffffff] [--sidebar-accent:#202e43] [--sidebar-accent-foreground:#ffffff] [--sidebar-border:#2d3b50] [--sidebar-ring:#a5b4fc]"
+      collapsible={isTablet ? "icon" : "offcanvas"}
+      className="tablet-sidebar [--sidebar:#111b2d] [--sidebar-foreground:#f1f5f9] [--sidebar-primary:#5b4bea] [--sidebar-primary-foreground:#ffffff] [--sidebar-accent:#202e43] [--sidebar-accent-foreground:#ffffff] [--sidebar-border:#2d3b50] [--sidebar-ring:#a5b4fc]"
       {...props}
     >
       <SidebarHeader>

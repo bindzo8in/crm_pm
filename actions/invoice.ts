@@ -194,24 +194,80 @@ export async function getInvoices(query: InvoiceQuerySchema) {
   }
 }
 
-export async function getPublicInvoiceById(id: string) {
+async function getInvoiceDataById(id: string, includeInternalAudit: boolean) {
   try {
     const invoice = await (prisma).invoice.findFirst({
       where: { id, deletedAt: null },
-      include: {
-        customer: true,
-        createdBy: {
-          select: { id: true, name: true, email: true },
+      select: {
+        id: true,
+        invoiceNumber: true,
+        customerId: true,
+        bankAccountId: true,
+        customerDisplayName: true,
+        customerCompanyName: true,
+        title: true,
+        notes: true,
+        terms: true,
+        status: true,
+        issueDate: true,
+        dueDate: true,
+        currency: true,
+        exchangeRate: true,
+        placeOfSupply: true,
+        subtotal: true,
+        discount: true,
+        tax: true,
+        roundOff: true,
+        grandTotal: true,
+        amountPaid: true,
+        createdAt: true,
+        customer: {
+          select: {
+            displayName: true,
+            companyName: true,
+            primaryContactEmail: true,
+            primaryContactPhone: true,
+            gstNumber: true,
+            taxId: true,
+            state: true,
+            addressLine1: true,
+            addressLine2: true,
+            city: true,
+            postalCode: true,
+            country: true,
+            billingAddressLine1: true,
+            billingAddressLine2: true,
+            billingCity: true,
+            billingState: true,
+            billingPostalCode: true,
+            billingCountry: true,
+          },
         },
-        proposal: {
-          select: { id: true, proposalNumber: true, title: true },
+        bankAccount: {
+          select: {
+            bankName: true,
+            accountName: true,
+            accountNumber: true,
+            ifscCode: true,
+            swiftCode: true,
+          },
         },
-        bankAccount: true,
         lineItems: {
-          include: {
+          select: {
+            id: true,
+            servicePackageId: true,
+            name: true,
+            description: true,
+            quantity: true,
+            unit: true,
+            unitPrice: true,
+            total: true,
+            taxRate: true,
+            sacCode: true,
+            billingCycle: true,
+            sortOrder: true,
             servicePackage: {
               select: {
-                id: true,
                 name: true,
                 service: {
                   select: { id: true, name: true },
@@ -221,22 +277,41 @@ export async function getPublicInvoiceById(id: string) {
           },
           orderBy: { sortOrder: "asc" },
         },
-        payments: {
-          orderBy: { createdAt: "desc" },
-        },
-        activities: {
-          include: {
-            user: { select: { name: true, email: true } },
-          },
-          orderBy: { createdAt: "desc" },
-        },
+        ...(includeInternalAudit
+          ? {
+              payments: {
+                orderBy: { createdAt: "desc" as const },
+              },
+              activities: {
+                include: { user: { select: { name: true } } },
+                orderBy: { createdAt: "desc" as const },
+              },
+            }
+          : {}),
       },
     });
 
     if (!invoice) return errorResponse("Invoice not found");
 
     const company = await prisma.company.findFirst({
-      include: { bankAccounts: true },
+      select: {
+        legalName: true,
+        displayName: true,
+        address: true,
+        city: true,
+        state: true,
+        postalCode: true,
+        country: true,
+        gstNumber: true,
+        iecCode: true,
+        lutNumber: true,
+        phone: true,
+        email: true,
+        website: true,
+        logo: true,
+        signatureImage: true,
+        sealImage: true,
+      },
     });
 
     const formatted = {
@@ -256,10 +331,11 @@ export async function getPublicInvoiceById(id: string) {
         taxRate: invoice.currency === "USD" ? 0 : (li.taxRate ?? 18),
         sacCode: li.sacCode || "9983",
       })),
-      payments: invoice.payments.map((p) => ({
+      payments: (invoice.payments ?? []).map((p) => ({
         ...p,
         amount: p.amount.toNumber(),
       })),
+      activities: invoice.activities ?? [],
       company,
     };
 
@@ -270,12 +346,16 @@ export async function getPublicInvoiceById(id: string) {
   }
 }
 
+export async function getPublicInvoiceById(id: string) {
+  return getInvoiceDataById(id, false);
+}
+
 export async function getInvoiceById(id: string) {
   const user = await getSessionUser();
   if (!user) return errorResponse("Unauthorized");
   const canRead = await checkInvoicePermission("read");
   if (!canRead) return errorResponse("You don't have permission to view invoices");
-  return getPublicInvoiceById(id);
+  return getInvoiceDataById(id, true);
 }
 
 export async function createInvoice(input: CreateInvoiceInput) {

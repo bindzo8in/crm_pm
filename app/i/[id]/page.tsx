@@ -53,7 +53,7 @@ export default async function PublicInvoicePage({ params, searchParams }: Public
   return (
     <DashboardProviders>
       <div className="min-h-screen bg-gray-50/50 p-4 md:p-8">
-        <InvoiceDetailView invoiceId={id} />
+        <InvoiceDetailView invoiceId={id} isPublic />
       </div>
     </DashboardProviders>
   );
