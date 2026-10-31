@@ -43,6 +43,7 @@ import {
 } from "@/actions/proposal-composer";
 
 import { AddBlockMenu } from "./add-block-menu";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { SortableBlockWrapper } from "./sortable-block-wrapper";
 import { CoverBlockEditor } from "./cover-block-editor";
 import { PricingBlockViewer } from "./pricing-block-viewer";
@@ -107,8 +108,6 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
 
-  console.log('proposal', proposal)
-  console.log('blocks', blocks)
   const router = useRouter();
 
   const sensors = useSensors(
@@ -164,9 +163,6 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
   };
 
   const handleReset = async () => {
-    if (!window.confirm("Are you sure you want to reset the features and terms? This will overwrite any custom changes you've made to them.")) {
-      return;
-    }
     setRefreshing(true);
     try {
       const res = await syncProposalComposerTermsAndFeatures(proposalId, true);
@@ -417,17 +413,25 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
             <span>Sync</span>
           </Button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleReset}
+          <ConfirmDialog
+            trigger={
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={refreshing}
+                className="h-8 gap-1.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/20"
+                title="Reset features and terms to match the source table (overwrites edits)"
+              >
+                <RotateCcw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                <span>Reset</span>
+              </Button>
+            }
+            title="Reset features and terms?"
+            description="This will overwrite custom feature and term changes with the source table."
+            confirmLabel="Reset changes"
             disabled={refreshing}
-            className="h-8 gap-1.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/20"
-            title="Reset features and terms to match the source table (overwrites edits)"
-          >
-            <RotateCcw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-            <span>Reset</span>
-          </Button>
+            onConfirm={() => void handleReset()}
+          />
 
           <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 text-xs bg-emerald-50/50 hover:bg-emerald-100/50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">
             <Link href={`/dashboard/proposals/${proposalId}/builder`}>

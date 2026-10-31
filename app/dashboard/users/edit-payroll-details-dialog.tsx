@@ -19,7 +19,6 @@ import {
   FieldError,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { UserWithRole } from "better-auth/plugins/admin";
 import { useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -37,18 +36,22 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+type PayrollUser = {
+  id: string;
+  name: string;
+  designation?: string | null;
+  bankName?: string | null;
+  bankAccountNo?: string | null;
+  panNo?: string | null;
+  costCenter?: string | null;
+  uanNo?: string | null;
+  pfNo?: string | null;
+};
+
 type EditPayrollDetailsDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  user: UserWithRole & { 
-    designation?: string | null;
-    bankName?: string | null;
-    bankAccountNo?: string | null;
-    panNo?: string | null;
-    costCenter?: string | null;
-    uanNo?: string | null;
-    pfNo?: string | null;
-  };
+  user: PayrollUser;
 };
 
 export function EditPayrollDetailsDialog({
@@ -81,7 +84,7 @@ export function EditPayrollDetailsDialog({
       });
       onOpenChange(false);
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       setError(error.message || "Failed to update payroll details");
     },
   });

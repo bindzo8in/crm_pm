@@ -3,7 +3,7 @@
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { EyeIcon, MoreHorizontalIcon, Trash2Icon, CheckCircle2Icon, PencilIcon } from "lucide-react";
+import { EyeIcon, MoreHorizontalIcon, Trash2Icon, CheckCircle2Icon, PencilIcon, DownloadIcon, CreditCardIcon } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
@@ -180,9 +180,27 @@ function InvoiceActions({ row }: { row: InvoiceRow }) {
         {row.status === "DRAFT" && (
           <DropdownMenuItem
             onClick={() => statusMutation.mutate("SENT")}
+            disabled={statusMutation.isPending}
             className="cursor-pointer text-blue-600"
           >
             <CheckCircle2Icon className="mr-2 h-4 w-4" /> Mark as Sent
+          </DropdownMenuItem>
+        )}
+
+        <DropdownMenuItem asChild>
+          <a href={`/api/invoices/${row.id}/pdf`} className="cursor-pointer">
+            <DownloadIcon className="mr-2 h-4 w-4" /> Download PDF
+          </a>
+        </DropdownMenuItem>
+
+        {row.status !== "VOID" && row.grandTotal > row.amountPaid && (
+          <DropdownMenuItem asChild>
+            <Link
+              href={`/dashboard/invoices/${row.id}?action=record-payment`}
+              className="cursor-pointer"
+            >
+              <CreditCardIcon className="mr-2 h-4 w-4" /> Record Payment
+            </Link>
           </DropdownMenuItem>
         )}
 

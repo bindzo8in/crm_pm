@@ -17,7 +17,9 @@ const cachedPrisma = globalForPrisma.prisma;
 const prisma =
   cachedPrisma &&
   typeof cachedPrisma.exchangeRateCache === "object" &&
-  typeof cachedPrisma.project === "object"
+  typeof cachedPrisma.project === "object" &&
+  typeof cachedPrisma.notification === "object" &&
+  typeof cachedPrisma.employeeStatusHistory === "object"
     ? cachedPrisma
     : createPrismaClient();
 

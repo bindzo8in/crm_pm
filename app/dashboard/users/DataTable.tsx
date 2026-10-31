@@ -82,8 +82,8 @@ export function DataTable<TData, TValue>({
     const tableHeaders = table.getHeaderGroups().flatMap((headerGroup) => headerGroup.headers);
 
     return (
-        <div className="overflow-hidden rounded-lg border">
-            <div className="divide-y lg:hidden">
+        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+            <div className="grid gap-3 bg-muted/20 p-3 lg:hidden sm:grid-cols-2 sm:p-4">
                 {table.getRowModel().rows.length ? (
                     table.getRowModel().rows.map((row) => {
                         const cells = row.getVisibleCells();
@@ -97,7 +97,7 @@ export function DataTable<TData, TValue>({
                         return (
                             <article
                                 key={row.id}
-                                className="space-y-3 bg-card px-3 py-3.5 sm:px-4"
+                                className="space-y-3 rounded-xl border bg-card px-3.5 py-4 shadow-sm sm:px-4"
                             >
                                 <div className="flex min-w-0 items-start justify-between gap-3">
                                     <div className="min-w-0">
@@ -152,7 +152,7 @@ export function DataTable<TData, TValue>({
             </div>
 
             <div className="hidden lg:block">
-                <Table>
+                <Table className="[&_td]:border-border/60 [&_th]:border-border [&_tr:last-child_td]:border-b-0 [&_tbody_tr:hover]:bg-muted/35">
                     <TableHeader>
                         {table.getHeaderGroups().map((headerGroup) => (
                             <TableRow key={headerGroup.id}>

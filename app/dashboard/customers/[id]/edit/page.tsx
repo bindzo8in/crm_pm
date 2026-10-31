@@ -14,7 +14,7 @@ export default async function UpdateCustomerPage({ params }: PageProps<"/dashboa
     const { customer, error, message } = await GetCustomer(id);
 
     return (
-        <DashboardContainer title="Update Customer">
+        <DashboardContainer title="Update Customer" flush hideHeaderOnMobile>
             <CustomerForm defaultValues={customer || undefined} error={error ? message : undefined} />
         </DashboardContainer>
     )

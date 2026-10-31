@@ -10,6 +10,7 @@ import { deleteProposalService, updateProposalService } from "@/actions/proposal
 import { toast } from "sonner";
 import { Trash2, Layers, Package, Loader2, ChevronDown, ChevronUp, Edit2, Check, X, GripVertical, ArrowUp, ArrowDown } from "lucide-react";
 import { Textarea } from "../ui/textarea";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 
 
@@ -65,9 +66,6 @@ export function ServiceSectionCard({ pricingApi,
   };
 
   const handleDeleteService = async () => {
-    if (!confirm(`Are you sure you want to remove the "${service.serviceName}" section? This will delete all its line items.`)) {
-      return;
-    }
     setDeleting(true);
     try {
       const res = await deleteProposalService(service.id, entityId);
@@ -231,16 +229,24 @@ export function ServiceSectionCard({ pricingApi,
             >
               {collapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
             </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={handleDeleteService}
+            <ConfirmDialog
+              trigger={
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  disabled={deleting}
+                  className="size-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                  title="Delete entire section"
+                >
+                  {deleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                </Button>
+              }
+              title="Remove service section?"
+              description={`Remove "${service.serviceName}" and all of its line items?`}
+              confirmLabel="Remove section"
               disabled={deleting}
-              className="size-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-              title="Delete entire section"
-            >
-              {deleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-            </Button>
+              onConfirm={() => void handleDeleteService()}
+            />
           </div>
         </div>
       </div>

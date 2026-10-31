@@ -70,7 +70,8 @@ export const routePermissions: RoutePermission[] = [
   },
   {
     path: "/dashboard/users",
-    roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN],
+    roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF],
+    departmentRoles: { [UserRole.STAFF]: ["HR"] },
   },
   {
     path: "/dashboard/holidays",

@@ -4,11 +4,12 @@ import { LeaveStatus, LeaveType, Department } from "@/app/generated/prisma/enums
 import { ActionError } from "@/lib/action-error";
 import { requireLeaveManager, requireLeaveUser } from "@/lib/leave-access";
 import { parseDateOnly } from "@/lib/leave-policy";
-import { formatInIST } from "@/lib/date";
+import { formatInIST, getAttendanceDate } from "@/lib/date";
 import {
   cancelPendingLeaveRequest,
   createLeaveRequest,
   getAnnualLeaveBalance,
+  getLeaveManagementSummary,
   getManagerLeaveRequests,
   getOwnLeaveRequests,
   reviewLeaveRequest,
@@ -39,11 +40,21 @@ const leaveRequestSchema = z
   .refine((value) => value.endDate >= value.startDate, {
     path: ["endDate"],
     message: "End date cannot be before start date.",
+  })
+  .refine((value) => value.startDate >= parseDateOnly(getAttendanceDate()), {
+    path: ["startDate"],
+    message: "Start date cannot be before today.",
   });
 
 const paginationSchema = z.object({
   page: z.coerce.number().int().min(0).max(100_000).default(0),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+const ownLeaveFilterSchema = paginationSchema.extend({
+  search: z.string().trim().max(120).optional(),
+  type: z.enum(LeaveType).optional(),
+  status: z.enum(LeaveStatus).optional(),
 });
 
 const managerFilterSchema = paginationSchema.extend({
@@ -84,8 +95,12 @@ export async function submitLeaveRequestAction(input: unknown) {
 
 export async function getMyLeaveRequestsAction(input: unknown = {}) {
   const user = await requireLeaveUser();
-  const parsed = paginationSchema.parse(input);
-  const result = await getOwnLeaveRequests(user.id, parsed.page, parsed.pageSize);
+  const parsed = ownLeaveFilterSchema.parse(input);
+  const result = await getOwnLeaveRequests(user.id, parsed.page, parsed.pageSize, {
+    search: parsed.search,
+    type: parsed.type,
+    status: parsed.status,
+  });
   return { success: true, ...result, page: parsed.page, pageSize: parsed.pageSize };
 }
 
@@ -98,6 +113,14 @@ export async function getAllLeaveRequestsAction(input: unknown = {}) {
 
   const result = await getManagerLeaveRequests(parsed);
   return { success: true, ...result, page: parsed.page, pageSize: parsed.pageSize };
+}
+
+export async function getLeaveManagementSummaryAction() {
+  await requireLeaveManager("read-all");
+  return {
+    success: true,
+    ...(await getLeaveManagementSummary(parseDateOnly(getAttendanceDate()))),
+  };
 }
 
 export async function cancelLeaveRequestAction(input: unknown) {

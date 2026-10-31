@@ -415,12 +415,12 @@ export function DashboardOverview({
                 <div className="relative">
                   <ChartContainer
                     config={chartConfig}
-                    className="h-[190px] w-full sm:h-[240px] lg:h-[280px] [&_.recharts-surface:focus:not(:focus-visible)]:outline-none"
+                    className="h-[220px] w-full sm:h-[240px] lg:h-[280px] [&_.recharts-surface:focus:not(:focus-visible)]:outline-none"
                   >
                     <BarChart
                       data={data.monthlyTrend}
-                      barGap={2}
-                      barCategoryGap="38%"
+                      barGap={1}
+                      barCategoryGap="18%"
                       margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
                     >
                       <CartesianGrid vertical={false} stroke="#dce4f2" strokeDasharray="1 3" />
@@ -436,7 +436,7 @@ export function DashboardOverview({
                       <YAxis
                         tickLine={false}
                         axisLine={false}
-                        width={52}
+                        width={44}
                         domain={[0, chartMaxValue]}
                         ticks={chartTicks}
                         allowDecimals={false}
@@ -449,7 +449,7 @@ export function DashboardOverview({
                         dataKey="income"
                         fill="var(--color-income)"
                         radius={[3, 3, 0, 0]}
-                        maxBarSize={10}
+                        maxBarSize={12}
                         cursor="pointer"
                         onClick={(bar) => void selectChartBar("income", bar.payload.monthKey)}
                         onMouseEnter={(bar) => setActiveBar({
@@ -464,7 +464,7 @@ export function DashboardOverview({
                         dataKey="receivedAmount"
                         fill="var(--color-receivedAmount)"
                         radius={[3, 3, 0, 0]}
-                        maxBarSize={10}
+                        maxBarSize={12}
                         cursor="pointer"
                         onClick={(bar) => void selectChartBar("receivedAmount", bar.payload.monthKey)}
                         onMouseEnter={(bar) => setActiveBar({
@@ -479,7 +479,7 @@ export function DashboardOverview({
                         dataKey="expenses"
                         fill="var(--color-expenses)"
                         radius={[3, 3, 0, 0]}
-                        maxBarSize={10}
+                        maxBarSize={12}
                         cursor="pointer"
                         onClick={(bar) => void selectChartBar("expenses", bar.payload.monthKey)}
                         onMouseEnter={(bar) => setActiveBar({

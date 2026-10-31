@@ -3,9 +3,15 @@
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@/app/generated/prisma/client";
-import { CustomerQuerySchema, customerSchema, CustomerSchema } from "@/lib/schemas/customer-schema";
+import {
+  CustomerQuerySchema,
+  customerDisplayNameAvailabilitySchema,
+  customerSchema,
+  CustomerSchema,
+} from "@/lib/schemas/customer-schema";
 import { headers } from "next/headers";
 import { hasBusinessWorkspaceAccess } from "@/lib/workspace-access";
+import { findActiveCustomerByDisplayName } from "@/repositories/customer-repository";
 
 type CustomerAction = "create" | "read" | "update" | "delete";
 
@@ -23,7 +29,50 @@ async function hasCustomerPermission(action: CustomerAction): Promise<boolean> {
   return permission.success;
 }
 
+function isDuplicateDisplayNameError(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
+    return false;
+  }
+
+  const target = error.meta?.target;
+  return target === "customer_active_display_name_unique"
+    || (Array.isArray(target) && target.includes("customer_active_display_name_unique"));
+}
+
+function duplicateDisplayNameResponse(displayName: string) {
+  return {
+    error: "Duplicate name",
+    message: `A customer named "${displayName}" already exists. Choose a unique display name.`,
+  };
+}
+
+export async function CheckCustomerDisplayName(input: unknown) {
+  const validatedInput = customerDisplayNameAvailabilitySchema.safeParse(input);
+  if (!validatedInput.success) {
+    return { success: false, duplicate: false, message: "Enter a valid display name to check." };
+  }
+
+  const permission = validatedInput.data.customerId ? "update" : "create";
+  if (!(await hasCustomerPermission(permission))) {
+    return { success: false, duplicate: false, message: "You do not have permission to check this customer name." };
+  }
+
+  try {
+    const duplicate = await findActiveCustomerByDisplayName(
+      validatedInput.data.displayName,
+      validatedInput.data.customerId
+    );
+    return { success: true, duplicate: Boolean(duplicate) };
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("Failed to check customer display name:", error);
+    }
+    return { success: false, duplicate: false, message: "Could not check for duplicate customer names." };
+  }
+}
+
 export async function CreateCustomer(data: CustomerSchema) {
+  let attemptedDisplayName: string | null = null;
   try {
     if (!(await hasCustomerPermission("create"))) {
       return { error: "Unauthorized", message: "You do not have permission to create a customer" }
@@ -35,6 +84,12 @@ export async function CreateCustomer(data: CustomerSchema) {
     if (!validatedData.success) {
       return { error: "Invalid data", message: "Invalid data provided" }
     }
+    attemptedDisplayName = validatedData.data.displayName;
+    const duplicate = await findActiveCustomerByDisplayName(validatedData.data.displayName);
+    if (duplicate) {
+      return duplicateDisplayNameResponse(validatedData.data.displayName);
+    }
+
     const { documents, ...customerData } = validatedData.data;
     const customer = await prisma.customer.create({
       data: {
@@ -55,12 +110,16 @@ export async function CreateCustomer(data: CustomerSchema) {
       },
     }
   } catch (error) {
+    if (isDuplicateDisplayNameError(error) && attemptedDisplayName !== null) {
+      return duplicateDisplayNameResponse(attemptedDisplayName);
+    }
     if (process.env.NODE_ENV === 'development') console.log(error)
     return { error: "Internal Server Error", message: "An error occurred while creating the customer" }
   }
 }
 
 export async function UpdateCustomer(data: CustomerSchema) {
+  let attemptedDisplayName: string | null = null;
   try {
     if (!(await hasCustomerPermission("update"))) {
       return { error: "Unauthorized", message: "You do not have permission to update a customer" }
@@ -72,6 +131,15 @@ export async function UpdateCustomer(data: CustomerSchema) {
     if (!validatedData.success) {
       return { error: "Invalid data", message: "Invalid data provided" }
     }
+    attemptedDisplayName = validatedData.data.displayName;
+    const duplicate = await findActiveCustomerByDisplayName(
+      validatedData.data.displayName,
+      validatedData.data.id
+    );
+    if (duplicate) {
+      return duplicateDisplayNameResponse(validatedData.data.displayName);
+    }
+
     const { documents, ...customerData } = validatedData.data;
     await prisma.customer.update({
       where: {
@@ -85,6 +153,9 @@ export async function UpdateCustomer(data: CustomerSchema) {
 
     return { success: true, message: "Customer updated successfully" }
   } catch (error) {
+    if (isDuplicateDisplayNameError(error) && attemptedDisplayName !== null) {
+      return duplicateDisplayNameResponse(attemptedDisplayName);
+    }
     if (process.env.NODE_ENV === 'development') console.log(error)
     return { error: "Internal Server Error", message: "An error occurred while updating the customer" }
   }

@@ -2,8 +2,9 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { canAccessRoute } from "@/lib/route-permissions";
-import { UserRole } from "@/app/generated/prisma/enums";
+import { EmploymentStatus, UserRole } from "@/app/generated/prisma/enums";
 import { canReadDashboard } from "@/lib/permissions";
+import prisma from "@/lib/prisma";
 
 /**
  * Ensures the user is authenticated and has permission to access the specified route.
@@ -19,6 +20,13 @@ export async function requirePageAccess(targetPath?: string) {
   });
 
   if (!session) {
+    redirect("/signin");
+  }
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { employmentStatus: true },
+  });
+  if (!user || user.employmentStatus !== EmploymentStatus.ACTIVE) {
     redirect("/signin");
   }
 

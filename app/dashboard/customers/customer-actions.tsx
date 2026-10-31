@@ -23,6 +23,8 @@ import {
 } from "lucide-react";
 import { DeleteCustomer } from "@/actions/customer";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
+import { customerKeys } from "@/components/customers/customer-query-key";
 
 interface CustomerActionsProps {
   customer: {
@@ -35,6 +37,7 @@ export function CustomerActions({
   customer,
 }: CustomerActionsProps) {
   const [copied, setCopied] = useState(false);
+  const queryClient = useQueryClient();
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(customer.id);
@@ -49,7 +52,8 @@ export function CustomerActions({
   const handleDelete = async () => {
     try {
       const response = await DeleteCustomer(customer.id);
-      if (response.success) {
+      if ("success" in response && response.success) {
+        await queryClient.invalidateQueries({ queryKey: customerKeys.all });
         toast.success(response.message);
       } else {
         toast.error(response.message);

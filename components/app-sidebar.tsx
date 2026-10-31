@@ -227,7 +227,7 @@ export function AppSidebar({
   return (
     <Sidebar
       collapsible={isTablet ? "icon" : "offcanvas"}
-      className="tablet-sidebar [--sidebar:#111b2d] [--sidebar-foreground:#f1f5f9] [--sidebar-primary:#5b4bea] [--sidebar-primary-foreground:#ffffff] [--sidebar-accent:#202e43] [--sidebar-accent-foreground:#ffffff] [--sidebar-border:#2d3b50] [--sidebar-ring:#a5b4fc]"
+      className="tablet-sidebar"
       {...props}
     >
       <SidebarHeader>

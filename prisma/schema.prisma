@@ -20,6 +20,16 @@ enum UserRole {
   STAFF
 }
 
+enum EmploymentStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum EmploymentStatusAction {
+  DEACTIVATED
+  REACTIVATED
+}
+
 enum Department {
   SALES
   DEVELOPMENT
@@ -31,38 +41,44 @@ enum Department {
 }
 
 model User {
-  id                 String             @id
-  name               String
-  email              String
-  emailVerified      Boolean            @default(false)
-  image              String?
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  role               UserRole           @default(STAFF)
-  department         Department?
-  workMode           WorkMode           @default(OFFICE)
-  banned             Boolean?           @default(false)
-  banReason          String?
-  banExpires         DateTime?
-  sessions           Session[]
-  accounts           Account[]
-  assignedCustomers  Customer[]         @relation("AssignedCustomers")
-  createdCustomers   Customer[]         @relation("CreatedCustomers")
-  proposalActivities ProposalActivity[]
-  proposals          Proposal[]
-  managedProjects    Project[]          @relation("ProjectManager")
-  createdProjects    Project[]          @relation("ProjectCreator")
-  projectMemberships ProjectMember[]
-  projectActivities  ProjectActivity[]
-  assignedTasks      ProjectTask[]      @relation("ProjectTaskAssignee")
-  createdTasks       ProjectTask[]      @relation("ProjectTaskCreator")
-  createdInvoices    Invoice[]
-  invoiceActivities  InvoiceActivity[]
-  attendanceRecords  AttendanceRecord[]
-  leaveRequests      LeaveRequest[]
-  salaryStructure    SalaryStructure?
-  salarySlips        SalarySlip[]
-  expenses           Expense[]
+  id                    String                  @id
+  name                  String
+  email                 String
+  emailVerified         Boolean                 @default(false)
+  image                 String?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  role                  UserRole                @default(STAFF)
+  employmentStatus      EmploymentStatus        @default(ACTIVE)
+  employmentEndedAt     DateTime?
+  department            Department?
+  workMode              WorkMode                @default(OFFICE)
+  banned                Boolean?                @default(false)
+  banReason             String?
+  banExpires            DateTime?
+  sessions              Session[]
+  accounts              Account[]
+  assignedCustomers     Customer[]              @relation("AssignedCustomers")
+  createdCustomers      Customer[]              @relation("CreatedCustomers")
+  proposalActivities    ProposalActivity[]
+  proposals             Proposal[]
+  managedProjects       Project[]               @relation("ProjectManager")
+  createdProjects       Project[]               @relation("ProjectCreator")
+  projectMemberships    ProjectMember[]
+  projectActivities     ProjectActivity[]
+  assignedTasks         ProjectTask[]           @relation("ProjectTaskAssignee")
+  createdTasks          ProjectTask[]           @relation("ProjectTaskCreator")
+  createdInvoices       Invoice[]
+  invoiceActivities     InvoiceActivity[]
+  attendanceRecords     AttendanceRecord[]
+  leaveRequests         LeaveRequest[]
+  salaryStructure       SalaryStructure?
+  salarySlips           SalarySlip[]
+  expenses              Expense[]
+  notifications         Notification[]
+  employmentHistory     EmployeeStatusHistory[] @relation("EmployeeStatusHistory")
+  employmentChangesMade EmployeeStatusHistory[] @relation("EmployeeStatusChangedBy")
+  employeesReassigned   EmployeeStatusHistory[] @relation("EmployeeStatusReassignedTo")
 
   // Payroll Details
   employeeId    Int     @unique @default(autoincrement())
@@ -76,6 +92,28 @@ model User {
 
   @@unique([email])
   @@map("user")
+}
+
+model EmployeeStatusHistory {
+  id                      String                 @id @default(cuid())
+  userId                  String                 @map("user_id")
+  user                    User                   @relation("EmployeeStatusHistory", fields: [userId], references: [id], onDelete: Restrict)
+  action                  EmploymentStatusAction
+  effectiveAt             DateTime               @map("effective_at")
+  changedAt               DateTime               @default(now()) @map("changed_at")
+  reason                  String
+  changedById             String?                @map("changed_by_id")
+  changedBy               User?                  @relation("EmployeeStatusChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
+  reassignedToId          String?                @map("reassigned_to_id")
+  reassignedTo            User?                  @relation("EmployeeStatusReassignedTo", fields: [reassignedToId], references: [id], onDelete: SetNull)
+  reassignedCustomerCount Int                    @default(0) @map("reassigned_customer_count")
+  reassignedProjectCount  Int                    @default(0) @map("reassigned_project_count")
+  reassignedTaskCount     Int                    @default(0) @map("reassigned_task_count")
+  reassignedMemberCount   Int                    @default(0) @map("reassigned_member_count")
+
+  @@index([userId, effectiveAt])
+  @@index([changedById, changedAt])
+  @@map("employee_status_history")
 }
 
 model Session {
@@ -1218,6 +1256,12 @@ enum LeaveStatus {
   CANCELLED
 }
 
+enum HolidayCategory {
+  MANDATORY_GAZETTED
+  RESTRICTED_OPTIONAL
+  COMPANY_SPECIAL
+}
+
 model LeaveRequest {
   id             String      @id @default(cuid())
   userId         String
@@ -1246,14 +1290,34 @@ model LeaveRequest {
 
 model Holiday {
   id          String   @id @default(cuid())
+  eventId     String?  @map("event_id")
   name        String
   date        DateTime @db.Date
+  category    HolidayCategory @default(MANDATORY_GAZETTED)
+  departments Department[]    @default([])
+  notifyStaff Boolean  @default(false) @map("notify_staff")
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@unique([date])
+  @@index([eventId])
   @@map("holiday")
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String    @default("GENERAL")
+  title     String
+  message   String
+  href      String
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([userId, readAt, createdAt])
+  @@map("notification")
 }
 
 model AttendanceSettings {

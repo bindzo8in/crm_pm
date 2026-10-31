@@ -10,10 +10,18 @@ export const customerDocumentsSchema = z.array(z.object({
     fileName: z.string().trim().max(255).optional(),
 })).max(3);
 
+export const customerDisplayNameAvailabilitySchema = z.object({
+    displayName: z.string().trim().min(1, "Display name is required"),
+    customerId: z.string().min(1).optional(),
+});
+
 export const customerSchema = z.object({
     id: z.string().optional(),
     customerNumber: z.number().optional(),
-    displayName: z.string().trim().min(1, "Display name is required"),
+    displayName: z.string()
+        .trim()
+        .transform((value) => value.replace(/\s+/g, " "))
+        .pipe(z.string().min(1, "Display name is required")),
     companyName: optionalText,
 
     primaryContactSalutation: optionalText,

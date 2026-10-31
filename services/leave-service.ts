@@ -14,6 +14,7 @@ import {
   findOverlappingActiveRequests,
   findLeaveRequestForReview,
   getApprovedAnnualBreakdownsForMonth,
+  getManagerLeaveSummary,
   insertLeaveRequest,
   listManagerLeaveRequests,
   listOwnLeaveRequests,
@@ -67,6 +68,7 @@ export async function createLeaveRequest(input: {
 
       const holidayDates = await findHolidayDates(
         transaction,
+        input.userId,
         input.startDate,
         input.endDate,
       );
@@ -86,12 +88,21 @@ export async function createLeaveRequest(input: {
   );
 }
 
-export function getOwnLeaveRequests(userId: string, page: number, pageSize: number) {
-  return listOwnLeaveRequests(userId, page, pageSize);
+export function getOwnLeaveRequests(
+  userId: string,
+  page: number,
+  pageSize: number,
+  filters?: Parameters<typeof listOwnLeaveRequests>[3],
+) {
+  return listOwnLeaveRequests(userId, page, pageSize, filters);
 }
 
 export function getManagerLeaveRequests(filters: Parameters<typeof listManagerLeaveRequests>[0]) {
   return listManagerLeaveRequests(filters);
+}
+
+export function getLeaveManagementSummary(today: Date) {
+  return getManagerLeaveSummary(today);
 }
 
 export async function cancelPendingLeaveRequest(userId: string, id: string) {

@@ -69,11 +69,24 @@ export async function findOverlappingActiveRequests(
 
 export async function findHolidayDates(
   transaction: LeaveTransaction,
+  userId: string,
   startDate: Date,
   endDate: Date,
 ): Promise<Date[]> {
+  const user = await transaction.user.findUnique({
+    where: { id: userId },
+    select: { department: true },
+  });
+  if (!user?.department) return [];
+
   const holidays = await transaction.holiday.findMany({
-    where: { date: { gte: startDate, lte: endDate } },
+    where: {
+      date: { gte: startDate, lte: endDate },
+      OR: [
+        { departments: { isEmpty: true } },
+        { departments: { has: user.department } },
+      ],
+    },
     select: { date: true },
   });
   return holidays.map(({ date }) => date);
@@ -90,8 +103,16 @@ export async function listOwnLeaveRequests(
   userId: string,
   page: number,
   pageSize: number,
+  filters: { search?: string; type?: LeaveType; status?: LeaveStatus } = {},
 ) {
-  const where = { userId };
+  const where: Prisma.LeaveRequestWhereInput = {
+    userId,
+    ...(filters.type ? { type: filters.type } : {}),
+    ...(filters.status ? { status: filters.status } : {}),
+    ...(filters.search
+      ? { reason: { contains: filters.search, mode: "insensitive" } }
+      : {}),
+  };
   const [leaves, totalCount] = await Promise.all([
     prisma.leaveRequest.findMany({
       where,
@@ -149,6 +170,34 @@ export async function listManagerLeaveRequests(
   ]);
 
   return { leaves, totalCount };
+}
+
+export async function getManagerLeaveSummary(today: Date) {
+  const [statusCounts, employeesOnLeave] = await Promise.all([
+    prisma.leaveRequest.groupBy({
+      by: ["status"],
+      _count: { _all: true },
+    }),
+    prisma.leaveRequest.findMany({
+      where: {
+        status: LeaveStatus.APPROVED,
+        startDate: { lte: today },
+        endDate: { gte: today },
+      },
+      select: { userId: true },
+      distinct: ["userId"],
+    }),
+  ]);
+  const countForStatus = (status: LeaveStatus) =>
+    statusCounts.find((entry) => entry.status === status)?._count._all ?? 0;
+
+  return {
+    pendingCount: countForStatus(LeaveStatus.PENDING),
+    approvedCount: countForStatus(LeaveStatus.APPROVED),
+    rejectedCount: countForStatus(LeaveStatus.REJECTED),
+    totalCount: statusCounts.reduce((total, entry) => total + entry._count._all, 0),
+    onLeaveTodayCount: employeesOnLeave.length,
+  };
 }
 
 export function cancelOwnPendingRequest(userId: string, id: string) {

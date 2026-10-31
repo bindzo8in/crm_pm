@@ -25,7 +25,7 @@ export default async function EditInvoicePage({ params }: EditInvoicePageProps) 
   const invoice = res.data;
 
   return (
-    <DashboardContainer title={`Edit Invoice - INV-${String(invoice.invoiceNumber).padStart(4, "0")}`}>
+    <DashboardContainer title={`Edit Invoice - INV-${String(invoice.invoiceNumber).padStart(4, "0")}`} hideHeaderOnMobile>
       <CreateInvoiceForm initialData={invoice} />
     </DashboardContainer>
   );

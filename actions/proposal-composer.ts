@@ -63,7 +63,6 @@ export async function getProposalComposerData(proposalId: string, options?: { fo
       orderBy: { sortOrder: "asc" },
     });
 
-    console.log('blocks', blocks)
 
     let justInitialized = false;
     // If no blocks exist, initialize default 6 system blocks inside a transaction

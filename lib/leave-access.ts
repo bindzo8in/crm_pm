@@ -4,6 +4,8 @@ import {
   canManageHolidays,
   isLeaveManager,
 } from "@/lib/leave-permissions";
+import { Department as DepartmentValues } from "@/app/generated/prisma/enums";
+import type { Department } from "@/app/generated/prisma/enums";
 import { hasWorkspaceAccess } from "@/lib/workspace-access";
 import { headers } from "next/headers";
 
@@ -11,6 +13,20 @@ type Session = typeof auth.$Infer.Session;
 export type LeaveUser = Session["user"];
 
 export { canManageHolidays, isLeaveManager };
+
+export function getHolidayDepartment(user: LeaveUser): Department | undefined {
+  if (canManageHolidays(user)) return undefined;
+  const department = Object.values(DepartmentValues).find(
+    (value) => value === user.department,
+  );
+  if (!department) {
+    throw new ActionError(
+      "Your department is not configured for holiday access.",
+      403,
+    );
+  }
+  return department;
+}
 
 type LeaveSelfPermission = "create" | "read-own" | "cancel-own";
 type LeaveManagerPermission = "read-all" | "review";

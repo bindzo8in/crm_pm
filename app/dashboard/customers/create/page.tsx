@@ -10,7 +10,7 @@ export default async function Page() {
     await requirePageAccess("/dashboard/customers")
 
     return (
-        <DashboardContainer title="Create Customer">
+        <DashboardContainer title="Create Customer" flush hideHeaderOnMobile>
             <CustomerForm />
         </DashboardContainer>
     )

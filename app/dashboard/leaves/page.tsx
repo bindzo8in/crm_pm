@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { SlidersHorizontal } from "lucide-react";
-import { Department, LeaveStatus, LeaveType, UserRole } from "@/app/generated/prisma/enums";
+import { CalendarDays, CheckCheck, Clock3, ShieldCheck, SlidersHorizontal, XCircle } from "lucide-react";
+import { LeaveStatus, LeaveType, UserRole } from "@/app/generated/prisma/enums";
 import {
   getAllLeaveRequestsAction,
   getAnnualLeaveBalanceAction,
+  getLeaveManagementSummaryAction,
   getMyLeaveRequestsAction,
 } from "@/actions/leave";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +24,7 @@ import type { LeaveRequestRow, ManagerLeaveRequestRow } from "@/lib/types/leave"
 import { CancelLeaveButton } from "./cancel-leave-button";
 import { LeaveRequestForm } from "./leave-request-form";
 import { LeaveReviewDialog } from "./leave-review-dialog";
+import { LeaveManagerFilters } from "./leave-manager-filters";
 import DashboardContainer from "../dashboard-container";
 
 type SearchParameters = Record<string, string | string[] | undefined>;
@@ -54,6 +56,15 @@ function statusVariant(status: LeaveStatus): "default" | "destructive" | "second
 function buildPageHref(query: URLSearchParams, pageKey: string, page: number): string {
   const next = new URLSearchParams(query);
   next.set(pageKey, String(page));
+  const search = next.toString();
+  return search ? `/dashboard/leaves?${search}` : "/dashboard/leaves";
+}
+
+function buildStatusHref(query: URLSearchParams, status?: LeaveStatus): string {
+  const next = new URLSearchParams(query);
+  next.delete("status");
+  next.delete("page");
+  if (status) next.set("status", status);
   const search = next.toString();
   return search ? `/dashboard/leaves?${search}` : "/dashboard/leaves";
 }
@@ -316,6 +327,9 @@ export default async function LeavesPage({
   const department = first(query.department) || undefined;
   const fromDate = first(query.fromDate) || undefined;
   const throughDate = first(query.throughDate) || undefined;
+  const mySearch = first(query.mySearch)?.trim() || undefined;
+  const myType = first(query.myType) || undefined;
+  const myStatus = first(query.myStatus) || undefined;
   const activeFilterCount = [
     search,
     type,
@@ -325,24 +339,33 @@ export default async function LeavesPage({
     throughDate,
   ].filter(Boolean).length;
 
-  const managerResult = isManager
-    ? await getAllLeaveRequestsAction({
-        page: managerPage,
-        pageSize,
-        search,
-        type,
-        status,
-        department,
-        fromDate,
-        throughDate,
-      })
-    : null;
-  const ownResult = isStaff
-    ? await getMyLeaveRequestsAction({ page: ownPage, pageSize })
-    : null;
-  const balance = isStaff
-    ? await getAnnualLeaveBalanceAction({ month: formatInIST(new Date(), "yyyy-MM") })
-    : null;
+  const [managerResult, managerSummary, ownResult, balance] = await Promise.all([
+    isManager
+      ? getAllLeaveRequestsAction({
+          page: managerPage,
+          pageSize,
+          search,
+          type,
+          status,
+          department,
+          fromDate,
+          throughDate,
+        })
+      : Promise.resolve(null),
+    isManager ? getLeaveManagementSummaryAction() : Promise.resolve(null),
+    isStaff
+      ? getMyLeaveRequestsAction({
+          page: ownPage,
+          pageSize,
+          search: mySearch,
+          type: myType,
+          status: myStatus,
+        })
+      : Promise.resolve(null),
+    isStaff
+      ? getAnnualLeaveBalanceAction({ month: formatInIST(new Date(), "yyyy-MM") })
+      : Promise.resolve(null),
+  ]);
 
   const managerQuery = new URLSearchParams();
   for (const [key, value] of Object.entries({
@@ -359,63 +382,103 @@ export default async function LeavesPage({
   if (isManager) {
     for (const [key, value] of managerQuery) ownQuery.set(key, value);
   }
+  for (const [key, value] of Object.entries({
+    mySearch,
+    myType,
+    myStatus,
+  })) {
+    if (value) ownQuery.set(key, value);
+  }
 
   return (
     <DashboardContainer title="Leaves">
       <header className="space-y-1">
-        <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Leave management</h2>
+        <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+          {isManager ? "Leave Requests & Approvals" : "Leave management"}
+        </h2>
         <p className="text-sm text-muted-foreground">
           {isManager
-            ? "Review leave requests across the organization."
+            ? "Review staff requests, track coverage, and apply leave policy consistently."
             : "Request time away and follow the status of your requests."}
         </p>
       </header>
 
       {isStaff && (
         <>
-          <Card>
+          <section aria-label="Leave allowance" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <Card className="border-primary/20 bg-primary/[0.03] shadow-none">
+              <CardContent className="p-5">
+                <p className="text-sm font-medium text-muted-foreground">Annual Leave · {balance?.month}</p>
+                <div className="mt-3 flex items-baseline gap-2">
+                  <p className="text-4xl font-semibold tabular-nums tracking-tight">{balance?.remainingDays ?? 0}</p>
+                  <span className="text-sm text-muted-foreground">paid day(s) remaining</span>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  {balance?.approvedDays ?? 0} of {balance?.entitledDays ?? 1} monthly day approved. Unused days expire at month-end.
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="shadow-none">
+              <CardContent className="p-5">
+                <p className="text-sm font-medium text-muted-foreground">Paid leave allowance</p>
+                <p className="mt-3 text-lg font-semibold">1 Annual day each month</p>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  Approval checks each month in the requested date range. Sick, Casual, and Unpaid leave are unpaid.
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="shadow-none sm:col-span-2 xl:col-span-1">
+              <CardContent className="p-5">
+                <p className="text-sm font-medium text-muted-foreground">Request history</p>
+                <p className="mt-3 text-4xl font-semibold tabular-nums tracking-tight">{ownResult?.totalCount ?? 0}</p>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">Your submitted requests, including past decisions.</p>
+              </CardContent>
+            </Card>
+          </section>
+          <Card className="shadow-none">
             <CardHeader>
               <CardTitle>Request leave</CardTitle>
               <CardDescription>
-                Submit a request for review. Pending requests do not reserve paid Annual Leave.
+                Select a date range and leave type. Pending requests do not reserve paid Annual Leave.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <LeaveRequestForm />
+              <LeaveRequestForm today={formatInIST(new Date(), "yyyy-MM-dd")} />
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Annual Leave allowance</CardTitle>
-              <CardDescription>
-                {balance?.month}: one paid day is available per calendar month; unused days expire at month-end and do not carry forward.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm">
-                {balance?.approvedDays} approved of {balance?.entitledDays} paid day(s) used ·{" "}
-                <strong>{balance?.remainingDays} remaining</strong>
-              </p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Sick, Casual, and Unpaid leave are not paid leave. Annual Leave approval checks each month in the requested date range.
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>My requests</CardTitle>
-              <CardDescription>
-                You can cancel only your own pending requests. New requests cannot overlap pending or approved leave.
-              </CardDescription>
+          <Card className="min-w-0 shadow-none">
+            <CardHeader className="space-y-4">
+              <div>
+                <CardTitle>My requests</CardTitle>
+                <CardDescription className="mt-1">
+                  You can cancel only your own pending requests. New requests cannot overlap pending or approved leave.
+                </CardDescription>
+              </div>
+              <form method="get" action="/dashboard/leaves" className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
+                <label className="relative min-w-0">
+                  <span className="sr-only">Search leave reasons</span>
+                  <input
+                    name="mySearch"
+                    defaultValue={mySearch}
+                    placeholder="Search request reason"
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                </label>
+                <select name="myType" defaultValue={myType ?? ""} className="h-10 min-w-0 rounded-md border border-input bg-background px-3 text-sm" aria-label="Filter by leave type">
+                  <option value="">All types</option>
+                  {Object.values(LeaveType).map((value) => <option key={value} value={value}>{value}</option>)}
+                </select>
+                <select name="myStatus" defaultValue={myStatus ?? ""} className="h-10 min-w-0 rounded-md border border-input bg-background px-3 text-sm" aria-label="Filter by request status">
+                  <option value="">All statuses</option>
+                  {Object.values(LeaveStatus).map((value) => <option key={value} value={value}>{value}</option>)}
+                </select>
+                <Button type="submit" variant="outline">Filter</Button>
+              </form>
             </CardHeader>
             <CardContent>
               {ownResult?.leaves.length ? (
                 <>
-                  <RequestsTable
-                    rows={ownResult.leaves}
-                    managerView={false}
-                    viewerId={user.id}
-                  />
+                  <RequestsTable rows={ownResult.leaves} managerView={false} viewerId={user.id} />
                   <Pagination
                     query={ownQuery}
                     pageKey={isManager ? "myPage" : "page"}
@@ -426,8 +489,12 @@ export default async function LeavesPage({
                 </>
               ) : (
                 <div className="rounded-lg border border-dashed px-4 py-10 text-center">
-                  <p className="font-medium">No leave requests yet</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Your requests will appear here after submission.</p>
+                  <p className="font-medium">{mySearch || myType || myStatus ? "No matching requests" : "No leave requests yet"}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {mySearch || myType || myStatus
+                      ? "Try changing or clearing the filters."
+                      : "Your requests will appear here after submission."}
+                  </p>
                 </div>
               )}
             </CardContent>
@@ -436,83 +503,120 @@ export default async function LeavesPage({
       )}
 
       {isManager && managerResult && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Organization leave requests</CardTitle>
-            <CardDescription>
-              HR staff, Admin, and Super Admin can approve or reject any staff request in one step. Self-review is not allowed.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="border-b">
-            <details className="group lg:contents">
-              <summary className="mb-3 flex min-h-11 cursor-pointer list-none items-center justify-between rounded-md border bg-background px-3 text-sm font-medium outline-none marker:hidden focus-visible:ring-2 focus-visible:ring-ring lg:hidden">
-                <span className="inline-flex items-center gap-2">
-                  <SlidersHorizontal aria-hidden="true" className="size-4 text-primary" />
-                  Filter requests
-                </span>
-                <span className="text-xs font-normal text-muted-foreground">
-                  {activeFilterCount ? `${activeFilterCount} active` : "Optional"}
-                </span>
-              </summary>
-            <form method="get" action="/dashboard/leaves" className="hidden grid-cols-2 gap-3 group-open:grid lg:grid lg:grid-cols-4">
-              <input
-                name="search"
-                defaultValue={search}
-                placeholder="Employee name or email"
-                className="col-span-2 h-10 min-w-0 rounded-md border border-input bg-background px-3 text-sm lg:col-span-1"
-                aria-label="Search employee"
+        <>
+          <section aria-label="Leave request summary" className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              { label: "Awaiting review", value: managerSummary?.pendingCount ?? 0, icon: Clock3, tone: "text-primary", detail: "Requests needing a decision" },
+              { label: "On leave today", value: managerSummary?.onLeaveTodayCount ?? 0, icon: CalendarDays, tone: "text-sky-700 dark:text-sky-400", detail: "Approved staff absences" },
+              { label: "Approved requests", value: managerSummary?.approvedCount ?? 0, icon: CheckCheck, tone: "text-emerald-700 dark:text-emerald-400", detail: "Approved across the organization" },
+              { label: "Rejected requests", value: managerSummary?.rejectedCount ?? 0, icon: XCircle, tone: "text-destructive", detail: "Rejected across the organization" },
+            ].map((metric) => {
+              const MetricIcon = metric.icon;
+              return (
+                <Card key={metric.label} className="min-w-0 shadow-none">
+                  <CardContent className="flex items-start justify-between gap-3 px-4 py-4">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-muted-foreground">{metric.label}</p>
+                      <p className="mt-3 text-3xl font-semibold tabular-nums tracking-tight">{metric.value.toLocaleString("en-IN")}</p>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">{metric.detail}</p>
+                    </div>
+                    <span className={`rounded-lg bg-muted p-2.5 ${metric.tone}`}>
+                      <MetricIcon aria-hidden="true" className="size-5" />
+                    </span>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </section>
+
+          <Card className="min-w-0 shadow-none">
+            <CardHeader className="gap-4 border-b bg-muted/20 pb-4">
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                <div className="min-w-0">
+                  <CardTitle className="text-base">Organization leave requests</CardTitle>
+                  <CardDescription className="mt-1">
+                    Review requests by status. Self-review is blocked for all managers.
+                  </CardDescription>
+                </div>
+                <div className="flex min-w-0 items-center gap-1 overflow-x-auto rounded-lg bg-muted p-1" aria-label="Filter by request status">
+                  {[
+                    { label: "All requests", value: undefined, count: managerSummary?.totalCount ?? managerResult.totalCount },
+                    { label: "Pending", value: LeaveStatus.PENDING, count: managerSummary?.pendingCount ?? 0 },
+                    { label: "Approved", value: LeaveStatus.APPROVED, count: managerSummary?.approvedCount ?? 0 },
+                    { label: "Rejected", value: LeaveStatus.REJECTED, count: managerSummary?.rejectedCount ?? 0 },
+                  ].map((tab) => {
+                    const active = (status ?? undefined) === tab.value;
+                    return (
+                      <Link
+                        key={tab.label}
+                        href={buildStatusHref(managerQuery, tab.value)}
+                        aria-current={active ? "page" : undefined}
+                        className={`inline-flex min-h-9 shrink-0 items-center gap-2 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm ${active ? "bg-background text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                      >
+                        {tab.label}
+                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] tabular-nums ${active ? "bg-primary text-primary-foreground" : "bg-background/70 text-muted-foreground"}`}>
+                          {tab.count}
+                        </span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <LeaveManagerFilters
+                search={search}
+                department={department}
+                type={type}
+                fromDate={fromDate}
+                throughDate={throughDate}
+                status={status}
+                activeFilterCount={activeFilterCount}
               />
-              <select name="type" defaultValue={type ?? ""} className="h-10 min-w-0 rounded-md border border-input bg-background px-2 text-sm sm:px-3" aria-label="Filter by leave type">
-                <option value="">All types</option>
-                {Object.values(LeaveType).map((value) => <option key={value} value={value}>{value}</option>)}
-              </select>
-              <select name="status" defaultValue={status ?? ""} className="h-10 min-w-0 rounded-md border border-input bg-background px-2 text-sm sm:px-3" aria-label="Filter by status">
-                <option value="">All statuses</option>
-                {Object.values(LeaveStatus).map((value) => <option key={value} value={value}>{value}</option>)}
-              </select>
-              <select name="department" defaultValue={department ?? ""} className="h-10 min-w-0 rounded-md border border-input bg-background px-2 text-sm sm:px-3" aria-label="Filter by department">
-                <option value="">All departments</option>
-                {Object.values(Department).map((value) => <option key={value} value={value}>{value}</option>)}
-              </select>
-              <label className="min-w-0 space-y-1 text-xs text-muted-foreground">
-                Requests overlapping from
-                <input name="fromDate" type="date" defaultValue={fromDate ?? ""} className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-2 text-sm text-foreground sm:px-3" />
-              </label>
-              <label className="min-w-0 space-y-1 text-xs text-muted-foreground">
-                Requests overlapping through
-                <input name="throughDate" type="date" defaultValue={throughDate ?? ""} className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-2 text-sm text-foreground sm:px-3" />
-              </label>
-              <div className="col-span-2 flex items-end gap-2 lg:col-span-1">
-                <Button type="submit" className="min-h-10 flex-1 lg:flex-none">Apply filters</Button>
-                <Button asChild variant="outline" className="min-h-10 flex-1 lg:flex-none"><Link href="/dashboard/leaves">Clear</Link></Button>
-              </div>
-            </form>
-            </details>
-          </CardContent>
-          <CardContent className="pt-6">
-            {managerResult.leaves.length > 0 ? (
-              <>
-                <RequestsTable
-                  rows={managerResult.leaves}
-                  managerView
-                  viewerId={user.id}
-                />
-                <Pagination
-                  query={managerQuery}
-                  pageKey="page"
-                  page={managerPage}
-                  pageSize={managerResult.pageSize}
-                  totalCount={managerResult.totalCount}
-                />
-              </>
-            ) : (
-              <div className="rounded-lg border border-dashed px-4 py-10 text-center">
-                <p className="font-medium">No leave requests found</p>
-                <p className="mt-1 text-sm text-muted-foreground">Try changing the filters.</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent className="px-0 pt-0">
+              {managerResult.leaves.length > 0 ? (
+                <>
+                  <RequestsTable
+                    rows={managerResult.leaves}
+                    managerView
+                    viewerId={user.id}
+                  />
+                  <div className="px-4 pb-4">
+                    <Pagination
+                      query={managerQuery}
+                      pageKey="page"
+                      page={managerPage}
+                      pageSize={managerResult.pageSize}
+                      totalCount={managerResult.totalCount}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="grid min-h-48 place-items-center px-6 py-10 text-center">
+                  <div>
+                    <span className="mx-auto grid size-11 place-items-center rounded-full bg-muted text-muted-foreground">
+                      <SlidersHorizontal aria-hidden="true" className="size-5" />
+                    </span>
+                    <p className="mt-3 font-medium">No leave requests found</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {activeFilterCount ? "Try changing or clearing the filters." : "New staff requests will appear here."}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <aside className="flex items-start gap-3 rounded-xl border bg-muted/30 p-4 sm:items-center">
+            <ShieldCheck aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-primary sm:mt-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">Leave policy safeguards</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Sundays and configured holidays are excluded from chargeable leave days. Annual Leave availability is checked for each month when a request is approved.
+              </p>
+            </div>
+          </aside>
+        </>
       )}
     </DashboardContainer>
   );

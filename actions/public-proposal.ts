@@ -9,7 +9,12 @@ export async function getPublicProposalData(proposalId: string) {
     // It also checks if the proposal exists.
     const pricingRes = await getProposalPricing(proposalId, true);
     if (!pricingRes.success || !pricingRes.data) {
-      return { success: false, message: "Proposal not found" };
+      return {
+        success: false,
+        message: pricingRes.message.toLowerCase().includes("not found")
+          ? "Proposal not found"
+          : "Proposal could not be loaded",
+      };
     }
 
     const proposal = pricingRes.data;

@@ -15,22 +15,33 @@ import {
     UserKey,
     Building2,
     ReceiptIndianRupee,
+    UserRoundCheck,
+    UserRoundX,
 } from "lucide-react";
 import { ChangeRoleDialog } from "./change-role-dialog";
 import { ChangeDepartmentDialog } from "./change-department-dialog";
 import { ChangeWorkModeDialog } from "./change-work-mode-dialog";
 import { EditPayrollDetailsDialog } from "./edit-payroll-details-dialog";
-import type { UserWithRole } from "better-auth/plugins/admin";
 import { useSession } from "@/lib/auth-client";
-import { UserRole, Department } from "@/app/generated/prisma/enums";
+import { EmploymentStatus, UserRole } from "@/app/generated/prisma/enums";
+import {
+    canAssignUserDepartment,
+    canManageEmploymentStatus,
+    canManageUser,
+} from "@/lib/permissions";
+import { OffboardEmployeeDialog } from "./offboard-employee-dialog";
+import type { getUsers } from "@/actions/user";
 
-export const UserActions = ({ user }: { user: UserWithRole }) => {
+type UserActionRow = Awaited<ReturnType<typeof getUsers>>["users"][number];
+
+export const UserActions = ({ user }: { user: UserActionRow }) => {
     const { data: session } = useSession();
     const [copied, setCopied] = useState(false);
     const [roleDialogOpen, setRoleDialogOpen] = useState(false);
     const [deptDialogOpen, setDeptDialogOpen] = useState(false);
     const [workModeDialogOpen, setWorkModeDialogOpen] = useState(false);
     const [payrollDialogOpen, setPayrollDialogOpen] = useState(false);
+    const [employmentDialogOpen, setEmploymentDialogOpen] = useState(false);
 
     const onCopy = async () => {
         await navigator.clipboard.writeText(user.id);
@@ -41,21 +52,29 @@ export const UserActions = ({ user }: { user: UserWithRole }) => {
             setCopied(false);
         }, 2000);
     };
-    const currentUserRole = session?.user.role as UserRole ?? UserRole.STAFF
-
-    const canManageRole =
-        currentUserRole === UserRole.SUPER_ADMIN ||
-        user.role !== UserRole.SUPER_ADMIN;
+    const currentUserRole =
+        (session?.user.role as UserRole | undefined) ?? UserRole.STAFF;
     const isMe = user.id === session?.user.id
 
-    const canAssignDepartment =
-        currentUserRole === UserRole.SUPER_ADMIN ||
-        (currentUserRole === UserRole.ADMIN && user.role !== UserRole.SUPER_ADMIN);
+    const canAssignDepartment = canAssignUserDepartment(
+        currentUserRole,
+        session?.user.department,
+        user.role,
+    );
+    const canManageRole = canManageUser(currentUserRole, user.role);
+    const canChangeWorkMode = canManageUser(currentUserRole, user.role);
         
     const canEditPayroll = 
         currentUserRole === UserRole.SUPER_ADMIN || 
-        currentUserRole === UserRole.ADMIN || 
-        (currentUserRole === UserRole.STAFF && (session?.user as any)?.department === Department.HR);
+        currentUserRole === UserRole.ADMIN;
+    const canManageEmployment =
+        !isMe &&
+        canManageEmploymentStatus(
+            currentUserRole,
+            session?.user.department,
+            user.role,
+        );
+    const isActive = user.employmentStatus === EmploymentStatus.ACTIVE;
 
     return (
         <>
@@ -78,10 +97,19 @@ export const UserActions = ({ user }: { user: UserWithRole }) => {
                     </DropdownMenuItem>
 
                     <DropdownMenuItem
+                        onSelect={() => setEmploymentDialogOpen(true)}
+                        disabled={!canManageEmployment}
+                        variant={isActive ? "destructive" : "default"}
+                    >
+                        {isActive ? <UserRoundX /> : <UserRoundCheck />}
+                        {isActive ? "Deactivate employee" : "Reactivate employee"}
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
                         onSelect={() => {
                             setDeptDialogOpen(true);
                         }}
-                        disabled={!canAssignDepartment}
+                        disabled={!canAssignDepartment || !isActive}
                     >
                         <Building2 />
                         Assign Department
@@ -91,7 +119,7 @@ export const UserActions = ({ user }: { user: UserWithRole }) => {
                         onSelect={() => {
                             setWorkModeDialogOpen(true);
                         }}
-                        disabled={!canAssignDepartment}
+                        disabled={!canChangeWorkMode || !isActive}
                     >
                         <Building2 />
                         Change Work Mode
@@ -101,7 +129,7 @@ export const UserActions = ({ user }: { user: UserWithRole }) => {
                         onSelect={() => {
                             setRoleDialogOpen(true);
                         }}
-                        disabled={!canManageRole || isMe}
+                        disabled={!canManageRole || isMe || !isActive}
                     >
                         <UserKey />
                         Change Role
@@ -130,7 +158,7 @@ export const UserActions = ({ user }: { user: UserWithRole }) => {
             <ChangeDepartmentDialog
                 open={deptDialogOpen}
                 onOpenChange={setDeptDialogOpen}
-                user={user as any}
+                user={user}
                 currentUserRole={currentUserRole}
                 currentUserId={session?.user.id ?? ""}
             />
@@ -138,7 +166,7 @@ export const UserActions = ({ user }: { user: UserWithRole }) => {
             <ChangeWorkModeDialog
                 open={workModeDialogOpen}
                 onOpenChange={setWorkModeDialogOpen}
-                user={user as any}
+                user={user}
                 currentUserRole={currentUserRole}
                 currentUserId={session?.user.id ?? ""}
             />
@@ -146,7 +174,13 @@ export const UserActions = ({ user }: { user: UserWithRole }) => {
             <EditPayrollDetailsDialog
                 open={payrollDialogOpen}
                 onOpenChange={setPayrollDialogOpen}
-                user={user as any}
+                user={user}
+            />
+
+            <OffboardEmployeeDialog
+                open={employmentDialogOpen}
+                onOpenChange={setEmploymentDialogOpen}
+                user={user}
             />
         </>
     );

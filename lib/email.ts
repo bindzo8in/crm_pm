@@ -3,12 +3,18 @@ import { env } from './env'
 import VerificationEmail from '@/email/verification-email'
 import ResetPasswordEmail from '@/email/reset-password';
 import ExistingUserSignupEmail from "@/email/existing-user-signup";
+import {
+    formatHolidayDateRange,
+    formatHolidayDepartmentScope,
+    HOLIDAY_CATEGORY_LABELS,
+} from "@/lib/holiday-format";
+import type { Department, HolidayCategory } from "@/app/generated/prisma/enums";
 
 const resend = new Resend(env.RESEND_API_KEY)
 
 export async function sendVerificationEmail({ email, appName, verificationUrl, supportEmail, name }: { email: string, appName: string, verificationUrl: string, supportEmail: string, name: string }): Promise<void> {
     try {
-        const { data, error } = await resend.emails.send({
+        const { error } = await resend.emails.send({
             from: env.MAIL_FROM,
             to: email,
             subject: `Verify your email address for ${appName}`,
@@ -27,17 +33,38 @@ export async function sendVerificationEmail({ email, appName, verificationUrl, s
         }
 
     } catch (error) {
-        console.error(error);
+        console.error("Failed to send verification email.", error);
+        throw error;
     }
 }
 
-export async function sendResetPasswordEmail({ appName, email, resetUrl, supportEmail }: { email: string, appName: string, resetUrl: string, supportEmail: string }) {
+export async function sendResetPasswordEmail({
+    name,
+    appName,
+    email,
+    resetUrl,
+    supportEmail,
+}: {
+    name?: string | null;
+    email: string;
+    appName: string;
+    resetUrl: string;
+    supportEmail: string;
+}) {
     try {
+        const callbackUrl = new URL(resetUrl).searchParams.get("callbackURL");
+        const isInvitation =
+            callbackUrl !== null &&
+            new URL(callbackUrl, env.NEXT_PUBLIC_SITE_URL).searchParams.get("flow") === "invitation";
         const { error } = await resend.emails.send({
             from: env.MAIL_FROM,
             to: email,
-            subject: `Reset Password - ${appName}`,
+            subject: isInvitation
+                ? `Set up your ${appName} account`
+                : `Reset Password - ${appName}`,
             react: ResetPasswordEmail({
+                name,
+                isInvitation,
                 appName,
                 resetUrl,
                 supportEmail,
@@ -49,7 +76,8 @@ export async function sendResetPasswordEmail({ appName, email, resetUrl, support
         if (error) throw error
     }
     catch (error) {
-        console.error(error)
+        console.error("Failed to send password reset email.", error);
+        throw error;
     }
 }
 
@@ -149,4 +177,75 @@ export async function sendExistingUserSignupEmail({
         console.error("Failed to send existing user signup email:", error);
         throw error;
     }
+}
+
+export async function sendHolidayAnnouncementEmails({
+    recipients,
+    name,
+    startDate,
+    endDate,
+    category,
+    departments,
+}: {
+    recipients: { email: string }[];
+    name: string;
+    startDate: Date;
+    endDate: Date;
+    category: HolidayCategory;
+    departments: Department[];
+}): Promise<{ sent: number; failed: number }> {
+    const escapeHtml = (value: string) =>
+        value.replace(/[&<>"']/g, (character) => {
+            const entities: Record<string, string> = {
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#39;",
+            };
+            return entities[character] ?? character;
+        });
+    const dateLabel = formatHolidayDateRange(startDate, endDate);
+    const categoryLabel = HOLIDAY_CATEGORY_LABELS[category];
+    const departmentLabel = formatHolidayDepartmentScope(departments);
+    const safeName = escapeHtml(name);
+    const safeDate = escapeHtml(dateLabel);
+    const safeCategory = escapeHtml(categoryLabel);
+    const safeDepartments = escapeHtml(departmentLabel);
+    const appUrl = `${env.NEXT_PUBLIC_SITE_URL}/dashboard/holidays`;
+
+    let sent = 0;
+    let failed = 0;
+    for (let index = 0; index < recipients.length; index += 10) {
+        const batch = recipients.slice(index, index + 10);
+        const results = await Promise.allSettled(
+            batch.map(async ({ email }) => {
+                const { error } = await resend.emails.send({
+                    from: env.MAIL_FROM,
+                    to: email,
+                    subject: `${name.replace(/[\r\n]/g, " ")} holiday announcement`,
+                    html: `
+                        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+                            <h2>${safeName}</h2>
+                            <p><strong>Date:</strong> ${safeDate}</p>
+                            <p><strong>Category:</strong> ${safeCategory}</p>
+                            <p><strong>Applies to:</strong> ${safeDepartments}</p>
+                            <p><a href="${appUrl}">View the holiday calendar</a></p>
+                            <p style="color: #666; font-size: 13px;">Sent by ${escapeHtml(env.NEXT_PUBLIC_APP_NAME)}.</p>
+                        </div>
+                    `,
+                    text: `${name}\nDate: ${dateLabel}\nCategory: ${categoryLabel}\nApplies to: ${departmentLabel}\nHoliday calendar: ${appUrl}`,
+                    tags: [{ name: "type", value: "holiday-announcement" }],
+                });
+                if (error) throw error;
+            }),
+        );
+        sent += results.filter((result) => result.status === "fulfilled").length;
+        failed += results.filter((result) => result.status === "rejected").length;
+    }
+
+    if (failed > 0) {
+        console.error(`Failed to send ${failed} holiday announcement email(s).`);
+    }
+    return { sent, failed };
 }

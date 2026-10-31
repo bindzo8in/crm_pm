@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Building2, Edit, Plus, Trash } from "lucide-react";
 import { CompanyBankAccount } from "@/app/generated/prisma/client";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 export function BankAccountsClient({ data: initialData }: { data: CompanyBankAccount[] }) {
     const queryClient = useQueryClient();
@@ -54,18 +55,21 @@ export function BankAccountsClient({ data: initialData }: { data: CompanyBankAcc
                 </DialogContent>
             </Dialog>
 
-            <Button
-                variant="destructive"
-                size="icon"
-                aria-label={`Delete ${account.accountName}`}
-                onClick={() => {
-                    if (confirm("Are you sure you want to delete this bank account?")) {
-                        deleteAccount(account.id);
-                    }
-                }}
-            >
-                <Trash className="h-4 w-4" />
-            </Button>
+            <ConfirmDialog
+                trigger={
+                    <Button
+                        variant="destructive"
+                        size="icon"
+                        aria-label={`Delete ${account.accountName}`}
+                    >
+                        <Trash className="h-4 w-4" />
+                    </Button>
+                }
+                title="Delete bank account?"
+                description={`Delete ${account.accountName}?`}
+                confirmLabel="Delete account"
+                onConfirm={() => deleteAccount(account.id)}
+            />
         </div>
     );
 

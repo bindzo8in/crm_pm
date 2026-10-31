@@ -1,4 +1,4 @@
-import { UserRole } from "@/app/generated/prisma/enums";
+import { Department, UserRole } from "@/app/generated/prisma/enums";
 import { createAccessControl } from "better-auth/plugins/access";
 import { defaultStatements, adminAc } from "better-auth/plugins/admin/access";
 import type { Prisma } from "@/app/generated/prisma/client";
@@ -307,6 +307,7 @@ export const prismaModelPermissions = {
     AttendanceBreak: "attendance",
     LeaveRequest: "leave",
     Holiday: "holidays",
+    Notification: "holidays",
     AttendanceSettings: "attendance",
     AttendanceAuditLog: "attendance",
     SalaryStructure: "salary",
@@ -315,6 +316,7 @@ export const prismaModelPermissions = {
     ProjectMember: "projects",
     ProjectActivity: "projects",
     ProjectTask: "tasks",
+    EmployeeStatusHistory: "users",
 } satisfies Record<Prisma.ModelName, keyof typeof statement>;
 
 export function canReadFinance(role: UserRole): boolean {
@@ -344,4 +346,43 @@ export function canManageUser(
     targetRole: UserRole
 ) {
     return roleLevel[actorRole] > roleLevel[targetRole];
+}
+
+export function canManageUserDirectory(
+    actorRole: UserRole,
+    actorDepartment?: string | null,
+): boolean {
+    return (
+        actorRole === UserRole.SUPER_ADMIN ||
+        actorRole === UserRole.ADMIN ||
+        (actorRole === UserRole.STAFF && actorDepartment === Department.HR)
+    );
+}
+
+export function canAssignUserDepartment(
+    actorRole: UserRole,
+    actorDepartment: string | null | undefined,
+    targetRole: UserRole,
+): boolean {
+    if (!canManageUserDirectory(actorRole, actorDepartment)) {
+        return false;
+    }
+
+    return actorRole === UserRole.STAFF
+        ? targetRole === UserRole.STAFF
+        : canManageUser(actorRole, targetRole);
+}
+
+export function canManageEmploymentStatus(
+    actorRole: UserRole,
+    actorDepartment: string | null | undefined,
+    targetRole: UserRole,
+): boolean {
+    if (!canManageUserDirectory(actorRole, actorDepartment)) {
+        return false;
+    }
+
+    return actorRole === UserRole.STAFF
+        ? targetRole === UserRole.STAFF
+        : canManageUser(actorRole, targetRole);
 }

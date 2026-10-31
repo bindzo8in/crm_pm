@@ -10,7 +10,7 @@ export default async function CreateInvoicePage() {
   await requirePageAccess("/dashboard/invoices");
 
   return (
-    <DashboardContainer title="Create Invoice">
+    <DashboardContainer title="Create Invoice" hideHeaderOnMobile>
       <CreateInvoiceForm />
     </DashboardContainer>
   );

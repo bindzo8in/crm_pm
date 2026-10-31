@@ -2,6 +2,7 @@
 
 import { deleteTariffGrid } from "@/actions/tariffs";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { format } from "date-fns";
 import { MoreHorizontal, ExternalLink, Pencil, Trash2, Share2, Copy, Send, Tags } from "lucide-react";
 import Link from "next/link";
@@ -38,6 +39,7 @@ type TariffGrid = Prisma.TariffGridGetPayload<{
 
 export function TariffGridList({ grids }: { grids: TariffGrid[] }) {
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [confirmDeleteGrid, setConfirmDeleteGrid] = useState<TariffGrid | null>(null);
   const [shareGrid, setShareGrid] = useState<TariffGrid | null>(null);
   const [clientName, setClientName] = useState("");
   const [currency, setCurrency] = useState("inr");
@@ -55,8 +57,6 @@ export function TariffGridList({ grids }: { grids: TariffGrid[] }) {
     : "";
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this Tariff Grid?")) return;
-    
     setIsDeleting(id);
     try {
       const result = await deleteTariffGrid(id);
@@ -152,10 +152,10 @@ export function TariffGridList({ grids }: { grids: TariffGrid[] }) {
                     Manage grid
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem 
+                <DropdownMenuItem
                   className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive"
-                  onClick={() => handleDelete(grid.id)}
                   disabled={isDeleting === grid.id}
+                  onSelect={() => setConfirmDeleteGrid(grid)}
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
                   {isDeleting === grid.id ? "Deleting..." : "Delete"}
@@ -179,6 +179,20 @@ export function TariffGridList({ grids }: { grids: TariffGrid[] }) {
           </Link>
         </div>
       ))}
+
+      <ConfirmDialog
+        open={Boolean(confirmDeleteGrid)}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDeleteGrid(null);
+        }}
+        title="Delete tariff grid?"
+        description={`Delete "${confirmDeleteGrid?.name ?? ""}"? This action cannot be undone.`}
+        confirmLabel="Delete grid"
+        disabled={Boolean(confirmDeleteGrid && isDeleting === confirmDeleteGrid.id)}
+        onConfirm={() => {
+          if (confirmDeleteGrid) void handleDelete(confirmDeleteGrid.id);
+        }}
+      />
 
       <Dialog open={!!shareGrid} onOpenChange={(open) => !open && setShareGrid(null)}>
         <DialogContent className="sm:max-w-md">

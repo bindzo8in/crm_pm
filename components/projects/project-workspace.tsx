@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 export type ProjectWorkspaceData = NonNullable<
   Extract<Awaited<ReturnType<typeof getProject>>, { success: true }>["data"]
@@ -142,7 +143,6 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
   }
 
   async function removeTask(taskId: string) {
-    if (!window.confirm("Remove this task from the project?")) return;
     setPending(true);
     try {
       const result = await deleteProjectTaskAction(taskId);
@@ -161,7 +161,6 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
   }
 
   async function archive() {
-    if (!window.confirm("Archive this project? It will be removed from the active project list.")) return;
     setPending(true);
     try {
       const result = await archiveProjectAction(project.id);
@@ -223,9 +222,14 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
               </Button>
             )}
             {permissions.canArchive && (
-              <Button variant="outline" onClick={archive} disabled={pending}>
-                Archive
-              </Button>
+              <ConfirmDialog
+                trigger={<Button variant="outline" disabled={pending}>Archive</Button>}
+                title="Archive this project?"
+                description="The project will be removed from the active project list."
+                confirmLabel="Archive project"
+                disabled={pending}
+                onConfirm={() => void archive()}
+              />
             )}
           </div>
         </div>
@@ -349,9 +353,14 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
                             {Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                           </select>
                           {permissions.canDeleteTasks && (
-                            <Button variant="ghost" size="sm" onClick={() => void removeTask(task.id)} disabled={pending}>
-                              Remove
-                            </Button>
+                            <ConfirmDialog
+                              trigger={<Button variant="ghost" size="sm" disabled={pending}>Remove</Button>}
+                              title="Remove task?"
+                              description="This task will be removed from the project."
+                              confirmLabel="Remove task"
+                              disabled={pending}
+                              onConfirm={() => void removeTask(task.id)}
+                            />
                           )}
                         </div>
                       </div>

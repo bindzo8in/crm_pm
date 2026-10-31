@@ -5,7 +5,7 @@ import { nextCookies } from "better-auth/next-js";
 import { admin } from "better-auth/plugins/admin"
 import { sendExistingUserSignupEmail, sendResetPasswordEmail, sendVerificationEmail } from "./email";
 import { env } from "./env";
-import { UserRole, WorkMode } from "@/app/generated/prisma/enums";
+import { EmploymentStatus, UserRole, WorkMode } from "@/app/generated/prisma/enums";
 import { ac, adminRole, staffRole, superAdminRole } from './permissions'
 import { expo } from "@better-auth/expo";
 
@@ -36,11 +36,39 @@ export const auth = betterAuth({
     database: prismaAdapter(prisma, {
         provider: "postgresql"
     }),
+    databaseHooks: {
+        session: {
+            create: {
+                before: async (session) => {
+                    const user = await prisma.user.findUnique({
+                        where: { id: session.userId },
+                        select: { employmentStatus: true },
+                    });
+                    if (user?.employmentStatus === EmploymentStatus.INACTIVE) {
+                        throw new Error("This employee account is inactive.");
+                    }
+                },
+                after: async (session) => {
+                    const user = await prisma.user.findUnique({
+                        where: { id: session.userId },
+                        select: { employmentStatus: true },
+                    });
+                    if (!user || user.employmentStatus !== EmploymentStatus.ACTIVE) {
+                        await prisma.session.deleteMany({
+                            where: { token: session.token },
+                        });
+                        throw new Error("This employee account is inactive.");
+                    }
+                },
+            },
+        },
+    },
     user: {
         additionalFields: {
             department: {
                 type: "string",
                 required: false,
+                input: false,
             },
             workMode: {
                 type: "string",
@@ -65,7 +93,8 @@ export const auth = betterAuth({
         requireEmailVerification: true,
         resetPasswordTokenExpiresIn: 60 * 60, // 1 hour
         sendResetPassword: async ({ url, user }) => {
-            sendResetPasswordEmail({
+            await sendResetPasswordEmail({
+                name: user.name,
                 email: user.email,
                 appName: env.NEXT_PUBLIC_APP_NAME,
                 resetUrl: url,
@@ -73,6 +102,13 @@ export const auth = betterAuth({
             })
         },
         revokeSessionsOnPasswordReset: true,
+        onPasswordReset: async ({ user }) => {
+            // Completing the email-delivered reset link proves mailbox access.
+            await prisma.user.update({
+                where: { id: user.id },
+                data: { emailVerified: true },
+            });
+        },
         onExistingUserSignUp: async ({ user }) => {
             void sendExistingUserSignupEmail({
                 email: user.email,
@@ -86,9 +122,8 @@ export const auth = betterAuth({
         sendOnSignUp: true,
         sendOnSignIn: true,
         expiresIn: 24 * 60 * 60, // 24 hours
-        sendVerificationEmail: async ({ token, url, user }) => {
-            console.log("email is start sending for " + user.email + " with url: " + url);
-            sendVerificationEmail({
+        sendVerificationEmail: async ({ url, user }) => {
+            await sendVerificationEmail({
                 email: user.email,
                 appName: env.NEXT_PUBLIC_APP_NAME,
                 verificationUrl: url,

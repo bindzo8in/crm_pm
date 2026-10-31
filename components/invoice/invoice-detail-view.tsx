@@ -1,11 +1,12 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { assignInvoicePaymentAccount, getInvoiceById, getInvoicePaymentAccounts, getPublicInvoiceById, recordInvoicePayment, updateInvoiceStatus, sendInvoiceEmailAction, softDeleteInvoice } from "@/actions/invoice";
 import { invoiceKeys } from "@/components/invoice/util";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -53,16 +54,19 @@ function getImageUrl(field: any): string | null {
 
 export function InvoiceDetailView({
   invoiceId,
+  openPaymentOnLoad = false,
   isPdfMode = false,
   isPublic = false,
 }: {
   invoiceId: string;
+  openPaymentOnLoad?: boolean;
   isPdfMode?: boolean;
   isPublic?: boolean;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [paymentDate, setPaymentDate] = useState("");
   const [accountSelections, setAccountSelections] = useState<Record<string, string>>({});
@@ -71,6 +75,8 @@ export function InvoiceDetailView({
   const [notes, setNotes] = useState("");
   const [downloading, setDownloading] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
+  const invoicePreviewRef = useRef<HTMLDivElement>(null);
+  const paymentActionHandled = useRef(false);
 
   useEffect(() => {
     setPaymentDate(getLocalDateInputValue());
@@ -93,6 +99,39 @@ export function InvoiceDetailView({
   const invoice = data?.success ? data.data : null;
   const paymentAccounts = paymentAccountsResult?.success ? paymentAccountsResult.data ?? [] : [];
   const [financialAccountId, setFinancialAccountId] = useState("");
+
+  useEffect(() => {
+    if (!openPaymentOnLoad || !invoice || paymentActionHandled.current) return;
+
+    paymentActionHandled.current = true;
+    if (invoice.status !== "VOID" && invoice.grandTotal > invoice.amountPaid) {
+      setPaymentOpen(true);
+    }
+
+    router.replace(`/dashboard/invoices/${invoiceId}`, { scroll: false });
+  }, [invoice, invoiceId, openPaymentOnLoad, router]);
+
+  useEffect(() => {
+    const previewViewport = invoicePreviewRef.current;
+    const invoiceCard = previewViewport?.querySelector<HTMLElement>("#invoice-printable-card");
+    if (!previewViewport || !invoiceCard || isPdfMode) return;
+
+    const updatePreviewScale = () => {
+      const availableWidth = previewViewport.clientWidth || document.documentElement.clientWidth;
+      const scale = Math.max(0.35, Math.min(1, availableWidth / 794));
+      invoiceCard.style.zoom = String(scale);
+    };
+
+    updatePreviewScale();
+    window.addEventListener("resize", updatePreviewScale);
+    const resizeObserver = new ResizeObserver(updatePreviewScale);
+    resizeObserver.observe(previewViewport);
+
+    return () => {
+      window.removeEventListener("resize", updatePreviewScale);
+      resizeObserver.disconnect();
+    };
+  }, [data, isPdfMode]);
 
   const paymentMutation = useMutation({
     mutationFn: () =>
@@ -338,32 +377,33 @@ export function InvoiceDetailView({
     <div className={`w-full min-w-0 max-w-5xl mx-auto space-y-6 ${isPdfMode ? "p-0 bg-white" : "pb-12"}`}>
       {/* Header Actions */}
       {!isPdfMode && !isPublic && (
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden border-b pb-4">
+        <div className="flex flex-col gap-3 border-b pb-3 print:hidden md:flex-row md:items-center md:justify-between md:gap-4 md:pb-4">
           <div className="flex items-center gap-3 shrink-0">
-            <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" asChild>
+            <Button variant="outline" size="icon" className="size-10 shrink-0 md:size-9" asChild>
               <Link href="/dashboard/invoices">
                 <ArrowLeftIcon className="h-4 w-4" />
               </Link>
             </Button>
-            <div className="space-y-0.5">
+            <div className="min-w-0 space-y-0.5">
               <div className="flex items-center gap-2.5 flex-wrap">
-                <h1 className="text-xl md:text-2xl font-bold tracking-tight text-gray-900 whitespace-nowrap">
+                <h1 className="text-xl font-bold tracking-tight text-gray-900 whitespace-nowrap md:text-2xl">
                   INV-{String(invoice.invoiceNumber).padStart(4, "0")}
                 </h1>
                 <Badge variant={invoice.status === "PAID" ? "default" : invoice.status === "DRAFT" ? "secondary" : "outline"} className="text-xs font-semibold px-2 py-0.5">
                   {invoice.status.replace("_", " ")}
                 </Badge>
               </div>
-              {invoice.title && <p className="text-xs text-muted-foreground font-medium">{invoice.title}</p>}
+              {invoice.title && <p className="max-w-[min(70vw,28rem)] truncate text-xs font-medium text-muted-foreground">{invoice.title}</p>}
             </div>
           </div>
 
-          <div className="flex w-full min-w-0 items-center gap-2 flex-wrap justify-start md:w-auto md:flex-nowrap md:justify-end">
+          <div className="flex w-full min-w-0 flex-col gap-2 md:w-auto md:flex-row md:items-center md:justify-end">
+            <div className="grid w-full grid-cols-2 gap-2 md:flex md:w-auto md:items-center">
             <Button
               variant="default"
               onClick={handleDownloadPdf}
               disabled={downloading}
-              className="gap-2 shrink-0"
+              className="h-10 w-full gap-1.5 px-2.5 text-xs sm:text-sm md:h-9 md:w-auto md:gap-2 md:px-4"
             >
               {downloading ? (
                 <Loader2Icon className="h-4 w-4 animate-spin" />
@@ -377,7 +417,7 @@ export function InvoiceDetailView({
               <Button
                 onClick={() => statusMutation.mutate("SENT")}
                 disabled={statusMutation.isPending}
-                className="gap-2 shrink-0"
+                className="h-10 w-full gap-1.5 px-2.5 text-xs sm:text-sm md:h-9 md:w-auto md:gap-2 md:px-4"
                 variant="outline"
               >
                 <CheckCircle2Icon className="h-4 w-4" /> Mark as Sent
@@ -387,31 +427,31 @@ export function InvoiceDetailView({
             {invoice.status !== "VOID" && balance > 0 && (
               <Dialog open={paymentOpen} onOpenChange={setPaymentOpen}>
                 <DialogTrigger asChild>
-                  <Button className="gap-2 shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white">
+                  <Button className="h-10 w-full gap-1.5 px-2.5 text-xs text-white bg-emerald-600 hover:bg-emerald-700 sm:text-sm md:h-9 md:w-auto md:gap-2 md:px-4">
                     <CreditCardIcon className="h-4 w-4" /> Record Payment
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="w-[calc(100vw-2rem)] max-w-md gap-4 overflow-x-hidden overscroll-contain p-4 sm:p-6">
                   <DialogHeader>
                     <DialogTitle>Record Payment</DialogTitle>
                   </DialogHeader>
 
-                  <div className="bg-muted/50 border rounded-lg p-3 grid grid-cols-2 gap-3 text-sm my-1">
-                    <div>
+                  <div className="grid min-w-0 grid-cols-2 gap-3 rounded-lg border bg-muted/50 p-3 text-sm">
+                    <div className="min-w-0">
                       <div className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">Total Price</div>
-                      <div className="text-base font-extrabold text-gray-900 mt-0.5">
+                      <div className="mt-0.5 text-sm font-extrabold text-gray-900 sm:text-base">
                         {symbol}{invoice.grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="min-w-0 text-right">
                       <div className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">Balance Due</div>
-                      <div className="text-base font-extrabold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                      <div className="mt-0.5 text-sm font-extrabold text-emerald-600 dark:text-emerald-400 sm:text-base">
                         {symbol}{balance.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                       </div>
                     </div>
                   </div>
 
-                  <div className="space-y-4 py-1">
+                  <div className="min-w-0 space-y-4 py-1">
                     {invoice.status === "PAID" && (
                       <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
                         This invoice is marked paid but still has an unrecorded balance. Record the actual receipt to add it to the correct account.
@@ -420,11 +460,16 @@ export function InvoiceDetailView({
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Payment Amount ({symbol})</label>
                       <Input
-                        type="number"
-                        max={balance}
+                        type="text"
+                        inputMode="decimal"
                         placeholder={`Max ${symbol}${balance.toLocaleString("en-IN")}`}
                         value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
+                        onChange={(e) => {
+                          const nextAmount = e.target.value;
+                          if (/^\d*\.?\d{0,2}$/.test(nextAmount)) {
+                            setAmount(nextAmount);
+                          }
+                        }}
                       />
                     </div>
                     {isLoadingPaymentAccounts ? (
@@ -438,10 +483,10 @@ export function InvoiceDetailView({
                         No active financial accounts are set up. Create an account in Finance before recording this payment.
                       </p>
                     ) : (
-                      <div className="space-y-2">
+                      <div className="min-w-0 space-y-2">
                         <label className="text-sm font-medium">Deposit account</label>
                         <Select value={financialAccountId} onValueChange={setFinancialAccountId}>
-                          <SelectTrigger>
+                          <SelectTrigger className="w-full min-w-0">
                             <SelectValue placeholder="Choose the account that received the payment" />
                           </SelectTrigger>
                           <SelectContent>
@@ -462,10 +507,10 @@ export function InvoiceDetailView({
                         onChange={(e) => setPaymentDate(e.target.value)}
                       />
                     </div>
-                    <div className="space-y-2">
+                    <div className="min-w-0 space-y-2">
                       <label className="text-sm font-medium">Payment Method</label>
                       <Select value={method} onValueChange={(val: any) => setMethod(val)}>
-                        <SelectTrigger>
+                        <SelectTrigger className="w-full min-w-0">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -500,6 +545,7 @@ export function InvoiceDetailView({
                         paymentMutation.isPending ||
                         !amount ||
                         Number(amount) <= 0 ||
+                        Number(amount) > balance ||
                         !paymentDate ||
                         !financialAccountId ||
                         paymentAccounts.length === 0 ||
@@ -518,59 +564,62 @@ export function InvoiceDetailView({
                 </DialogContent>
               </Dialog>
             )}
+            </div>
 
-            {invoice.status !== "PAID" && (
-              <Button variant="outline" asChild className="gap-2 shrink-0">
-                <Link href={`/dashboard/invoices/${invoiceId}/edit`}>
-                  <PencilIcon className="h-4 w-4" /> Edit
-                </Link>
-              </Button>
-            )}
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="h-9 w-9 shrink-0">
-                  <MoreHorizontalIcon className="h-4 w-4" />
+            <div className="flex items-center gap-2 border-t border-border/60 pt-2 md:border-0 md:pt-0">
+              {invoice.status !== "PAID" && (
+                <Button variant="outline" asChild className="h-10 flex-1 gap-2 md:h-9 md:flex-none">
+                  <Link href={`/dashboard/invoices/${invoiceId}/edit`}>
+                    <PencilIcon className="h-4 w-4" /> Edit
+                  </Link>
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                {clientEmail && (
-                  <DropdownMenuItem onClick={handleEmailShare} disabled={sendingEmail} className="gap-2 cursor-pointer">
-                    {sendingEmail ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <MailIcon className="h-4 w-4 text-blue-600" />}
-                    <span>Send via Email</span>
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem onClick={handleWhatsAppShare} className="gap-2 cursor-pointer">
-                  <MessageCircleIcon className="h-4 w-4 text-emerald-600" />
-                  <span>Share via WhatsApp</span>
-                </DropdownMenuItem>
-                {invoice.status !== "PAID" && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => {
-                        if (confirm("Are you sure you want to delete this invoice?")) {
-                          deleteMutation.mutate();
-                        }
-                      }}
-                      disabled={deleteMutation.isPending}
-                      className="gap-2 text-destructive focus:text-destructive cursor-pointer"
-                    >
-                      <Trash2Icon className="h-4 w-4" />
-                      <span>Delete Invoice</span>
+              )}
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" aria-label="More invoice actions" className="size-10 shrink-0 md:size-9">
+                    <MoreHorizontalIcon className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  {clientEmail && (
+                    <DropdownMenuItem onClick={handleEmailShare} disabled={sendingEmail} className="gap-2 cursor-pointer">
+                      {sendingEmail ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <MailIcon className="h-4 w-4 text-blue-600" />}
+                      <span>Send via Email</span>
                     </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  )}
+                  <DropdownMenuItem onClick={handleWhatsAppShare} className="gap-2 cursor-pointer">
+                    <MessageCircleIcon className="h-4 w-4 text-emerald-600" />
+                    <span>Share via WhatsApp</span>
+                  </DropdownMenuItem>
+                  {invoice.status !== "PAID" && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        disabled={deleteMutation.isPending}
+                        className="gap-2 text-destructive focus:text-destructive cursor-pointer"
+                        onSelect={() => setDeleteConfirmOpen(true)}
+                      >
+                        <Trash2Icon className="h-4 w-4" />
+                        <span>Delete Invoice</span>
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
       )}
 
       {/* Printable Invoice Card */}
-      <Card id="invoice-printable-card" className={`w-full min-w-0 bg-card font-[family-name:var(--font-invoice)] p-4 sm:p-5 md:p-6 space-y-3 shadow-sm border ${isPdfMode ? "p-5 space-y-3 border-none shadow-none bg-white" : ""}`}>
-        <div className="flex flex-col sm:flex-row sm:justify-between items-start gap-3 sm:gap-6 border-b pb-2">
-          <div className="flex w-full min-w-0 flex-col items-start gap-1.5 sm:max-w-md">
+      <div ref={invoicePreviewRef} className="w-full min-w-0 overflow-x-auto overscroll-x-contain">
+      <Card
+        id="invoice-printable-card"
+        className={`w-full bg-card font-[family-name:var(--font-invoice)] p-4 sm:p-5 md:p-6 space-y-3 shadow-sm border ${isPdfMode ? "p-5 space-y-3 border-none shadow-none bg-white" : "min-w-[794px]"}`}
+      >
+        <div className="grid grid-cols-[3fr_2fr] items-start gap-x-6 gap-y-1 border-b pb-2">
+          <div className="flex min-w-0 flex-col items-start gap-1.5">
             {companyLogoUrl && (
               <img
                 src={companyLogoUrl}
@@ -593,17 +642,10 @@ export function InvoiceDetailView({
                 )}
                 {invoice.company?.country && <p>{invoice.company.country}</p>}
               </div>
-              <div className={`mt-1 text-[10px] font-mono font-medium text-gray-800 md:text-[11px] ${isPdfMode ? "flex items-center gap-2 whitespace-nowrap" : "flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 break-words"}`}>
-                {invoice.company?.gstNumber && <span>GSTIN: {invoice.company.gstNumber}</span>}
-                {invoice.company?.iecCode && <span>| IEC: {invoice.company.iecCode}</span>}
-                {invoice.company?.phone && <span>| Phone: {invoice.company.phone}</span>}
-                {invoice.company?.email && <span>| Email: {invoice.company.email}</span>}
-                {invoice.company?.website && <span>| Web: {invoice.company.website}</span>}
-              </div>
             </div>
           </div>
 
-          <div className="w-full min-w-0 space-y-0.5 text-left sm:w-auto sm:shrink-0 sm:text-right">
+          <div className="min-w-0 space-y-0.5 text-right">
             <h2 className="text-lg font-bold tracking-tight text-gray-900 leading-tight">
               {invoice.currency === "USD" ? "TAX INVOICE" : "TAX INVOICE"}
             </h2>
@@ -622,10 +664,20 @@ export function InvoiceDetailView({
               Terms: {invoice.terms || "Due on Receipt"}
             </p>
           </div>
+
+          <div className={`col-span-2 mt-1 min-w-0 whitespace-nowrap font-mono font-medium text-gray-800 ${isPdfMode ? "text-[10px]" : "text-[9px] md:text-[10px]"}`}>
+            {[
+              invoice.company?.gstNumber && `GSTIN: ${invoice.company.gstNumber}`,
+              invoice.company?.iecCode && `IEC: ${invoice.company.iecCode}`,
+              invoice.company?.phone && `Phone: ${invoice.company.phone}`,
+              invoice.company?.email && `Email: ${invoice.company.email}`,
+              invoice.company?.website && `Web: ${invoice.company.website}`,
+            ].filter(Boolean).join("  |  ")}
+          </div>
         </div>
 
         {/* Client & Bank Details */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-4">
           <div>
             <h3 className="text-[11px] font-bold text-gray-900 uppercase tracking-wider mb-0.5">Billed To</h3>
             <div className="font-bold text-sm leading-snug text-gray-900">{clientName}</div>
@@ -650,7 +702,7 @@ export function InvoiceDetailView({
               <div className="font-bold text-[11px] uppercase tracking-wider text-gray-900">
                 Export Compliance (LUT Route)
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[11px] text-gray-800 font-medium">
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[11px] text-gray-800 font-medium">
                 <div><span className="font-bold font-sans text-gray-900">LUT ARN:</span> {invoice.company?.lutNumber || "Active LUT"}</div>
                 <div><span className="font-bold font-sans text-gray-900">IEC Code:</span> {invoice.company?.iecCode || "10-digit IEC"}</div>
                 <div><span className="font-bold font-sans text-gray-900">GSTIN:</span> {invoice.company?.gstNumber || "15-digit GST"}</div>
@@ -661,7 +713,7 @@ export function InvoiceDetailView({
         </div>
 
         {/* Line Items Table */}
-        <div className={isPdfMode ? "overflow-hidden border border-gray-300 rounded-md" : "hidden overflow-x-auto border border-gray-300 rounded-md lg:block"}>
+        <div className="overflow-hidden rounded-md border border-gray-300">
           <table className="w-full text-xs">
             <thead className="bg-gray-100 text-gray-900 font-bold border-b border-gray-300">
               <tr>
@@ -723,72 +775,9 @@ export function InvoiceDetailView({
           </table>
         </div>
 
-        <div className={`divide-y divide-gray-200 overflow-hidden rounded-md border border-gray-300 ${isPdfMode ? "hidden" : "lg:hidden"}`}>
-          {lineItemGroups.map((group) => (
-            <div key={group.key}>
-              {group.title && (
-                <div className="bg-gray-100 px-3 py-2 text-xs font-bold text-gray-900">
-                  {group.title}
-                </div>
-              )}
-              {group.items.map(({ item, index }) => {
-                const { displayName, showDescription } = getLineItemDisplay(item, group.title);
-                const taxRate = isUSD
-                  ? "0% (Nil)"
-                  : isIntraState
-                    ? `CGST ${halfTaxRate}% + SGST ${halfTaxRate}%`
-                    : `IGST ${item.taxRate}%`;
-
-                return (
-                  <div key={item.id} className="space-y-3 p-3">
-                    <div className="flex min-w-0 items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-[11px] font-semibold text-gray-500">Item {index + 1}</div>
-                        {displayName && <div className="break-words font-bold leading-snug text-gray-900">{displayName}</div>}
-                        {showDescription && (
-                          <div className="mt-0.5 break-words text-[11px] leading-relaxed text-gray-700">{item.description}</div>
-                        )}
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <div className="text-[10px] font-semibold text-gray-500">Amount</div>
-                        <div className="text-sm font-bold text-gray-900">
-                          {symbol}{item.total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                        </div>
-                      </div>
-                    </div>
-                    <dl className="grid grid-cols-2 gap-x-3 gap-y-2 border-t border-gray-200 pt-2 text-[11px]">
-                      <div>
-                        <dt className="text-gray-500">HSN / SAC</dt>
-                        <dd className="break-words font-medium text-gray-900">{item.sacCode || "9983"}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-gray-500">Quantity</dt>
-                        <dd className="font-medium text-gray-900">
-                          {item.quantity} {item.unit}
-                          {item.billingCycle && ` · ${item.billingCycle.replace("_", " ")}`}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="text-gray-500">Rate</dt>
-                        <dd className="break-words font-medium text-gray-900">
-                          {symbol}{item.unitPrice.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="text-gray-500">Tax rate</dt>
-                        <dd className="break-words font-medium text-gray-900">{taxRate}</dd>
-                      </div>
-                    </dl>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-
         {/* Totals & Payments */}
-        <div className="flex flex-col items-start gap-4 border-t border-gray-300 pt-2.5 sm:flex-row sm:justify-between sm:gap-6">
-          <div className="w-full min-w-0 space-y-2 text-xs sm:flex-1">
+        <div className="flex flex-row items-start justify-between gap-6 border-t border-gray-300 pt-2.5">
+          <div className="min-w-0 flex-1 space-y-2 text-xs">
             {invoice.bankAccount && (
               <div className="space-y-1 text-[11px] text-gray-800 pt-0.5">
                 <div className="font-bold text-xs uppercase tracking-wider text-gray-900 flex items-center gap-1 mb-0.5">
@@ -819,7 +808,7 @@ export function InvoiceDetailView({
             )}
           </div>
 
-          <div className="w-full min-w-0 space-y-1.5 text-xs sm:w-64 sm:shrink-0">
+          <div className="w-64 min-w-0 shrink-0 space-y-1.5 text-xs">
             <div className="flex justify-between text-gray-800 font-medium">
               <span>Subtotal</span>
               <span className="font-semibold text-gray-900">{symbol}{invoice.subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
@@ -888,8 +877,8 @@ export function InvoiceDetailView({
         </div>
 
         {/* Company Signature & Seal Block */}
-        <div className={`flex flex-col items-start gap-5 border-t border-gray-300 break-inside-avoid sm:flex-row sm:justify-between sm:items-end sm:gap-6 ${isPdfMode ? "pt-4" : "pt-6"}`}>
-          <div className="w-full min-w-0 space-y-1.5 text-xs font-medium text-gray-800 sm:max-w-md">
+        <div className={`flex flex-row items-end justify-between gap-6 border-t border-gray-300 break-inside-avoid ${isPdfMode ? "pt-4" : "pt-6"}`}>
+          <div className="w-full min-w-0 max-w-md space-y-1.5 text-xs font-medium text-gray-800">
             {invoice.notes && (
               <div>
                 <span className="font-bold text-gray-900 uppercase tracking-wider text-[11px]">Notes:</span>
@@ -901,7 +890,7 @@ export function InvoiceDetailView({
             </p>
           </div>
 
-          <div className="w-full min-w-0 space-y-2 text-right sm:w-64">
+          <div className="w-64 min-w-0 shrink-0 space-y-2 text-right">
             <div className={`relative border-b border-gray-400 flex items-end justify-end pb-2 ${isPdfMode ? "h-20" : "h-24"}`}>
               {companySealUrl && (
                 <img
@@ -1030,6 +1019,16 @@ export function InvoiceDetailView({
           </div>
         )}
       </Card>
+      </div>
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title="Delete invoice?"
+        description="This invoice will be moved to the deleted invoices list."
+        confirmLabel="Delete invoice"
+        disabled={deleteMutation.isPending}
+        onConfirm={() => deleteMutation.mutate()}
+      />
     </div>
   );
 }

@@ -3,29 +3,21 @@ import * as React from "react";
 import { CustomerSchema, CustomerSchemaInput, customerSchema } from "@/lib/schemas/customer-schema";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Controller, UseFormReturn } from "react-hook-form";
-import { ArrowLeft, Copy, Info } from "lucide-react";
+import { ArrowLeft, ArrowRight, Building2, Copy, Info, Loader2, MapPin, ReceiptText, UserRound, UserRoundPlus } from "lucide-react";
 import {
     Field,
-    FieldGroup,
     FieldLabel,
     FieldError,
-    FieldSeparator,
+    FieldDescription,
 } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 import { CustomerType } from "@/app/generated/prisma/enums";
 import Link from "next/link";
 import { useMutation } from "@tanstack/react-query";
-import { CreateCustomer, UpdateCustomer } from "@/actions/customer";
+import { CheckCustomerDisplayName, CreateCustomer, UpdateCustomer } from "@/actions/customer";
 import { useRouter } from "next/navigation";
 import { LocationAutocomplete } from "@/components/ui/location-autocomplete";
 import { PhoneInput } from "@/components/reui/phone-input";
@@ -37,6 +29,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { AssetUpload } from "@/components/ui/asset-upload";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
     Combobox,
     ComboboxContent,
@@ -140,6 +133,63 @@ type CustomerFormProps = {
     presentation?: "page" | "dialog";
 };
 
+const mobileStepTitles = ["Basic Info", "Address", "Tax & Account"] as const;
+const mobileStepFields: Array<Array<keyof CustomerSchemaInput>> = [
+    [
+        "customerType",
+        "companyName",
+        "primaryContactName",
+        "displayName",
+        "primaryContactEmail",
+        "primaryContactPhone",
+        "website",
+    ],
+    [
+        "addressLine1",
+        "addressLine2",
+        "city",
+        "state",
+        "country",
+        "postalCode",
+        "billingAddressLine1",
+        "billingAddressLine2",
+        "billingCity",
+        "billingState",
+        "billingCountry",
+        "billingPostalCode",
+    ],
+    ["gstNumber", "panNumber", "internalNotes"],
+];
+
+function CustomerFormSection({
+    icon,
+    title,
+    description,
+    children,
+}: {
+    icon: React.ReactNode;
+    title: string;
+    description: string;
+    children: React.ReactNode;
+}) {
+    return (
+        <Card className="gap-0 overflow-hidden p-0 shadow-sm">
+            <CardHeader className="grid-cols-[auto_1fr] items-start gap-3 border-b bg-muted/30 p-4 sm:p-5">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-primary/15 bg-primary/10 text-primary">
+                    {icon}
+                </span>
+                <div className="space-y-1">
+                    <CardTitle className="font-semibold">{title}</CardTitle>
+                    <CardDescription className="leading-5">{description}</CardDescription>
+                </div>
+            </CardHeader>
+            <CardContent className="grid gap-5 p-4 sm:grid-cols-2 sm:p-6">
+                {children}
+            </CardContent>
+        </Card>
+    );
+}
+
 export function CustomerForm({
     defaultValues,
     error,
@@ -153,6 +203,8 @@ export function CustomerForm({
     const savedTaxPreference = customerSchema.shape.taxPreference.safeParse(defaultValues?.taxPreference).data ?? "TAXABLE";
     const savedPaymentTerms = customerSchema.shape.paymentTerms.safeParse(defaultValues?.paymentTerms).data ?? "DUE_ON_RECEIPT";
     const [activeDialogTab, setActiveDialogTab] = React.useState("other-details");
+    const [mobileStep, setMobileStep] = React.useState(0);
+    const mobileHeaderRef = React.useRef<HTMLDivElement>(null);
     const initialContactNames = (defaultValues?.primaryContactName ?? "").trim().split(/\s+/).filter(Boolean);
     const [contactFirstName, setContactFirstName] = React.useState(initialContactNames[0] ?? "");
     const [contactLastName, setContactLastName] = React.useState(initialContactNames.slice(1).join(" "));
@@ -164,6 +216,9 @@ export function CustomerForm({
     );
     const displayNameWasManuallyEdited = React.useRef(false);
     const previousGeneratedDisplayName = React.useRef("");
+    const [displayNameCheck, setDisplayNameCheck] = React.useState<
+        { status: "idle" | "checking" | "available" | "duplicate" | "error"; message?: string }
+    >({ status: "idle" });
 
     const form = useForm<CustomerSchemaInput, unknown, CustomerSchema>({
         resolver: zodResolver(customerSchema),
@@ -213,6 +268,7 @@ export function CustomerForm({
     });
     const watchedCompanyName = form.watch("companyName") ?? "";
     const watchedContactName = form.watch("primaryContactName") ?? "";
+    const watchedDisplayName = form.watch("displayName") ?? "";
     const displayNameContact = presentation === "dialog"
         ? [contactFirstName, contactLastName].filter(Boolean).join(" ")
         : watchedContactName;
@@ -229,15 +285,65 @@ export function CustomerForm({
 
         const currentDisplayName = form.getValues("displayName");
         if (!currentDisplayName || currentDisplayName === previousGeneratedDisplayName.current) {
-            form.setValue("displayName", autoDisplayName, { shouldValidate: true });
+            form.setValue("displayName", autoDisplayName, {
+                shouldValidate: Boolean(autoDisplayName) || form.formState.isSubmitted,
+            });
         }
         previousGeneratedDisplayName.current = autoDisplayName;
-    }, [autoDisplayName, defaultValues?.id, form]);
+    }, [autoDisplayName, defaultValues?.id, form, form.formState.isSubmitted]);
+
+    React.useEffect(() => {
+        const displayName = watchedDisplayName.trim().replace(/\s+/g, " ");
+        if (!displayName) {
+            setDisplayNameCheck({ status: "idle" });
+            return;
+        }
+
+        let isCurrent = true;
+        setDisplayNameCheck({ status: "checking" });
+        const timeout = window.setTimeout(async () => {
+            try {
+                const result = await CheckCustomerDisplayName({
+                    displayName,
+                    customerId: defaultValues?.id,
+                });
+                if (!isCurrent) return;
+                if (result.success) {
+                    setDisplayNameCheck(
+                        result.duplicate
+                            ? { status: "duplicate", message: `A customer named "${displayName}" already exists. Choose a unique display name.` }
+                            : { status: "available" }
+                    );
+                } else {
+                    setDisplayNameCheck({ status: "error", message: result.message });
+                }
+            } catch (checkError) {
+                if (process.env.NODE_ENV === "development") {
+                    console.error("Failed to check customer display name:", checkError);
+                }
+                if (isCurrent) {
+                    setDisplayNameCheck({
+                        status: "error",
+                        message: "Could not check for duplicate names. The server will still verify before saving.",
+                    });
+                }
+            }
+        }, 300);
+
+        return () => {
+            isCurrent = false;
+            window.clearTimeout(timeout);
+        };
+    }, [defaultValues?.id, watchedDisplayName]);
 
     const { mutate, isPending } = useMutation({
         mutationFn: defaultValues?.id ? UpdateCustomer : CreateCustomer,
         onSuccess: (ctx) => {
-            if (!ctx.success) {
+            if ("error" in ctx) {
+                if (ctx.error === "Duplicate name") {
+                    setDisplayNameCheck({ status: "duplicate", message: ctx.message });
+                    form.setError("displayName", { type: "server", message: ctx.message });
+                }
                 toast.error(ctx.message);
                 return;
             }
@@ -301,8 +407,37 @@ export function CustomerForm({
     }
 
     const handleSubmit = form.handleSubmit((data: CustomerSchema) => {
+        if (displayNameCheck.status === "duplicate") {
+            form.setError("displayName", {
+                type: "server",
+                message: displayNameCheck.message ?? "A customer with this display name already exists.",
+            });
+            return;
+        }
+        if (displayNameCheck.status === "checking") {
+            toast.error("Wait for the customer name check to finish before saving.");
+            return;
+        }
         mutate(data)
     });
+
+    async function changeMobileStep(nextStep: number) {
+        if (nextStep < 0 || nextStep >= mobileStepTitles.length) return;
+
+        if (nextStep > mobileStep) {
+            const isValid = await form.trigger(mobileStepFields[mobileStep]);
+            if (!isValid) {
+                const invalidField = mobileStepFields[mobileStep].find(
+                    (field) => form.getFieldState(field).invalid
+                );
+                if (invalidField) form.setFocus(invalidField);
+                return;
+            }
+        }
+
+        setMobileStep(nextStep);
+        mobileHeaderRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    }
 
     if (presentation === "dialog") {
         const detailsClass = "h-8 w-full min-w-0 rounded border border-input bg-background px-2 text-xs text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40";
@@ -413,14 +548,26 @@ export function CustomerForm({
                                 id="dialog-display-name"
                                 className={detailsClass}
                                 inputClassName="h-8 w-full min-w-0 rounded-none border-0 bg-transparent px-2 text-xs text-foreground shadow-none outline-none focus-visible:border-0 focus-visible:ring-0"
-                                invalid={Boolean(form.formState.errors.displayName)}
-                                onChange={(value) => form.setValue("displayName", value, { shouldValidate: true })}
+                                invalid={Boolean(form.formState.errors.displayName) || displayNameCheck.status === "duplicate"}
+                                onChange={(value) => {
+                                    form.clearErrors("displayName");
+                                    form.setValue("displayName", value, { shouldValidate: true });
+                                }}
                                 onUserInput={() => {
                                     displayNameWasManuallyEdited.current = true;
                                 }}
                             />
                             {form.formState.errors.displayName && (
                                 <p role="alert" className="mt-1 text-[10px] text-destructive">{form.formState.errors.displayName.message}</p>
+                            )}
+                            {displayNameCheck.status === "duplicate" && !form.formState.errors.displayName && (
+                                <p role="alert" className="mt-1 text-[10px] text-destructive">{displayNameCheck.message}</p>
+                            )}
+                            {displayNameCheck.status === "checking" && (
+                                <p aria-live="polite" className="mt-1 text-[10px] text-muted-foreground">Checking for an existing customer...</p>
+                            )}
+                            {displayNameCheck.status === "error" && (
+                                <p role="alert" className="mt-1 text-[10px] text-destructive">{displayNameCheck.message}</p>
                             )}
                         </div>
                     </div>
@@ -639,7 +786,11 @@ export function CustomerForm({
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2 border-t bg-background px-3 py-3 sm:px-4">
-                    <Button type="submit" size="sm" disabled={isPending}>
+                    <Button
+                        type="submit"
+                        size="sm"
+                        disabled={isPending || displayNameCheck.status === "duplicate" || displayNameCheck.status === "checking"}
+                    >
                         {isPending ? "Saving…" : "Save"}
                     </Button>
                     {onCancel && (
@@ -655,89 +806,126 @@ export function CustomerForm({
     return (
         <form
             onSubmit={handleSubmit}
-            className="p-2 sm:p-5 md:p-8 w-full rounded-md gap-2 border max-w-3xl mx-auto"
+            className="w-full min-w-0 bg-transparent p-0 sm:p-6 lg:p-8"
         >
-            {presentation === "page" && (
-                <div className="flex justify-between items-center">
-                    <h1 className="mt-6 mb-1 font-extrabold text-3xl tracking-tight col-span-full">
+            <div
+                ref={mobileHeaderRef}
+                className="sticky top-0 z-30 border-b bg-background/95 px-4 pb-3 pt-2 backdrop-blur sm:hidden"
+            >
+                <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-2">
+                    {mobileStep === 0 ? (
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-10"
+                            asChild
+                        >
+                            <Link href="/dashboard/customers" aria-label="Back to customers">
+                                <ArrowLeft className="size-5" />
+                            </Link>
+                        </Button>
+                    ) : (
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-10"
+                            aria-label="Previous step"
+                            onClick={() => void changeMobileStep(mobileStep - 1)}
+                        >
+                            <ArrowLeft className="size-5" />
+                        </Button>
+                    )}
+                    <div className="min-w-0 text-center">
+                        <p className="truncate text-sm font-semibold text-foreground">
+                            {defaultValues?.id ? "Update Customer" : "Create Customer"}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                            Step {mobileStep + 1} of 3: {mobileStepTitles[mobileStep]}
+                        </p>
+                    </div>
+                    <span className="flex size-8 items-center justify-center justify-self-end rounded-full bg-primary/10 text-xs font-medium text-primary">
+                        {mobileStep + 1}/3
+                    </span>
+                </div>
+                <div
+                    role="progressbar"
+                    aria-label={`Step ${mobileStep + 1} of 3`}
+                    aria-valuemin={1}
+                    aria-valuemax={3}
+                    aria-valuenow={mobileStep + 1}
+                    className="mt-3 grid grid-cols-3 gap-1"
+                >
+                    {mobileStepTitles.map((title, index) => (
+                        <span
+                            key={title}
+                            className={`h-1.5 rounded-full ${index <= mobileStep ? "bg-primary" : "bg-muted"}`}
+                        />
+                    ))}
+                </div>
+            </div>
+            <div className="mb-8 hidden items-center gap-4 border-b border-border pb-6 sm:flex">
+                <Button type="button" variant="outline" size="icon" className="shrink-0" asChild>
+                    <Link href="/dashboard/customers" aria-label="Back to customers">
+                        <ArrowLeft className="size-4" />
+                    </Link>
+                </Button>
+                <div>
+                    <p className="text-sm font-medium text-primary">Customer record</p>
+                    <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
                         {defaultValues?.id ? "Update" : "Create"} Customer
                     </h1>
-                    <Link href="/dashboard/customers">
-                        <Button type="button" size="lg" variant="outline">
-                            <ArrowLeft />Goto Customers
-                        </Button>
-                    </Link>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                        Add the contact, address, and billing details used across your customer records.
+                    </p>
                 </div>
-            )}
-            {error && (
-                <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                    {error}
-                </div>
-            )}
-            <FieldSeparator className="my-4" />
-            <FieldGroup className="grid md:grid-cols-6 gap-4 mb-6">
-                <h2 className="mt-4 mb-1 font-bold text-2xl tracking-tight col-span-full">
-                    Basic Information
-                </h2>
+            </div>
+            <div className="px-4 pt-4 sm:px-0 sm:pt-0">
+                {error && (
+                    <div role="alert" className="mb-6 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                        {error}
+                    </div>
+                )}
+                <div className="mb-8 space-y-6">
+                <div className={mobileStep === 0 ? "sm:block" : "hidden sm:block"}>
+                <CustomerFormSection
+                    icon={<UserRound className="size-5" />}
+                    title="Basic information"
+                    description="Establish the customer's identity and primary contact."
+                >
 
                 <Controller
                     name="customerType"
                     control={form.control}
-                    render={({ field, fieldState }) => {
-                        const options = [
-                            { label: "Business", value: "BUSINESS" },
-                            { label: "Individual", value: "INDIVIDUAL" },
-                        ];
-                        return (
-                            <Field
-                                data-invalid={fieldState.invalid}
-                                className="gap-1 col-span-full"
-                            >
-                                <FieldLabel htmlFor="customerType">Customer Type </FieldLabel>
-
-                                <Select value={field.value} onValueChange={field.onChange}>
-                                    <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="Select customer type" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {options.map((option) => (
-                                            <SelectItem key={option.value} value={option.value}>
-                                                {option.label}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                {fieldState.invalid && (
-                                    <FieldError errors={[fieldState.error]} />
-                                )}
-                            </Field>
-                        );
-                    }}
-                />
-
-                <Controller
-                    name="displayName"
-                    control={form.control}
                     render={({ field, fieldState }) => (
-                        <Field
-                            data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
-                        >
-                            <FieldLabel htmlFor="displayName">Display Name </FieldLabel>
-                            <DisplayNameCombobox
-                                value={field.value ?? ""}
-                                options={displayNameOptions}
-                                id="displayName"
-                                className="h-9 w-full"
-                                inputClassName="h-9 w-full min-w-0 rounded-none border-0 bg-transparent px-2.5 py-1 text-base shadow-none outline-none focus-visible:border-0 focus-visible:ring-0 md:text-sm"
-                                placeholder="Enter display name"
-                                invalid={fieldState.invalid}
-                                onChange={field.onChange}
-                                onUserInput={() => {
-                                    displayNameWasManuallyEdited.current = true;
-                                }}
-                            />
-
+                        <Field data-invalid={fieldState.invalid} className="gap-1 sm:col-span-2">
+                            <FieldLabel>Customer type</FieldLabel>
+                            <div
+                                aria-label="Customer type"
+                                className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1"
+                                role="group"
+                            >
+                                {[
+                                    { label: "Business", value: CustomerType.BUSINESS, icon: <Building2 className="size-4" /> },
+                                    { label: "Individual", value: CustomerType.INDIVIDUAL, icon: <UserRound className="size-4" /> },
+                                ].map((option) => {
+                                    const isSelected = field.value === option.value;
+                                    return (
+                                        <Button
+                                            key={option.value}
+                                            type="button"
+                                            variant={isSelected ? "outline" : "ghost"}
+                                            aria-pressed={isSelected}
+                                            onClick={() => field.onChange(option.value)}
+                                            className={isSelected ? "bg-background shadow-sm" : "text-muted-foreground"}
+                                        >
+                                            {option.icon}
+                                            {option.label}
+                                        </Button>
+                                    );
+                                })}
+                            </div>
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                         </Field>
                     )}
@@ -749,7 +937,7 @@ export function CustomerForm({
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-1"
                         >
                             <FieldLabel htmlFor="companyName">Company Name </FieldLabel>
                             <Input
@@ -774,7 +962,7 @@ export function CustomerForm({
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-1"
                         >
                             <FieldLabel htmlFor="primaryContactName">
                                 Primary Contact Name{" "}
@@ -796,12 +984,52 @@ export function CustomerForm({
                 />
 
                 <Controller
+                    name="displayName"
+                    control={form.control}
+                    render={({ field, fieldState }) => (
+                        <Field
+                            data-invalid={fieldState.invalid || displayNameCheck.status === "duplicate"}
+                            className="gap-1"
+                        >
+                            <FieldLabel htmlFor="displayName">Display Name </FieldLabel>
+                            <DisplayNameCombobox
+                                value={field.value ?? ""}
+                                options={displayNameOptions}
+                                id="displayName"
+                                className="h-9 w-full"
+                                inputClassName="h-9 w-full min-w-0 rounded-none border-0 bg-transparent px-2.5 py-1 text-base shadow-none outline-none focus-visible:border-0 focus-visible:ring-0 md:text-sm"
+                                placeholder="Enter display name"
+                                invalid={fieldState.invalid || displayNameCheck.status === "duplicate"}
+                                onChange={(value) => {
+                                    form.clearErrors("displayName");
+                                    field.onChange(value);
+                                }}
+                                onUserInput={() => {
+                                    displayNameWasManuallyEdited.current = true;
+                                }}
+                            />
+
+                            {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                            {displayNameCheck.status === "duplicate" && !fieldState.invalid && (
+                                <p role="alert" className="text-sm text-destructive">{displayNameCheck.message}</p>
+                            )}
+                            {displayNameCheck.status === "checking" && (
+                                <p aria-live="polite" className="text-xs text-muted-foreground">Checking for an existing customer...</p>
+                            )}
+                            {displayNameCheck.status === "error" && (
+                                <p role="alert" className="text-xs text-destructive">{displayNameCheck.message}</p>
+                            )}
+                        </Field>
+                    )}
+                />
+
+                <Controller
                     name="primaryContactEmail"
                     control={form.control}
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-1"
                         >
                             <FieldLabel htmlFor="primaryContactEmail">
                                 Primary Contact Email{" "}
@@ -829,7 +1057,7 @@ export function CustomerForm({
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-1"
                         >
                             <FieldLabel htmlFor="primaryContactPhone">
                                 Primary Contact Phone{" "}
@@ -851,7 +1079,7 @@ export function CustomerForm({
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-1"
                         >
                             <FieldLabel htmlFor="website">Website </FieldLabel>
                             <Input
@@ -869,9 +1097,15 @@ export function CustomerForm({
                         </Field>
                     )}
                 />
-                <h2 className="mt-4 mb-1 font-bold text-2xl tracking-tight col-span-full">
-                    Address Information
-                </h2>
+                </CustomerFormSection>
+                </div>
+
+                <div className={`${mobileStep === 1 ? "" : "hidden"} space-y-6 sm:block`}>
+                <CustomerFormSection
+                    icon={<MapPin className="size-5" />}
+                    title="Address information"
+                    description="Where this customer is based."
+                >
 
                 <Controller
                     name="addressLine1"
@@ -879,7 +1113,7 @@ export function CustomerForm({
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-1"
                         >
                             <FieldLabel htmlFor="addressLine1">Address Line 1 </FieldLabel>
                             <Input
@@ -904,7 +1138,7 @@ export function CustomerForm({
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-1"
                         >
                             <FieldLabel htmlFor="addressLine2">Address Line 2 </FieldLabel>
                             <Input
@@ -929,7 +1163,7 @@ export function CustomerForm({
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-1"
                         >
                             <FieldLabel htmlFor="city">City </FieldLabel>
                             <Input
@@ -954,7 +1188,7 @@ export function CustomerForm({
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-1"
                         >
                             <FieldLabel htmlFor="state">State </FieldLabel>
                             <LocationAutocomplete
@@ -977,7 +1211,7 @@ export function CustomerForm({
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-1"
                         >
                             <FieldLabel htmlFor="country">Country </FieldLabel>
                             <LocationAutocomplete
@@ -999,7 +1233,7 @@ export function CustomerForm({
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-1"
                         >
                             <FieldLabel htmlFor="postalCode">Postal Code </FieldLabel>
                             <Input
@@ -1017,15 +1251,20 @@ export function CustomerForm({
                         </Field>
                     )}
                 />
-                <h2 className="mt-4 mb-1 font-bold text-2xl tracking-tight col-span-full">
-                    Billing Address Information
-                </h2>
+                </CustomerFormSection>
+
+                <CustomerFormSection
+                    icon={<ReceiptText className="size-5" />}
+                    title="Billing address"
+                    description="Set where invoices and billing documents should be sent."
+                >
                 <Button
                     type="button"
-                    variant="secondary"
+                    variant="outline"
+                    className="w-fit sm:col-span-2 sm:justify-self-end"
                     onClick={() => copyAddressToBilling(form)}
                 >
-                    <Copy size={8} /> Copy From Address
+                    <Copy className="size-4" /> Copy from address
                 </Button>
 
                 <Controller
@@ -1034,7 +1273,7 @@ export function CustomerForm({
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-1"
                         >
                             <FieldLabel htmlFor="billingAddressLine1">
                                 Billing Address Line 1{" "}
@@ -1061,7 +1300,7 @@ export function CustomerForm({
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-1"
                         >
                             <FieldLabel htmlFor="billingAddressLine2">
                                 Billing Address Line 2{" "}
@@ -1088,7 +1327,7 @@ export function CustomerForm({
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-1"
                         >
                             <FieldLabel htmlFor="billingCity">Billing City </FieldLabel>
                             <Input
@@ -1113,7 +1352,7 @@ export function CustomerForm({
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-1"
                         >
                             <FieldLabel htmlFor="billingState">Billing State </FieldLabel>
                             <LocationAutocomplete
@@ -1136,7 +1375,7 @@ export function CustomerForm({
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-1"
                         >
                             <FieldLabel htmlFor="billingCountry">Billing Country </FieldLabel>
                             <LocationAutocomplete
@@ -1158,7 +1397,7 @@ export function CustomerForm({
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-1"
                         >
                             <FieldLabel htmlFor="billingPostalCode">
                                 Billing Postal Code{" "}
@@ -1179,13 +1418,23 @@ export function CustomerForm({
                     )}
                 />
 
+                </CustomerFormSection>
+                </div>
+
+                <div className={mobileStep === 2 ? "sm:block" : "hidden sm:block"}>
+                <CustomerFormSection
+                    icon={<ReceiptText className="size-5" />}
+                    title="Tax and account details"
+                    description="Optional tax identifiers and internal notes."
+                >
+
                 <Controller
                     name="gstNumber"
                     control={form.control}
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-1"
                         >
                             <FieldLabel htmlFor="gstNumber">GST Number </FieldLabel>
                             <Input
@@ -1210,7 +1459,7 @@ export function CustomerForm({
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-1"
                         >
                             <FieldLabel htmlFor="panNumber">PAN Number </FieldLabel>
                             <Input
@@ -1235,7 +1484,7 @@ export function CustomerForm({
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-1 sm:col-span-2"
                         >
                             <FieldLabel htmlFor="internalNotes">Internal Notes </FieldLabel>
                             <Textarea
@@ -1244,6 +1493,9 @@ export function CustomerForm({
                                 id="internalNotes"
                                 placeholder="Enter any internal notes"
                             />
+                            <FieldDescription>
+                                Visible to your team only, not included on customer invoices.
+                            </FieldDescription>
 
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                         </Field>
@@ -1251,16 +1503,65 @@ export function CustomerForm({
                 />
 
 
-            </FieldGroup>
-            <div className="flex items-center justify-end gap-2 border-t pt-4">
-                {onCancel && (
-                    <Button type="button" variant="outline" onClick={onCancel}>
-                        Cancel
+                </CustomerFormSection>
+                </div>
+                </div>
+            </div>
+            <div className="sticky bottom-16 z-20 mt-6 border-t bg-background/95 px-4 py-3 shadow-[0_-8px_24px_rgba(0,0,0,0.06)] backdrop-blur sm:hidden">
+                {mobileStep < mobileStepTitles.length - 1 ? (
+                    <Button
+                        type="button"
+                        className="w-full"
+                        onClick={() => void changeMobileStep(mobileStep + 1)}
+                    >
+                        Continue to {mobileStepTitles[mobileStep + 1]}
+                        <ArrowRight className="size-4" />
+                    </Button>
+                ) : (
+                    <Button
+                        type="button"
+                        className="w-full"
+                        disabled={isPending || displayNameCheck.status === "duplicate" || displayNameCheck.status === "checking"}
+                        onClick={() => void handleSubmit()}
+                    >
+                        {isPending ? (
+                            <>
+                                <Loader2 className="size-4 animate-spin" />
+                                {defaultValues?.id ? "Updating..." : "Creating..."}
+                            </>
+                        ) : (
+                            <>
+                                {defaultValues?.id ? <UserRound className="size-4" /> : <UserRoundPlus className="size-4" />}
+                                {defaultValues?.id ? "Update customer" : "Create customer"}
+                            </>
+                        )}
                     </Button>
                 )}
-                <Button disabled={isPending}>
-                    {isPending ? defaultValues?.id ? "Updating..." : "Creating..." : defaultValues?.id ? "Update Customer" : "Create Customer"}
-                </Button>
+            </div>
+            <div className="mt-8 hidden flex-col-reverse gap-3 border-t border-border pt-4 sm:flex sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-muted-foreground">
+                    Add the details you have now; you can update this profile later.
+                </p>
+                <div className="flex items-center justify-end gap-2">
+                    {onCancel && (
+                        <Button type="button" variant="outline" onClick={onCancel}>
+                            Cancel
+                        </Button>
+                    )}
+                    <Button disabled={isPending || displayNameCheck.status === "duplicate" || displayNameCheck.status === "checking"}>
+                        {isPending ? (
+                            <>
+                                <Loader2 className="size-4 animate-spin" />
+                                {defaultValues?.id ? "Updating..." : "Creating..."}
+                            </>
+                        ) : (
+                            <>
+                                {defaultValues?.id ? <UserRound className="size-4" /> : <UserRoundPlus className="size-4" />}
+                                {defaultValues?.id ? "Update customer" : "Create customer"}
+                            </>
+                        )}
+                    </Button>
+                </div>
             </div>
         </form>
     );

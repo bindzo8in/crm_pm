@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Instrument_Sans, Inter, Plus_Jakarta_Sans } from "next/font/google";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,12 @@ export const metadata: Metadata = {
     index: false,
     follow: false,
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  userScalable: true,
 };
 
 export default function RootLayout({

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { cancelLeaveRequestAction } from "@/actions/leave";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 
 export function CancelLeaveButton({ id }: { id: string }) {
@@ -24,19 +25,18 @@ export function CancelLeaveButton({ id }: { id: string }) {
 
   return (
     <div className="space-y-1 text-right">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
+      <ConfirmDialog
+        trigger={
+          <Button type="button" variant="outline" size="sm" disabled={mutation.isPending}>
+            {mutation.isPending ? "Cancelling…" : "Cancel"}
+          </Button>
+        }
+        title="Cancel leave request?"
+        description="This will cancel your pending request. This action cannot be undone."
+        confirmLabel="Cancel request"
         disabled={mutation.isPending}
-        onClick={() => {
-          if (window.confirm("Cancel this pending leave request?")) {
-            mutation.mutate();
-          }
-        }}
-      >
-        {mutation.isPending ? "Cancelling…" : "Cancel"}
-      </Button>
+        onConfirm={() => mutation.mutate()}
+      />
       {error && <p role="alert" className="max-w-40 text-xs text-destructive">{error}</p>}
     </div>
   );

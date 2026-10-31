@@ -6,11 +6,9 @@ import { ResetPasswordForm } from "@/components/auth/reset-password/reset-passwo
 import { redirect } from "next/navigation";
 
 export default async function ResetPassword({ searchParams }: PageProps<'/reset-password'>) {
-    const { token } = await searchParams;
+    const { token, flow } = await searchParams;
     if (!token || typeof token !== "string" || token === "") {
         redirect("/")
     }
-    return (
-        <ResetPasswordForm token={token} />
-    )
+    return <ResetPasswordForm token={token} isInvitation={flow === "invitation"} />;
 }

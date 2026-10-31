@@ -34,8 +34,7 @@ interface ProposalPreviewPageProps {
 export default async function ProposalPreviewPage({ params }: ProposalPreviewPageProps) {
   await requirePageAccess("/dashboard/proposals");
   const { id } = await params;
-  
-  // Reuse composer data fetcher which returns precisely { proposal, blocks }
+
   const res = await getProposalComposerData(id);
 
   if (!res.success || !res.data) {
@@ -59,13 +58,12 @@ export default async function ProposalPreviewPage({ params }: ProposalPreviewPag
     bankAccountId?: string | null;
     customer?: { primaryContactEmail?: string | null };
     proposalServices?: Array<{
-    serviceName: string;
-    packageName?: string | null;
-    items: Array<{ name: string; quantity: number; total: number }>;
+      serviceName: string;
+      packageName?: string | null;
+      items: Array<{ name: string; quantity: number; total: number }>;
     }>;
   };
 
-  // Fetch Company and associated Bank Account for PDF generation
   const company = await prisma.company.findFirst();
   let bankAccount = null;
 
@@ -74,13 +72,11 @@ export default async function ProposalPreviewPage({ params }: ProposalPreviewPag
       where: { id: proposalDetails.bankAccountId },
     });
   } else if (company) {
-    // Fallback to default if no specific account selected
     bankAccount = await prisma.companyBankAccount.findFirst({
       where: { companyId: company.id, isDefault: true, isActive: true },
     });
   }
 
-  // Ensure logo is properly parsed if it's a JSON string
   let safeCompany = company;
   if (company && typeof company.logo === "string") {
     try {
@@ -93,9 +89,9 @@ export default async function ProposalPreviewPage({ params }: ProposalPreviewPag
 
   return (
     <div className="min-h-screen bg-gray-200/50 flex flex-col">
-      <PreviewToolbar 
-        proposalId={proposal.id} 
-        proposalNumber={proposal.proposalNumber} 
+      <PreviewToolbar
+        proposalId={proposal.id}
+        proposalNumber={proposal.proposalNumber}
         clientEmail={proposalDetails.customer?.primaryContactEmail}
         proposalDetails={{
           title: proposal.title,
@@ -129,19 +125,19 @@ export default async function ProposalPreviewPage({ params }: ProposalPreviewPag
           } : null,
         }}
       />
-      
+
       <main className="min-h-0 flex-1 overflow-auto px-3 py-8 pb-32 sm:px-6 sm:pb-24">
         <div id="proposal-preview-wrapper" className="transition-transform duration-200 ease-out pb-16">
-          <ProposalRenderer 
-            proposal={proposal} 
-            blocks={blocks} 
+          <ProposalRenderer
+            proposal={proposal}
+            blocks={blocks}
             company={safeCompany}
             bankAccount={bankAccount}
           />
-          
-          <AcceptProposalButton 
-            proposalId={proposal.id} 
-            currentStatus={proposal.status} 
+
+          <AcceptProposalButton
+            proposalId={proposal.id}
+            currentStatus={proposal.status}
           />
         </div>
       </main>
@@ -158,10 +154,10 @@ export default async function ProposalPreviewPage({ params }: ProposalPreviewPag
         {safeCompany?.website && (
           <>
             <span aria-hidden="true" className="hidden h-4 border-l sm:block" />
-            <a 
-              href={safeCompany.website.startsWith('http') ? safeCompany.website : `https://${safeCompany.website}`} 
-              target="_blank" 
-              rel="noopener noreferrer" 
+            <a
+              href={safeCompany.website.startsWith("http") ? safeCompany.website : `https://${safeCompany.website}`}
+              target="_blank"
+              rel="noopener noreferrer"
               className="break-all text-sm font-medium text-primary hover:underline"
             >
               {safeCompany.website}

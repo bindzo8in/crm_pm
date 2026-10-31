@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { createInvoice, updateInvoice, getCompanyBankAccounts, getInvoiceById } from "@/actions/invoice";
 import { getLiveExchangeRate } from "@/actions/exchange-rate";
 import { GetCustomers } from "@/actions/customer";
@@ -14,66 +16,67 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PlusIcon, Trash2Icon, ArrowLeftIcon, SaveIcon, Loader2Icon, RefreshCwIcon } from "lucide-react";
 import Link from "next/link";
-import { BillingCycleEnum, InvoiceLineItemInput } from "@/lib/schemas/invoice-schema";
+import {
+  BillingCycleEnum,
+  InvoiceFormInput,
+  InvoiceFormValues,
+  invoiceFormSchema,
+} from "@/lib/schemas/invoice-schema";
 import { LocationAutocomplete } from "@/components/ui/location-autocomplete";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type InvoiceInitialData = NonNullable<
   Extract<Awaited<ReturnType<typeof getInvoiceById>>, { success: true }>["data"]
 >;
 
-type InvoiceFormLineItem = {
-  id?: string;
-  servicePackageId?: string | null;
-  serviceName?: string | null;
-  name: string;
-  description: string;
-  quantity: number;
-  unit: string;
-  unitPrice: number;
-  taxRate: number;
-  sacCode: string;
-  billingCycle: InvoiceLineItemInput["billingCycle"];
-};
-
 export function CreateInvoiceForm({ initialData }: { initialData?: InvoiceInitialData }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [fetchingRate, setFetchingRate] = useState(false);
+  const [currencyConfirmationOpen, setCurrencyConfirmationOpen] = useState(false);
+  const [pendingCurrency, setPendingCurrency] = useState<string | null>(null);
   const [customers, setCustomers] = useState<Array<{ id: string; displayName: string; companyName: string | null }>>([]);
   const [bankAccounts, setBankAccounts] = useState<Array<{ id: string; accountName: string; bankName: string; isDefault: boolean }>>([]);
 
-  const [currency, setCurrency] = useState(initialData?.currency || "INR");
-  const [exchangeRate, setExchangeRate] = useState<number>(initialData?.exchangeRate || 83.50);
-  const [placeOfSupply, setPlaceOfSupply] = useState(initialData?.placeOfSupply || "");
-  const [customerId, setCustomerId] = useState(initialData?.customerId || "");
-  const [title, setTitle] = useState(initialData?.title || "");
-  const [dueDate, setDueDate] = useState(
-    initialData?.dueDate ? new Date(initialData.dueDate).toISOString().slice(0, 10) : ""
-  );
-  const [notes, setNotes] = useState(
-    initialData?.notes ?? "Thank you for choosing our services. Please reach out if you have any questions regarding this invoice."
-  );
-  const [terms, setTerms] = useState(initialData?.terms ?? "Due on Receipt");
-  const [bankAccountId, setBankAccountId] = useState(initialData?.bankAccountId || "");
-  const [discount, setDiscount] = useState(initialData?.discount || 0);
-
-  const [lineItems, setLineItems] = useState<InvoiceFormLineItem[]>(
-    initialData?.lineItems && initialData.lineItems.length > 0
-      ? initialData.lineItems.map((li) => ({
-        id: li.id,
-        servicePackageId: li.servicePackageId || null,
-        serviceName: li.servicePackage?.service?.name || li.servicePackage?.name || null,
-        name: li.name,
-        description: li.description || "",
-        quantity: li.quantity,
-        unit: li.unit || "item",
-        unitPrice: li.unitPrice,
-        taxRate: initialData?.currency === "USD" ? 0 : (li.taxRate || 18),
-        sacCode: li.sacCode || "9983",
-        billingCycle: li.billingCycle || "ONE_TIME",
-      }))
-      : [
-        {
+  const form = useForm<InvoiceFormInput, unknown, InvoiceFormValues>({
+    resolver: zodResolver(invoiceFormSchema),
+    defaultValues: {
+      customerId: initialData?.customerId || "",
+      title: initialData?.title || "",
+      currency: initialData?.currency || "INR",
+      exchangeRate: initialData?.exchangeRate || 83.5,
+      placeOfSupply: initialData?.placeOfSupply || "",
+      dueDate: initialData?.dueDate ? new Date(initialData.dueDate).toISOString().slice(0, 10) : null,
+      notes: initialData?.notes ?? "Please reach out if you have any questions regarding this invoice.",
+      terms: initialData?.terms ?? "Due on Receipt",
+      bankAccountId: initialData?.bankAccountId || "",
+      discount: initialData?.discount || 0,
+      lineItems: initialData?.lineItems && initialData.lineItems.length > 0
+        ? initialData.lineItems.map((item) => ({
+          id: item.id,
+          servicePackageId: item.servicePackageId || null,
+          serviceName: item.servicePackage?.service?.name || item.servicePackage?.name || null,
+          name: item.name,
+          description: item.description || "",
+          quantity: item.quantity,
+          unit: item.unit || "item",
+          unitPrice: item.unitPrice,
+          taxRate: initialData.currency === "USD" ? 0 : item.taxRate || 18,
+          sacCode: item.sacCode || "9983",
+          billingCycle: item.billingCycle || "ONE_TIME",
+        }))
+        : [{
           name: "",
           description: "",
           quantity: 1,
@@ -82,9 +85,21 @@ export function CreateInvoiceForm({ initialData }: { initialData?: InvoiceInitia
           taxRate: 18,
           sacCode: "9983",
           billingCycle: "ONE_TIME",
-        },
-      ]
-  );
+        }],
+    },
+  });
+  const { fields, append, remove, replace } = useFieldArray({
+    control: form.control,
+    name: "lineItems",
+    keyName: "formId",
+  });
+  const currency = useWatch({ control: form.control, name: "currency" }) || "INR";
+  const exchangeRate = useWatch({ control: form.control, name: "exchangeRate" }) || 83.5;
+  const placeOfSupply = useWatch({ control: form.control, name: "placeOfSupply" }) || "";
+  const customerId = useWatch({ control: form.control, name: "customerId" }) || "";
+  const title = useWatch({ control: form.control, name: "title" }) || "";
+  const discount = useWatch({ control: form.control, name: "discount" }) || 0;
+  const lineItems = useWatch({ control: form.control, name: "lineItems" }) || [];
 
   useEffect(() => {
     async function loadData() {
@@ -98,20 +113,20 @@ export function CreateInvoiceForm({ initialData }: { initialData?: InvoiceInitia
         if (!initialData?.bankAccountId) {
           const defaultAccount = bankRes.data.find((b) => b.isDefault) || bankRes.data[0];
           if (defaultAccount) {
-            setBankAccountId(defaultAccount.id);
+            form.setValue("bankAccountId", defaultAccount.id, { shouldDirty: true });
           }
         }
       }
     }
     loadData();
-  }, [initialData?.bankAccountId]);
+  }, [form, initialData?.bankAccountId]);
 
   const handleFetchRate = async () => {
     setFetchingRate(true);
     const res = await getLiveExchangeRate("USD", "INR");
     setFetchingRate(false);
     if (res.success && res.data) {
-      setExchangeRate(res.data.rate);
+      form.setValue("exchangeRate", res.data.rate, { shouldDirty: true });
       toast.success(`Rate updated: ₹${res.data.rate} / USD (${res.data.source})`);
     } else {
       toast.error("Failed to fetch live exchange rate");
@@ -141,76 +156,46 @@ export function CreateInvoiceForm({ initialData }: { initialData?: InvoiceInitia
     });
 
     if (lineItems.length === 1 && !lineItems[0].name.trim()) {
-      setLineItems(newItems);
+      replace(newItems);
     } else {
-      setLineItems((prev) => [...prev, ...newItems]);
+      newItems.forEach((item) => append(item));
     }
   };
 
   const handleAddLineItem = () => {
-    setLineItems((prev) => [
-      ...prev,
-      {
-        name: "",
-        description: "",
-        quantity: 1,
-        unit: "item",
-        unitPrice: 0,
-        taxRate: currency === "USD" ? 0 : 18,
-        sacCode: "9983",
-        billingCycle: "ONE_TIME",
-      },
-    ]);
+    append({
+      name: "",
+      description: "",
+      quantity: 1,
+      unit: "item",
+      unitPrice: 0,
+      taxRate: currency === "USD" ? 0 : 18,
+      sacCode: "9983",
+      billingCycle: "ONE_TIME",
+    });
   };
 
   const handleRemoveLineItem = (index: number) => {
     if (lineItems.length === 1) return;
-    setLineItems((prev) => prev.filter((_, i) => i !== index));
+    remove(index);
   };
 
-  const handleItemChange = <K extends keyof InvoiceFormLineItem>(
-    index: number,
-    field: K,
-    value: InvoiceFormLineItem[K]
-  ) => {
-    setLineItems((prev) =>
-      prev.map((item, i) => (i === index ? { ...item, [field]: value } : item))
-    );
-  };
-
-  const calculateSubtotal = () =>
-    lineItems.reduce((acc, item) => acc + item.quantity * item.unitPrice, 0);
-
-  const calculateTax = () => {
-    if (currency === "USD") return 0;
-    return lineItems.reduce(
-      (acc, item) => acc + (item.quantity * item.unitPrice * (item.taxRate || 0)) / 100,
-      0
-    );
-  };
-
-  const subtotal = calculateSubtotal();
-  const tax = calculateTax();
+  const subtotal = lineItems.reduce((total, item) => total + item.quantity * item.unitPrice, 0);
+  const tax = currency === "USD"
+    ? 0
+    : lineItems.reduce((total, item) => total + (item.quantity * item.unitPrice * (item.taxRate || 0)) / 100, 0);
   const grandTotal = Math.max(0, Math.round(subtotal + tax - discount));
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customerId || !title.trim()) return;
-
+  const handleSubmit = form.handleSubmit(async (data: InvoiceFormValues) => {
     const payload = {
-      customerId,
-      title,
-      currency,
-      exchangeRate: currency === "USD" ? exchangeRate : null,
-      placeOfSupply: currency === "USD" ? placeOfSupply : null,
-      dueDate: dueDate ? new Date(dueDate) : null,
-      notes,
-      terms,
-      bankAccountId: bankAccountId || null,
-      discount,
-      lineItems: lineItems.map((li) => ({
+      ...data,
+      exchangeRate: data.currency === "USD" ? data.exchangeRate : null,
+      placeOfSupply: data.currency === "USD" ? data.placeOfSupply : null,
+      dueDate: data.dueDate || null,
+      bankAccountId: data.bankAccountId || null,
+      lineItems: data.lineItems.map((li) => ({
         ...li,
-        taxRate: currency === "USD" ? 0 : (li.taxRate || 0),
+        taxRate: data.currency === "USD" ? 0 : (li.taxRate || 0),
         sacCode: li.sacCode || "9983",
       })),
     };
@@ -230,7 +215,7 @@ export function CreateInvoiceForm({ initialData }: { initialData?: InvoiceInitia
     } else {
       toast.error(res.message || "Operation failed");
     }
-  };
+  });
 
   const hasFormData = () => {
     const hasLineItemsData =
@@ -243,21 +228,10 @@ export function CreateInvoiceForm({ initialData }: { initialData?: InvoiceInitia
     return hasLineItemsData || hasHeaderData;
   };
 
-  const handleCurrencyChange = (val: string) => {
-    if (val === currency) return;
-
-    if (hasFormData()) {
-      const confirmed = window.confirm(
-        "Changing currency mode will reset your form line items and data. Do you want to proceed?"
-      );
-      if (!confirmed) {
-        return;
-      }
-    }
-
-    setCurrency(val);
-    setDiscount(0);
-    setLineItems([
+  const applyCurrencyChange = (val: string) => {
+    form.setValue("currency", val, { shouldDirty: true });
+    form.setValue("discount", 0, { shouldDirty: true });
+    replace([
       {
         name: "",
         description: "",
@@ -275,322 +249,624 @@ export function CreateInvoiceForm({ initialData }: { initialData?: InvoiceInitia
     }
   };
 
+  const handleCurrencyChange = (val: string) => {
+    if (val === currency) return;
+
+    if (hasFormData()) {
+      setPendingCurrency(val);
+      setCurrencyConfirmationOpen(true);
+      return;
+    }
+
+    applyCurrencyChange(val);
+  };
+
+  const confirmCurrencyChange = () => {
+    if (!pendingCurrency) return;
+    applyCurrencyChange(pendingCurrency);
+    setPendingCurrency(null);
+  };
+
+  const currencySymbol = currency === "USD" ? "$" : "₹";
+  const formattedAmount = (amount: number) =>
+    `${currencySymbol}${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
   return (
-    <form onSubmit={handleSubmit} className="mx-auto w-full min-w-0 max-w-5xl space-y-6 pb-12">
-      <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+    <>
+    <form
+      onSubmit={handleSubmit}
+      noValidate
+      className="mx-auto w-full min-w-0 max-w-[1440px] space-y-4 pb-32 sm:space-y-6 sm:pb-8"
+    >
+      <header className="-mx-3 sticky top-0 z-30 border-b bg-background/95 px-4 py-3 backdrop-blur sm:hidden">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <Button type="button" variant="outline" size="icon" className="size-9 shrink-0" asChild>
+              <Link href="/dashboard/invoices" aria-label="Back to invoices">
+                <ArrowLeftIcon className="size-4" />
+              </Link>
+            </Button>
+            <Badge variant="secondary" className="max-w-[150px] truncate rounded-full">
+              <span className="mr-1.5 size-1.5 rounded-full bg-amber-500" />
+              {initialData?.invoiceNumber ? `Draft #${initialData.invoiceNumber}` : "New invoice draft"}
+            </Badge>
+          </div>
+          <Controller
+            name="currency"
+            control={form.control}
+            render={({ field }) => (
+              <Select value={field.value} onValueChange={handleCurrencyChange}>
+                <SelectTrigger className="h-9 w-[104px] shrink-0" aria-label="Invoice currency">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="INR">INR (₹)</SelectItem>
+                  <SelectItem value="USD">USD ($)</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
+        </div>
+        <div className="mt-2">
+          <h1 className="text-lg font-semibold tracking-tight">
+            {currency === "USD" ? "Create Export Invoice" : initialData ? "Update Invoice" : "Create Invoice"}
+          </h1>
+          <p className="text-xs text-muted-foreground">
+            {currency === "USD" ? "Zero-rated export invoice under Indian GST LUT route" : "New client billing and GST tax invoice"}
+          </p>
+        </div>
+      </header>
+
+      <Card className="hidden gap-0 overflow-visible sm:flex sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-4">
         <div className="flex min-w-0 items-start gap-3">
-          <Button variant="outline" size="icon" asChild>
-            <Link href="/dashboard/invoices">
-              <ArrowLeftIcon className="h-4 w-4" />
+          <Button variant="outline" size="icon" className="shrink-0" asChild>
+            <Link href="/dashboard/invoices" aria-label="Back to invoices">
+              <ArrowLeftIcon className="size-4" />
             </Link>
           </Button>
           <div className="min-w-0">
-            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-              {currency === "USD" ? "Create Export Invoice (LUT 0% Tax)" : "Create Invoice"}
+            <div className="mb-1 flex items-center gap-2">
+              <Badge variant="secondary" className="rounded-full">
+                <span className="mr-1.5 size-1.5 rounded-full bg-amber-500" />
+                {initialData?.invoiceNumber ? `Draft #${initialData.invoiceNumber}` : "New invoice draft"}
+              </Badge>
+            </div>
+            <h1 className="text-xl font-semibold tracking-tight lg:text-2xl">
+              {currency === "USD" ? "Create Export Invoice" : initialData ? "Update Invoice" : "Create Invoice"}
             </h1>
-            <p className="text-sm text-muted-foreground">
-              {currency === "USD"
-                ? "Zero-rated export invoice under Indian GST LUT route"
-                : "Generate a new client billing invoice"}
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {currency === "USD" ? "Zero-rated export invoice under Indian GST LUT route" : "Generate a compliant invoice and billing breakdown"}
             </p>
           </div>
         </div>
 
-        <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-start xl:w-auto xl:justify-end">
-          <Select value={currency} onValueChange={handleCurrencyChange}>
-            <SelectTrigger className="w-full sm:w-[110px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="INR">INR (₹)</SelectItem>
-              <SelectItem value="USD">USD ($)</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <Controller
+            name="currency"
+            control={form.control}
+            render={({ field }) => (
+              <Select value={field.value} onValueChange={handleCurrencyChange}>
+                <SelectTrigger className="w-[110px]" aria-label="Invoice currency">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="INR">INR (₹)</SelectItem>
+                  <SelectItem value="USD">USD ($)</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
           <ServicePackageSearch onSelectPackage={handleAddPackage} currency={currency} />
-          <Button type="submit" disabled={loading} className="w-full gap-2 sm:w-auto">
-            {loading ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <SaveIcon className="h-4 w-4" />}
+          <Button type="submit" disabled={loading} className="gap-2">
+            {loading ? <Loader2Icon className="size-4 animate-spin" /> : <SaveIcon className="size-4" />}
             Save Draft Invoice
           </Button>
         </div>
+      </Card>
+
+      <div className="sm:hidden">
+        <ServicePackageSearch onSelectPackage={handleAddPackage} currency={currency} />
       </div>
 
-      <Card className="overflow-visible relative z-20">
-        <CardHeader>
-          <CardTitle>Invoice Details</CardTitle>
-          <CardDescription>Select customer and basic invoice parameters</CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-4 overflow-visible xl:grid-cols-2">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Customer *</label>
-            <Select value={customerId} onValueChange={setCustomerId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a customer" />
-              </SelectTrigger>
-              <SelectContent>
-                {customers.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.displayName} {c.companyName ? `(${c.companyName})` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Invoice Title *</label>
-            <Input
-              placeholder="e.g. Custom Software Export Billing Phase 1"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Due Date</label>
-            <Input
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Bank Account</label>
-            <Select value={bankAccountId} onValueChange={setBankAccountId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select company bank account" />
-              </SelectTrigger>
-              <SelectContent>
-                {bankAccounts.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {b.accountName} - {b.bankName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {currency === "USD" && (
-            <>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium">RBI Exchange Rate (₹/USD) *</label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleFetchRate}
-                    disabled={fetchingRate}
-                    className="h-6 text-xs text-blue-600 gap-1 px-1.5"
-                  >
-                    {fetchingRate ? <Loader2Icon className="h-3 w-3 animate-spin" /> : <RefreshCwIcon className="h-3 w-3" />}
-                    Fetch Today&apos;s Rate
-                  </Button>
+      <div className="grid min-w-0 grid-cols-1 items-start gap-4 md:grid-cols-12 md:gap-6">
+        <div className="min-w-0 space-y-4 md:col-span-8 md:space-y-6">
+          <Card className="relative z-20 overflow-visible">
+            <CardHeader className="border-b pb-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle>Invoice Details</CardTitle>
+                  <CardDescription className="mt-1">Customer selection and invoice metadata</CardDescription>
                 </div>
-                <Input
-                  type="number"
-                  step="any"
-                  min="0.0001"
-                  placeholder="e.g. 83.50"
-                  value={exchangeRate}
-                  onChange={(e) => setExchangeRate(Number(e.target.value))}
-                />
+                {initialData?.invoiceNumber && (
+                  <Badge variant="outline" className="shrink-0">{initialData.invoiceNumber}</Badge>
+                )}
               </div>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-4 pt-5 sm:grid-cols-2 sm:gap-5">
+              <Controller
+                name="customerId"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid} className="sm:col-span-2">
+                    <FieldLabel htmlFor="invoice-customer">Customer <span className="text-destructive">*</span></FieldLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger id="invoice-customer" aria-invalid={fieldState.invalid} className="h-11">
+                        <SelectValue placeholder="Select a customer" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {customers.map((customer) => (
+                          <SelectItem key={customer.id} value={customer.id}>
+                            {customer.displayName}{customer.companyName ? ` (${customer.companyName})` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                  </Field>
+                )}
+              />
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Place of Supply (Destination Country) *</label>
-                <LocationAutocomplete
-                  type="country"
-                  value={placeOfSupply}
-                  onChange={setPlaceOfSupply}
-                  placeholder="Start typing destination country (e.g. United States)..."
-                />
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+              <Controller
+                name="title"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid} className="sm:col-span-2">
+                    <FieldLabel htmlFor="invoice-title">Invoice Title <span className="text-destructive">*</span></FieldLabel>
+                    <Input
+                      {...field}
+                      id="invoice-title"
+                      aria-invalid={fieldState.invalid}
+                      placeholder="e.g. Custom Software Export Billing Phase 1"
+                      className="h-11"
+                    />
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                  </Field>
+                )}
+              />
 
-      <Card className="relative z-10">
-        <CardHeader className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <CardTitle>Line Items</CardTitle>
-            <CardDescription>Add or customize services and items</CardDescription>
-          </div>
-          <Button type="button" variant="outline" onClick={handleAddLineItem} className="w-full gap-2 sm:w-auto">
-            <PlusIcon className="h-4 w-4" /> Add Item
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="hidden xl:grid xl:grid-cols-12 gap-2.5 px-3 py-2 text-xs font-medium text-muted-foreground bg-muted/50 rounded-md border">
-            <div className="col-span-3">Item & Description</div>
-            <div className="col-span-2">Billing Cycle</div>
-            <div className="col-span-1 text-center">Qty</div>
-            <div className="col-span-2 text-right">Unit Price ({currency === "USD" ? "$" : "₹"})</div>
-            <div className="col-span-2 text-center">HSN / SAC</div>
-            <div className="col-span-2 text-right">Tax Rate</div>
-          </div>
+              <Controller
+                name="dueDate"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor="invoice-due-date">Due Date</FieldLabel>
+                    <Input
+                      ref={field.ref}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      id="invoice-due-date"
+                      type="date"
+                      value={typeof field.value === "string" ? field.value : field.value?.toISOString().slice(0, 10) ?? ""}
+                      onChange={(event) => field.onChange(event.target.value || null)}
+                      aria-invalid={fieldState.invalid}
+                      className="h-11"
+                    />
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                  </Field>
+                )}
+              />
 
-          {lineItems.map((item, index) => (
-            <div key={index} className="flex flex-col gap-3 p-3 rounded-lg border bg-card">
-              <div className="grid min-w-0 grid-cols-1 gap-2.5 xl:grid-cols-12 xl:items-center">
-                <div className="min-w-0 space-y-1 xl:col-span-3">
-                  {item.serviceName && (
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                        {item.serviceName}
-                      </span>
-                    </div>
-                  )}
-                  <Input
-                    placeholder="Item name"
-                    value={item.name}
-                    onChange={(e) => handleItemChange(index, "name", e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="min-w-0 xl:col-span-2">
-                  <Select
-                    value={item.billingCycle || "ONE_TIME"}
-                    onValueChange={(val) => handleItemChange(index, "billingCycle", BillingCycleEnum.parse(val))}
-                  >
-                    <SelectTrigger className="h-9 text-xs">
-                      <SelectValue placeholder="Cycle" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ONE_TIME">One Time</SelectItem>
-                      <SelectItem value="MONTHLY">Monthly</SelectItem>
-                      <SelectItem value="QUARTERLY">Quarterly</SelectItem>
-                      <SelectItem value="HALF_YEARLY">Half Yearly</SelectItem>
-                      <SelectItem value="YEARLY">Yearly</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="min-w-0 xl:col-span-1">
-                  <Input
-                    type="number"
-                    min="1"
-                    placeholder="Qty"
-                    value={item.quantity}
-                    onChange={(e) => handleItemChange(index, "quantity", Number(e.target.value))}
-                    required
-                  />
-                </div>
-                <div className="min-w-0 xl:col-span-2">
-                  <Input
-                    type="number"
-                    min="0"
-                    step="any"
-                    placeholder={`Unit Price (${currency === "USD" ? "$" : "₹"})`}
-                    value={item.unitPrice}
-                    onChange={(e) => handleItemChange(index, "unitPrice", Number(e.target.value))}
-                    required
-                  />
-                </div>
-                <div className="min-w-0 xl:col-span-2">
-                  <Input
-                    placeholder="SAC Code (e.g. 9983)"
-                    value={item.sacCode || "9983"}
-                    onChange={(e) => handleItemChange(index, "sacCode", e.target.value)}
-                    className="font-mono text-xs"
-                  />
-                </div>
-                <div className="flex min-w-0 items-center gap-1 xl:col-span-2">
-                  <div className="flex-1">
-                    {currency === "USD" ? (
-                      <div className="h-9 px-2.5 py-1.5 rounded-md border bg-muted text-xs flex items-center justify-center text-muted-foreground font-medium">
-                        0% (Nil)
-                      </div>
-                    ) : (
-                      <Select
-                        value={String(item.taxRate)}
-                        onValueChange={(val) => handleItemChange(index, "taxRate", Number(val))}
-                      >
-                        <SelectTrigger className="h-9 text-xs">
-                          <SelectValue placeholder="Tax %" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="0">0% Tax</SelectItem>
-                          <SelectItem value="5">5% GST</SelectItem>
-                          <SelectItem value="12">12% GST</SelectItem>
-                          <SelectItem value="18">18% GST</SelectItem>
-                          <SelectItem value="28">28% GST</SelectItem>
-                        </SelectContent>
-                      </Select>
+              <Controller
+                name="bankAccountId"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor="invoice-bank-account">Receiving Bank Account</FieldLabel>
+                    <Select value={field.value || ""} onValueChange={field.onChange}>
+                      <SelectTrigger id="invoice-bank-account" aria-invalid={fieldState.invalid} className="h-11">
+                        <SelectValue placeholder="Select company bank account" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {bankAccounts.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            {account.accountName} - {account.bankName}{account.isDefault ? " (Primary)" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                  </Field>
+                )}
+              />
+
+              {currency === "USD" && (
+                <>
+                  <Controller
+                    name="exchangeRate"
+                    control={form.control}
+                    render={({ field, fieldState }) => (
+                      <Field data-invalid={fieldState.invalid}>
+                        <div className="flex items-center justify-between gap-2">
+                          <FieldLabel htmlFor="invoice-exchange-rate">RBI Exchange Rate (₹/USD) <span className="text-destructive">*</span></FieldLabel>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleFetchRate}
+                            disabled={fetchingRate}
+                            className="h-7 shrink-0 gap-1 px-1.5 text-xs"
+                          >
+                            {fetchingRate ? <Loader2Icon className="size-3 animate-spin" /> : <RefreshCwIcon className="size-3" />}
+                            Fetch rate
+                          </Button>
+                        </div>
+                        <Input
+                          {...field}
+                          id="invoice-exchange-rate"
+                          type="number"
+                          step="any"
+                          min="0.0001"
+                          value={field.value ?? ""}
+                          onChange={(event) => field.onChange(event.target.value === "" ? undefined : Number(event.target.value))}
+                          aria-invalid={fieldState.invalid}
+                          className="h-11"
+                        />
+                        {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                      </Field>
                     )}
+                  />
+                  <Controller
+                    name="placeOfSupply"
+                    control={form.control}
+                    render={({ field, fieldState }) => (
+                      <Field data-invalid={fieldState.invalid}>
+                        <FieldLabel htmlFor="invoice-place-of-supply">Place of Supply <span className="text-destructive">*</span></FieldLabel>
+                        <LocationAutocomplete
+                          type="country"
+                          id="invoice-place-of-supply"
+                          value={field.value || ""}
+                          onChange={field.onChange}
+                          placeholder="Select destination country"
+                        />
+                        {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                      </Field>
+                    )}
+                  />
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="relative z-10">
+            <CardHeader className="flex flex-row items-center justify-between gap-3 border-b pb-4">
+              <div>
+                <CardTitle>Line Items <span className="font-normal text-muted-foreground">({lineItems.length})</span></CardTitle>
+                <CardDescription className="mt-1">Add or customize services, rates, and taxes</CardDescription>
+              </div>
+              <Button type="button" variant="outline" onClick={handleAddLineItem} className="h-10 shrink-0 gap-2">
+                <PlusIcon className="size-4" />
+                <span className="hidden sm:inline">Add Item</span>
+                <span className="sm:hidden">Add</span>
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-5">
+              {fields.map((row, index) => {
+                const item = lineItems[index];
+                if (!item) return null;
+                const lineTotal = item.quantity * item.unitPrice;
+
+                return (
+                  <div key={row.formId} className="space-y-4 rounded-xl border bg-muted/20 p-3 sm:p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-12">
+                        <Controller
+                          name={`lineItems.${index}.name`}
+                          control={form.control}
+                          render={({ field, fieldState }) => (
+                            <Field data-invalid={fieldState.invalid} className="xl:col-span-7">
+                              <FieldLabel htmlFor={`line-item-${index}-name`}>Item / Service Name <span className="text-destructive">*</span></FieldLabel>
+                              <Input
+                                {...field}
+                                id={`line-item-${index}-name`}
+                                aria-invalid={fieldState.invalid}
+                                placeholder="e.g. Consulting, design, development"
+                                className="h-10 bg-background"
+                              />
+                              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                            </Field>
+                          )}
+                        />
+                        <Controller
+                          name={`lineItems.${index}.billingCycle`}
+                          control={form.control}
+                          render={({ field, fieldState }) => (
+                            <Field data-invalid={fieldState.invalid} className="xl:col-span-5">
+                              <FieldLabel htmlFor={`line-item-${index}-cycle`}>Billing Cycle</FieldLabel>
+                              <Select
+                                value={field.value || "ONE_TIME"}
+                                onValueChange={(value) => field.onChange(BillingCycleEnum.parse(value))}
+                              >
+                                <SelectTrigger id={`line-item-${index}-cycle`} aria-invalid={fieldState.invalid} className="h-10 bg-background">
+                                  <SelectValue placeholder="Select cycle" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="ONE_TIME">One Time</SelectItem>
+                                  <SelectItem value="MONTHLY">Monthly</SelectItem>
+                                  <SelectItem value="QUARTERLY">Quarterly</SelectItem>
+                                  <SelectItem value="HALF_YEARLY">Half Yearly</SelectItem>
+                                  <SelectItem value="YEARLY">Yearly</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                            </Field>
+                          )}
+                        />
+                        <Controller
+                          name={`lineItems.${index}.quantity`}
+                          control={form.control}
+                          render={({ field, fieldState }) => (
+                            <Field data-invalid={fieldState.invalid} className="sm:col-span-1 xl:col-span-2">
+                              <FieldLabel htmlFor={`line-item-${index}-quantity`}>Quantity</FieldLabel>
+                              <Input
+                                {...field}
+                                id={`line-item-${index}-quantity`}
+                                type="number"
+                                min="1"
+                                step="1"
+                                value={field.value ?? ""}
+                                onChange={(event) => field.onChange(event.target.value === "" ? Number.NaN : Number(event.target.value))}
+                                aria-invalid={fieldState.invalid}
+                                className="h-10 bg-background"
+                              />
+                              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                            </Field>
+                          )}
+                        />
+                        <Controller
+                          name={`lineItems.${index}.unitPrice`}
+                          control={form.control}
+                          render={({ field, fieldState }) => (
+                            <Field data-invalid={fieldState.invalid} className="xl:col-span-3">
+                              <FieldLabel htmlFor={`line-item-${index}-price`}>Rate ({currencySymbol})</FieldLabel>
+                              <Input
+                                {...field}
+                                id={`line-item-${index}-price`}
+                                type="number"
+                                min="0"
+                                step="any"
+                                value={field.value ?? ""}
+                                onChange={(event) => field.onChange(event.target.value === "" ? Number.NaN : Number(event.target.value))}
+                                aria-invalid={fieldState.invalid}
+                                className="h-10 bg-background"
+                              />
+                              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                            </Field>
+                          )}
+                        />
+                        <Controller
+                          name={`lineItems.${index}.taxRate`}
+                          control={form.control}
+                          render={({ field, fieldState }) => (
+                            <Field data-invalid={fieldState.invalid} className="xl:col-span-3">
+                              <FieldLabel htmlFor={`line-item-${index}-tax`}>Tax Rate</FieldLabel>
+                              {currency === "USD" ? (
+                                <div className="flex h-10 items-center rounded-md border bg-muted px-3 text-sm text-muted-foreground">0% (Nil)</div>
+                              ) : (
+                                <Select value={String(field.value ?? 0)} onValueChange={(value) => field.onChange(Number(value))}>
+                                  <SelectTrigger id={`line-item-${index}-tax`} aria-invalid={fieldState.invalid} className="h-10 bg-background">
+                                    <SelectValue placeholder="Select tax rate" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="0">0% Tax</SelectItem>
+                                    <SelectItem value="5">5% GST</SelectItem>
+                                    <SelectItem value="12">12% GST</SelectItem>
+                                    <SelectItem value="18">18% GST</SelectItem>
+                                    <SelectItem value="28">28% GST</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              )}
+                              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                            </Field>
+                          )}
+                        />
+                        <Controller
+                          name={`lineItems.${index}.sacCode`}
+                          control={form.control}
+                          render={({ field, fieldState }) => (
+                            <Field data-invalid={fieldState.invalid} className="xl:col-span-4">
+                              <FieldLabel htmlFor={`line-item-${index}-sac`}>SAC / HSN</FieldLabel>
+                              <Input
+                                {...field}
+                                id={`line-item-${index}-sac`}
+                                value={field.value || ""}
+                                aria-invalid={fieldState.invalid}
+                                placeholder="9983"
+                                className="h-10 bg-background"
+                              />
+                              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                            </Field>
+                          )}
+                        />
+                        <Controller
+                          name={`lineItems.${index}.description`}
+                          control={form.control}
+                          render={({ field, fieldState }) => (
+                            <Field data-invalid={fieldState.invalid} className="sm:col-span-2 xl:col-span-8">
+                              <FieldLabel htmlFor={`line-item-${index}-description`}>Scope Notes <span className="font-normal text-muted-foreground">(Optional)</span></FieldLabel>
+                              <Input
+                                {...field}
+                                value={field.value || ""}
+                                id={`line-item-${index}-description`}
+                                aria-invalid={fieldState.invalid}
+                                placeholder="Describe the work included in this item"
+                                className="h-10 bg-background"
+                              />
+                              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                            </Field>
+                          )}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 border-t pt-3">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveLineItem(index)}
+                        disabled={lineItems.length === 1}
+                        className="gap-1.5 text-destructive hover:text-destructive"
+                      >
+                        <Trash2Icon className="size-4" />
+                        Remove
+                      </Button>
+                      <p className="text-right text-xs text-muted-foreground">
+                        Line total: <span className="font-semibold tabular-nums text-foreground">{formattedAmount(lineTotal)}</span>
+                      </p>
+                    </div>
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleRemoveLineItem(index)}
-                    disabled={lineItems.length === 1}
-                    className="text-destructive h-9 w-9 shrink-0"
-                  >
-                    <Trash2Icon className="h-4 w-4" />
-                  </Button>
+                );
+              })}
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleAddLineItem}
+                className="h-11 w-full border-dashed"
+              >
+                <PlusIcon className="size-4" />
+                Add Another Line Item
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        <aside className="min-w-0 space-y-4 md:sticky md:top-20 md:col-span-4 md:space-y-6">
+          <Card>
+            <CardHeader className="border-b pb-4">
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle>Invoice Summary</CardTitle>
+                <span className="text-xs text-muted-foreground">Amounts in {currency} ({currencySymbol})</span>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-5">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted-foreground">Subtotal</span>
+                <span className="font-medium tabular-nums">{formattedAmount(subtotal)}</span>
+              </div>
+              <Controller
+                name="discount"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid} className="flex-row items-center justify-between gap-3">
+                    <FieldLabel htmlFor="invoice-discount">Discount ({currencySymbol})</FieldLabel>
+                    <div className="w-32">
+                      <Input
+                        {...field}
+                        id="invoice-discount"
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={field.value ?? 0}
+                        onChange={(event) => field.onChange(event.target.value === "" ? Number.NaN : Number(event.target.value))}
+                        aria-invalid={fieldState.invalid}
+                        className="h-10 text-right tabular-nums"
+                      />
+                      {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                    </div>
+                  </Field>
+                )}
+              />
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted-foreground">{currency === "USD" ? "Tax" : "GST"}</span>
+                <span className="font-medium tabular-nums">{formattedAmount(tax)}</span>
+              </div>
+              <div className="rounded-lg border bg-muted/30 p-4">
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">Grand Total</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Includes applicable taxes</p>
+                  </div>
+                  <p className="text-right text-xl font-bold tabular-nums text-primary sm:text-2xl">{formattedAmount(grandTotal)}</p>
                 </div>
               </div>
-              <Input
-                placeholder="Description (optional)"
-                value={item.description || ""}
-                onChange={(e) => handleItemChange(index, "description", e.target.value)}
-                className="text-xs"
-              />
-            </div>
-          ))}
+              {form.formState.errors.lineItems?.root?.message && (
+                <p role="alert" className="text-sm text-destructive">{form.formState.errors.lineItems.root.message}</p>
+              )}
+            </CardContent>
+          </Card>
 
-          <div className="flex flex-col items-end pt-4 border-t space-y-2 text-sm">
-            <div className="flex justify-between w-64 text-muted-foreground">
-              <span>Subtotal:</span>
-              <span>{currency === "USD" ? "$" : "₹"}{subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
-            </div>
-            <div className="flex justify-between w-64 text-muted-foreground">
-              <span>Tax Total:</span>
-              <span>{currency === "USD" ? "$" : "₹"}{tax.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
-            </div>
-            <div className="flex justify-between w-64 items-center">
-              <span>Discount ({currency === "USD" ? "$" : "₹"}):</span>
-              <Input
-                type="number"
-                min="0"
-                value={discount}
-                onChange={(e) => setDiscount(Number(e.target.value))}
-                className="w-28 text-right h-8"
+          <Card>
+            <CardHeader className="border-b pb-4">
+              <CardTitle>Notes &amp; Terms</CardTitle>
+              <CardDescription>Shown on the invoice sent to your customer</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-5">
+              <Controller
+                name="notes"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor="invoice-notes">Client Notes</FieldLabel>
+                    <Textarea
+                      {...field}
+                      value={field.value || ""}
+                      id="invoice-notes"
+                      aria-invalid={fieldState.invalid}
+                      placeholder="Notes visible to the client..."
+                      rows={4}
+                      className="resize-y"
+                    />
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                  </Field>
+                )}
               />
-            </div>
-            <div className="flex justify-between w-64 font-bold text-lg pt-2 border-t text-primary">
-              <span>Grand Total:</span>
-              <span>{currency === "USD" ? "$" : "₹"}{grandTotal.toLocaleString("en-IN")}</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+              <Controller
+                name="terms"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor="invoice-terms">Terms &amp; Conditions</FieldLabel>
+                    <Textarea
+                      {...field}
+                      value={field.value || ""}
+                      id="invoice-terms"
+                      aria-invalid={fieldState.invalid}
+                      placeholder="Payment terms and policies..."
+                      rows={4}
+                      className="resize-y"
+                    />
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                  </Field>
+                )}
+              />
+            </CardContent>
+          </Card>
+        </aside>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Notes & Terms</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Client Notes</label>
-            <Textarea
-              placeholder="Notes visible to the client..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Terms & Conditions</label>
-            <Textarea
-              placeholder="Payment terms and policies..."
-              value={terms}
-              onChange={(e) => setTerms(e.target.value)}
-            />
-          </div>
-        </CardContent>
-      </Card>
+      <div className="fixed inset-x-0 bottom-14 z-40 border-t bg-background/95 px-4 py-3 shadow-lg backdrop-blur sm:hidden">
+        <Button type="submit" disabled={loading} className="h-11 w-full gap-2">
+          {loading ? <Loader2Icon className="size-4 animate-spin" /> : <SaveIcon className="size-4" />}
+          Save Draft Invoice
+        </Button>
+      </div>
     </form>
+    <AlertDialog
+      open={currencyConfirmationOpen}
+      onOpenChange={(open) => {
+        setCurrencyConfirmationOpen(open);
+        if (!open) setPendingCurrency(null);
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Change invoice currency?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Changing currency resets invoice line items, pricing, and tax settings. Continue with the new currency?
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel asChild>
+            <Button type="button" variant="outline">Keep current currency</Button>
+          </AlertDialogCancel>
+          <AlertDialogAction asChild>
+            <Button type="button" variant="destructive" onClick={confirmCurrencyChange}>
+              Change currency
+            </Button>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

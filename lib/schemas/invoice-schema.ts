@@ -56,6 +56,17 @@ export const createInvoiceSchema = z.object({
   lineItems: z.array(invoiceLineItemSchema).min(1, "At least one line item is required"),
 });
 
+export const invoiceFormSchema = createInvoiceSchema.extend({
+  dueDate: z
+    .union([z.date(), z.iso.date()])
+    .optional()
+    .nullable()
+    .transform((value) => (typeof value === "string" ? new Date(`${value}T00:00:00`) : value)),
+  lineItems: z.array(invoiceLineItemSchema.extend({
+    serviceName: z.string().optional().nullable(),
+  })).min(1, "At least one line item is required"),
+});
+
 export const updateInvoiceSchema = createInvoiceSchema.partial().extend({
   id: z.string().min(1, "Invoice ID is required"),
   status: InvoiceStatusEnum.optional(),
@@ -89,6 +100,8 @@ export type InvoiceStatusType = z.infer<typeof InvoiceStatusEnum>;
 export type PaymentMethodType = z.infer<typeof PaymentMethodEnum>;
 export type InvoiceLineItemInput = z.infer<typeof invoiceLineItemSchema>;
 export type CreateInvoiceInput = z.infer<typeof createInvoiceSchema>;
+export type InvoiceFormInput = z.input<typeof invoiceFormSchema>;
+export type InvoiceFormValues = z.output<typeof invoiceFormSchema>;
 export type UpdateInvoiceInput = z.infer<typeof updateInvoiceSchema>;
 export type RecordPaymentInput = z.infer<typeof recordPaymentSchema>;
 export type AssignPaymentAccountInput = z.infer<typeof assignPaymentAccountSchema>;

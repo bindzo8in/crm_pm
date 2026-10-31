@@ -31,10 +31,12 @@ import { AlertCircle, CheckCircle2, LockKeyhole } from "lucide-react";
 
 type ResetPasswordFormProps = {
   token?: string;
+  isInvitation?: boolean;
 };
 
 export function ResetPasswordForm({
   token,
+  isInvitation = false,
 }: ResetPasswordFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -80,15 +82,19 @@ export function ResetPasswordForm({
           <CheckCircle2 className="size-12 mb-4 text-green-600" />
 
           <h2 className="text-2xl font-bold">
-            Password Updated
+            {isInvitation ? "Your account is ready" : "Password updated"}
           </h2>
 
           <p className="mt-3 text-muted-foreground">
-            Your password has been updated successfully.
+            {isInvitation
+              ? "Your email is verified and your account is active."
+              : "Your password has been updated successfully."}
           </p>
 
           <p className="text-sm text-muted-foreground mt-2">
-            You can now sign in using your new password.
+            {isInvitation
+              ? "You can now sign in with your new password."
+              : "You can now sign in using your new password."}
           </p>
 
           <Button asChild className="mt-6 w-full">
@@ -120,11 +126,13 @@ export function ResetPasswordForm({
         <FieldGroup className="mb-6 grid gap-4 md:grid-cols-6">
           <h1 className="col-span-full mt-6 mb-1 flex flex-wrap items-center gap-2 text-2xl font-extrabold tracking-tight sm:text-3xl">
             <LockKeyhole aria-hidden="true" className="size-6 text-primary" />
-            Create new password
+            {isInvitation ? "Set up your account" : "Create new password"}
           </h1>
 
           <p className="tracking-wide text-muted-foreground mb-5 text-sm col-span-full">
-            Enter and confirm your new password.
+            {isInvitation
+              ? "Choose a password to activate your account."
+              : "Enter and confirm your new password."}
           </p>
 
           <Controller
@@ -137,14 +145,18 @@ export function ResetPasswordForm({
               >
                 <FieldContent className="gap-0.5">
                   <FieldLabel htmlFor="password">
-                    New Password *
+                    {isInvitation ? "Create password *" : "New Password *"}
                   </FieldLabel>
                 </FieldContent>
 
                 <Password
                   {...field}
                   id="password"
-                  placeholder="Enter your new password"
+                  placeholder={
+                    isInvitation
+                      ? "Create a password"
+                      : "Enter your new password"
+                  }
                   aria-invalid={fieldState.invalid}
                 />
 
@@ -198,7 +210,9 @@ export function ResetPasswordForm({
           <Button className="min-h-11" type="submit" disabled={isSubmitting}>
             {isSubmitting
               ? "Updating Password..."
-              : "Update Password"}
+              : isInvitation
+                ? "Activate account"
+                : "Update Password"}
           </Button>
         </div>
       </form>

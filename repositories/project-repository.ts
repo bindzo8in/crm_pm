@@ -1,6 +1,7 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import type { ProjectQuery } from "@/lib/schemas/project-schema";
+import { EmploymentStatus } from "@/app/generated/prisma/enums";
 import type {
   ProjectPriority,
   ProjectStatus,
@@ -108,45 +109,56 @@ export async function getProjectPage(
       : query.sortDirection;
 
   const [rawItems, total, allCount, activeCount, planningCount, upcomingCount, overdueCount, completedCount] =
-    await prisma.$transaction([
-      prisma.project.findMany({
+    await prisma.$transaction(async (tx) => {
+      const rawItems = await tx.project.findMany({
         where: pageWhere,
         select: projectCardSelect,
         orderBy: [{ projectNumber: orderDirection }, { id: orderDirection }],
         take: query.pageSize + 1,
-      }),
-      prisma.project.count({ where: baseWhere }),
-      prisma.project.count({ where: { ...accessFilter, deletedAt: null } }),
-      prisma.project.count({
+      });
+      const total = await tx.project.count({ where: baseWhere });
+      const allCount = await tx.project.count({ where: { ...accessFilter, deletedAt: null } });
+      const activeCount = await tx.project.count({
         where: {
           ...accessFilter,
           deletedAt: null,
           status: { in: ["NOT_STARTED", "IN_PROGRESS", "ON_HOLD"] },
         },
-      }),
-      prisma.project.count({
+      });
+      const planningCount = await tx.project.count({
         where: { ...accessFilter, deletedAt: null, status: "PLANNING" },
-      }),
-      prisma.project.count({
+      });
+      const upcomingCount = await tx.project.count({
         where: {
           ...accessFilter,
           deletedAt: null,
           status: { in: ["PLANNING", "NOT_STARTED", "IN_PROGRESS", "ON_HOLD"] },
           dueDate: { gte: new Date(), lte: new Date(Date.now() + 7 * 86400000) },
         },
-      }),
-      prisma.project.count({
+      });
+      const overdueCount = await tx.project.count({
         where: {
           ...accessFilter,
           deletedAt: null,
           status: { notIn: ["COMPLETED", "CANCELLED"] },
           dueDate: { lt: new Date() },
         },
-      }),
-      prisma.project.count({
+      });
+      const completedCount = await tx.project.count({
         where: { ...accessFilter, deletedAt: null, status: "COMPLETED" },
-      }),
-    ]);
+      });
+
+      return [
+        rawItems,
+        total,
+        allCount,
+        activeCount,
+        planningCount,
+        upcomingCount,
+        overdueCount,
+        completedCount,
+      ] as const;
+    });
 
   const hasExtra = rawItems.length > query.pageSize;
   const pageItems = rawItems.slice(0, query.pageSize);
@@ -266,7 +278,11 @@ export async function getProjectFormOptions(userIds: string[] = []) {
       take: 250,
     }),
     prisma.user.findMany({
-      where: { id: { in: userIds }, banned: { not: true } },
+      where: {
+        id: { in: userIds },
+        banned: { not: true },
+        employmentStatus: EmploymentStatus.ACTIVE,
+      },
       select: { id: true, name: true, designation: true, department: true },
     }),
   ]);
@@ -278,6 +294,7 @@ const projectUserPageSize = 20;
 export async function getProjectUserPage(search: string, page: number) {
   const where: Prisma.UserWhereInput = {
     banned: { not: true },
+    employmentStatus: EmploymentStatus.ACTIVE,
     ...(search
       ? {
           OR: [
@@ -409,7 +426,11 @@ export async function getRelatedInvoicesForProject(
 
 export async function getUsersByIds(userIds: string[]) {
   return prisma.user.findMany({
-    where: { id: { in: userIds }, banned: { not: true } },
+    where: {
+      id: { in: userIds },
+      banned: { not: true },
+      employmentStatus: EmploymentStatus.ACTIVE,
+    },
     select: { id: true },
   });
 }
@@ -739,6 +760,16 @@ export async function updateProjectTaskRecord(
 }
 
 export async function getProjectAssignment(projectId: string, userId: string) {
+  const activeUser = await prisma.user.findFirst({
+    where: {
+      id: userId,
+      banned: { not: true },
+      employmentStatus: EmploymentStatus.ACTIVE,
+    },
+    select: { id: true },
+  });
+  if (!activeUser) return null;
+
   return prisma.project.findFirst({
     where: {
       id: projectId,

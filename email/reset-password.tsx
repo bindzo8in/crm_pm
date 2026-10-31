@@ -17,6 +17,7 @@ type ResetPasswordEmailProps = {
   appName: string;
   resetUrl: string;
   supportEmail?: string;
+  isInvitation?: boolean;
 };
 
 export default function ResetPasswordEmail({
@@ -24,17 +25,22 @@ export default function ResetPasswordEmail({
   appName,
   resetUrl,
   supportEmail,
+  isInvitation = false,
 }: ResetPasswordEmailProps) {
   return (
     <Html>
       <Head />
-      <Preview>Reset your password for {appName}</Preview>
+      <Preview>
+        {isInvitation
+          ? `Your ${appName} account is ready`
+          : `Reset your password for ${appName}`}
+      </Preview>
 
       <Tailwind>
         <Body className="bg-zinc-100 py-10">
           <Container className="mx-auto max-w-xl rounded-xl bg-white p-8">
             <Heading className="m-0 text-3xl font-bold text-zinc-900">
-              Reset your password
+              {isInvitation ? "Welcome to the team" : "Reset your password"}
             </Heading>
 
             <Text className="mt-6 text-base text-zinc-700">
@@ -42,12 +48,15 @@ export default function ResetPasswordEmail({
             </Text>
 
             <Text className="text-base leading-7 text-zinc-700">
-              We received a request to reset the password for your account on{" "}
-              {appName}.
+              {isInvitation
+                ? `An account has been created for you on ${appName}. Set a password to verify your email and activate your account.`
+                : `We received a request to reset the password for your account on ${appName}.`}
             </Text>
 
             <Text className="text-base leading-7 text-zinc-700">
-              Click the button below to create a new password.
+              {isInvitation
+                ? "Choose a password to get started."
+                : "Click the button below to create a new password."}
             </Text>
 
             <Section className="my-8 text-center">
@@ -55,7 +64,7 @@ export default function ResetPasswordEmail({
                 href={resetUrl}
                 className="rounded-lg bg-black px-6 py-3 text-white"
               >
-                Reset Password
+                {isInvitation ? "Set my password" : "Reset Password"}
               </Button>
             </Section>
 
@@ -72,12 +81,15 @@ export default function ResetPasswordEmail({
             </Link>
 
             <Text className="mt-6 text-sm text-zinc-600">
-              This password reset link will expire in 1 hour.
+              {isInvitation
+                ? "This setup link expires in 1 hour."
+                : "This password reset link will expire in 1 hour."}
             </Text>
 
             <Text className="text-sm text-zinc-600">
-              If you did not request a password reset, you can safely ignore
-              this email. Your password will remain unchanged.
+              {isInvitation
+                ? "If you were not expecting this invitation, you can safely ignore this email."
+                : "If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged."}
             </Text>
 
             <Section className="mt-10 border-t border-zinc-200 pt-6">

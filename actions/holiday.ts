@@ -1,11 +1,12 @@
 "use server";
 
 import {
+  getHolidayDepartment,
   requireHolidayManager,
   requireHolidayUser,
 } from "@/lib/leave-access";
 import { formatInIST } from "@/lib/date";
-import { parseDateOnly } from "@/lib/leave-policy";
+import { parseDateOnly, toDateKey } from "@/lib/leave-policy";
 import {
   addHoliday,
   editHoliday,
@@ -29,9 +30,27 @@ const dateOnlySchema = z
   }, "Enter a valid holiday date.")
   .transform(parseDateOnly);
 
-const holidaySchema = z.object({
+const holidayFieldsSchema = z.object({
   name: z.string().trim().min(1, "Holiday name is required.").max(120),
-  date: dateOnlySchema,
+  startDate: dateOnlySchema,
+  endDate: dateOnlySchema,
+  category: z.enum([
+    "MANDATORY_GAZETTED",
+    "RESTRICTED_OPTIONAL",
+    "COMPANY_SPECIAL",
+  ]),
+  departments: z.array(
+    z.enum([
+      "SALES",
+      "DEVELOPMENT",
+      "DESIGN",
+      "SEO",
+      "MARKETING",
+      "HR",
+      "OPERATIONS",
+    ]),
+  ),
+  notifyStaff: z.boolean(),
   description: z.string().trim().max(500).nullable().optional(),
 });
 
@@ -43,48 +62,99 @@ const holidayIdSchema = z.object({
   id: z.string().trim().min(1).max(100),
 });
 
+function validateHolidayRange(
+  startDate: Date,
+  endDate: Date,
+  addIssue: (issue: {
+    code: "custom";
+    path: string[];
+    message: string;
+  }) => void,
+) {
+  const duration = (endDate.getTime() - startDate.getTime()) / 86_400_000;
+  if (duration < 0) {
+    addIssue({
+      code: "custom",
+      path: ["endDate"],
+      message: "End date cannot be before start date.",
+    });
+  } else if (duration > 365) {
+    addIssue({
+      code: "custom",
+      path: ["endDate"],
+      message: "A holiday range cannot exceed 366 days.",
+    });
+  }
+}
+
+const holidaySchema = holidayFieldsSchema.superRefine((value, context) => {
+  validateHolidayRange(value.startDate, value.endDate, context.addIssue);
+});
+const updateHolidaySchema = holidayFieldsSchema
+  .extend(holidayIdSchema.shape)
+  .superRefine((value, context) => {
+    validateHolidayRange(value.startDate, value.endDate, context.addIssue);
+  });
+
 export async function getHolidaysAction(input: unknown = {}) {
-  await requireHolidayUser();
+  const user = await requireHolidayUser();
   const parsed = yearSchema.parse(input);
   const year = parsed.year ?? Number(formatInIST(new Date(), "yyyy"));
-  return { success: true, holidays: await getHolidaysForYear(year), year };
+  return {
+    success: true,
+    holidays: await getHolidaysForYear(year, getHolidayDepartment(user)),
+    year,
+  };
 }
 
 export async function getUpcomingHolidaysAction() {
-  await requireHolidayUser();
-  return { success: true, holidays: await getUpcomingHolidays() };
+  const user = await requireHolidayUser();
+  return {
+    success: true,
+    holidays: await getUpcomingHolidays(getHolidayDepartment(user)),
+  };
 }
 
 export async function createHolidayAction(input: unknown) {
   await requireHolidayManager("create");
   const parsed = holidaySchema.parse(input);
   const currentMonthStart = `${formatInIST(new Date(), "yyyy-MM")}-01`;
-  if (parsed.date.toISOString().slice(0, 10) < currentMonthStart) {
-    throw new Error("Choose a holiday date in the current month or later.");
+  if (toDateKey(parsed.startDate) < currentMonthStart) {
+    throw new Error("Choose a start date in the current month or later.");
   }
-  const holiday = await addHoliday({
+  const result = await addHoliday({
     name: parsed.name,
-    date: parsed.date,
+    startDate: parsed.startDate,
+    endDate: parsed.endDate,
+    category: parsed.category,
+    departments: parsed.departments,
+    notifyStaff: parsed.notifyStaff,
     description: parsed.description || null,
   });
 
   revalidatePath("/dashboard/holidays");
+  revalidatePath("/dashboard/leaves");
   revalidatePath("/dashboard");
-  return { success: true, holiday };
+  return { success: true, ...result };
 }
 
 export async function updateHolidayAction(input: unknown) {
   await requireHolidayManager("update");
-  const parsed = holidaySchema.extend(holidayIdSchema.shape).parse(input);
-  const holiday = await editHoliday(parsed.id, {
+  const parsed = updateHolidaySchema.parse(input);
+  const result = await editHoliday(parsed.id, {
     name: parsed.name,
-    date: parsed.date,
+    startDate: parsed.startDate,
+    endDate: parsed.endDate,
+    category: parsed.category,
+    departments: parsed.departments,
+    notifyStaff: parsed.notifyStaff,
     description: parsed.description || null,
   });
 
   revalidatePath("/dashboard/holidays");
+  revalidatePath("/dashboard/leaves");
   revalidatePath("/dashboard");
-  return { success: true, holiday };
+  return { success: true, ...result };
 }
 
 export async function deleteHolidayAction(input: unknown) {
@@ -93,6 +163,7 @@ export async function deleteHolidayAction(input: unknown) {
   await removeHoliday(id);
 
   revalidatePath("/dashboard/holidays");
+  revalidatePath("/dashboard/leaves");
   revalidatePath("/dashboard");
   return { success: true };
 }
