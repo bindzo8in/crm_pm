@@ -10,6 +10,11 @@ import { CustomerForm } from "@/components/customers/create-edit";
 import { CustomerCombobox, type CustomerOption } from "@/components/customers/customer-combobox";
 import { ExpenseCategoryCombobox, type ExpenseCategoryOption } from "@/components/finance/expense-category-combobox";
 import { ExpenseAttachmentUpload } from "@/components/finance/expense-attachment-upload";
+import {
+  calculateExpenseTotals,
+  MAX_EXPENSE_TOTAL_CENTS,
+  parseExpenseAmountCents,
+} from "@/lib/expense-tax";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,16 +28,40 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxTrigger,
+  ComboboxValue,
+} from "@/components/ui/combobox";
 
 type Account = {
   id: string;
   name: string;
+  type: "BANK" | "CASH";
   isActive: boolean;
 };
 
 type Props = {
   accounts: Account[];
 };
+
+const supplyStates: ReadonlyArray<readonly [string, string]> = [
+  ["AN", "Andaman and Nicobar Islands"], ["AP", "Andhra Pradesh"], ["AR", "Arunachal Pradesh"],
+  ["AS", "Assam"], ["BR", "Bihar"], ["CH", "Chandigarh"], ["CG", "Chhattisgarh"],
+  ["DN", "Dadra and Nagar Haveli and Daman and Diu"], ["DL", "Delhi"], ["GA", "Goa"],
+  ["GJ", "Gujarat"], ["HR", "Haryana"], ["HP", "Himachal Pradesh"], ["JK", "Jammu and Kashmir"],
+  ["JH", "Jharkhand"], ["KA", "Karnataka"], ["KL", "Kerala"], ["LA", "Ladakh"],
+  ["LD", "Lakshadweep"], ["MP", "Madhya Pradesh"], ["MH", "Maharashtra"], ["MN", "Manipur"],
+  ["ML", "Meghalaya"], ["MZ", "Mizoram"], ["NL", "Nagaland"], ["OD", "Odisha"],
+  ["PY", "Puducherry"], ["PB", "Punjab"], ["RJ", "Rajasthan"], ["SK", "Sikkim"],
+  ["TN", "Tamil Nadu"], ["TS", "Telangana"], ["TR", "Tripura"], ["UP", "Uttar Pradesh"],
+  ["UK", "Uttarakhand"], ["WB", "West Bengal"],
+];
 
 const paymentMethods = [
   ["BANK_TRANSFER", "Bank transfer"],
@@ -139,12 +168,27 @@ export function ExpenseEntryForm({ accounts }: Props) {
     resourceType: "image" | "raw";
   } | null>(null);
   const [expenseType, setExpenseType] = React.useState<"GOODS" | "SERVICES">("SERVICES");
+  const [amount, setAmount] = React.useState("");
+  const [sourceOfSupply, setSourceOfSupply] = React.useState("");
+  const [destinationOfSupply, setDestinationOfSupply] = React.useState("TN");
   const [taxRate, setTaxRate] = React.useState("");
   const [taxInclusive, setTaxInclusive] = React.useState("false");
   const [gstTreatment, setGstTreatment] = React.useState("");
   const [gstTreatmentOpen, setGstTreatmentOpen] = React.useState(false);
   const [gstTreatmentSearch, setGstTreatmentSearch] = React.useState("");
   const activeAccounts = accounts.filter((account) => account.isActive);
+  const enteredAmountCents = /^\d{1,10}(\.\d{1,2})?$/.test(amount) && Number(amount) > 0
+    ? parseExpenseAmountCents(amount)
+    : null;
+  const expenseTotals = enteredAmountCents === null
+    ? null
+    : calculateExpenseTotals(
+      enteredAmountCents,
+      taxRate === "" ? null : Number(taxRate),
+      taxInclusive === "true",
+    );
+  const exceedsMaximum = expenseTotals !== null
+    && expenseTotals.totalAmountCents > MAX_EXPENSE_TOTAL_CENTS;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -155,6 +199,14 @@ export function ExpenseEntryForm({ accounts }: Props) {
     if (!gstTreatment) {
       toast.error("Select a GST treatment");
       setGstTreatmentOpen(true);
+      return;
+    }
+    if (!sourceOfSupply || !destinationOfSupply) {
+      toast.error("Select both source and destination states");
+      return;
+    }
+    if (exceedsMaximum) {
+      toast.error("Total expense amount including tax exceeds the maximum allowed amount");
       return;
     }
 
@@ -186,8 +238,8 @@ export function ExpenseEntryForm({ accounts }: Props) {
         expenseType,
         sacCode: formData.get("sacCode"),
         gstTreatment: formData.get("gstTreatment"),
-        sourceOfSupply: formData.get("sourceOfSupply"),
-        destinationOfSupply: formData.get("destinationOfSupply"),
+        sourceOfSupply,
+        destinationOfSupply,
         reverseCharge: formData.get("reverseCharge") === "on",
         taxRate: taxRateValue ? Number(taxRateValue) : null,
         taxInclusive: taxInclusive === "true",
@@ -201,6 +253,9 @@ export function ExpenseEntryForm({ accounts }: Props) {
       toast.success("Expense recorded");
       if (saveMode === "new") {
         form.reset();
+        setAmount("");
+        setSourceOfSupply("");
+        setDestinationOfSupply("TN");
         setSelectedCategory(null);
         setSelectedCustomer(null);
         setAttachment(null);
@@ -227,19 +282,6 @@ export function ExpenseEntryForm({ accounts }: Props) {
 
   const fieldClassName = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
   const rowClassName = "grid grid-cols-[7.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5 sm:grid-cols-[8rem_minmax(0,18.5rem)]";
-
-  const supplyStates = [
-    ["AN", "Andaman and Nicobar Islands"], ["AP", "Andhra Pradesh"], ["AR", "Arunachal Pradesh"],
-    ["AS", "Assam"], ["BR", "Bihar"], ["CH", "Chandigarh"], ["CG", "Chhattisgarh"],
-    ["DN", "Dadra and Nagar Haveli and Daman and Diu"], ["DL", "Delhi"], ["GA", "Goa"],
-    ["GJ", "Gujarat"], ["HR", "Haryana"], ["HP", "Himachal Pradesh"], ["JK", "Jammu and Kashmir"],
-    ["JH", "Jharkhand"], ["KA", "Karnataka"], ["KL", "Kerala"], ["LA", "Ladakh"],
-    ["LD", "Lakshadweep"], ["MP", "Madhya Pradesh"], ["MH", "Maharashtra"], ["MN", "Manipur"],
-    ["ML", "Meghalaya"], ["MZ", "Mizoram"], ["NL", "Nagaland"], ["OD", "Odisha"],
-    ["PY", "Puducherry"], ["PB", "Punjab"], ["RJ", "Rajasthan"], ["SK", "Sikkim"],
-    ["TN", "Tamil Nadu"], ["TS", "Telangana"], ["TR", "Tripura"], ["UP", "Uttar Pradesh"],
-    ["UK", "Uttarakhand"], ["WB", "West Bengal"],
-  ] as const;
 
   const gstTreatments = [
     ["REGISTERED_REGULAR", "Registered Business - Regular", "Business that is registered under GST"],
@@ -277,7 +319,7 @@ export function ExpenseEntryForm({ accounts }: Props) {
       </div> */}
 
       <form onSubmit={handleSubmit} className="flex flex-1 flex-col">
-        <div className="grid flex-1 content-start gap-x-10 gap-y-8 p-4 sm:p-5 min-[900px]:grid-cols-[minmax(0,1.1fr)_minmax(22rem,0.95fr)] lg:p-6">
+        <div className="grid flex-1 content-start gap-x-10 gap-y-8 p-4 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(7rem+env(safe-area-inset-bottom))] min-[900px]:grid-cols-[minmax(0,1.1fr)_minmax(22rem,0.95fr)] md:pb-20 lg:px-6 lg:pt-6 lg:pb-20">
           <section aria-label="Expense details" className="space-y-4">
             {activeAccounts.length === 0 && (
               <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
@@ -293,7 +335,7 @@ export function ExpenseEntryForm({ accounts }: Props) {
                 id="expense-date"
                 name="expenseDate"
                 type="date"
-                defaultValue={new Date().toISOString().slice(0, 10)}
+                defaultValue={getLocalDateInputValue()}
                 required
                 className="h-9 bg-background text-sm"
               />
@@ -317,7 +359,7 @@ export function ExpenseEntryForm({ accounts }: Props) {
                 Amount<span className="text-destructive">*</span>
               </Label>
               <div className="flex min-w-0">
-                <span className="inline-flex h-9 items-center rounded-l-md border border-r-0 border-input bg-muted px-3 text-xs text-muted-foreground">
+                <span className="inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-l-md border border-r-0 border-input bg-muted px-2 text-xs text-muted-foreground sm:px-3">
                   INR ₹
                 </span>
                 <Input
@@ -329,6 +371,8 @@ export function ExpenseEntryForm({ accounts }: Props) {
                   step="0.01"
                   required
                   placeholder="0.00"
+                  value={amount}
+                  onChange={(event) => setAmount(event.target.value)}
                   className="h-9 min-w-0 rounded-l-none bg-background text-sm"
                 />
               </div>
@@ -436,20 +480,26 @@ export function ExpenseEntryForm({ accounts }: Props) {
               <Label htmlFor="expense-source-supply" className="text-xs font-normal">
                 Source of Supply<span className="text-destructive">*</span>
               </Label>
-              <select id="expense-source-supply" name="sourceOfSupply" required defaultValue="" className={fieldClassName}>
-                <option value="" disabled>State / Province</option>
-                {supplyStates.map(([code, name]) => <option key={code} value={code}>[{code}] - {name}</option>)}
-              </select>
+              <SupplyStateCombobox
+                id="expense-source-supply"
+                name="sourceOfSupply"
+                value={sourceOfSupply}
+                onValueChange={setSourceOfSupply}
+                placeholder="Select source state"
+              />
             </div>
 
             <div className={rowClassName}>
               <Label htmlFor="expense-destination-supply" className="text-xs font-normal">
                 Destination of Supply<span className="text-destructive">*</span>
               </Label>
-              <select id="expense-destination-supply" name="destinationOfSupply" required defaultValue="TN" className={fieldClassName}>
-                <option value="" disabled>State / Province</option>
-                {supplyStates.map(([code, name]) => <option key={code} value={code}>[{code}] - {name}</option>)}
-              </select>
+              <SupplyStateCombobox
+                id="expense-destination-supply"
+                name="destinationOfSupply"
+                value={destinationOfSupply}
+                onValueChange={setDestinationOfSupply}
+                placeholder="Select destination state"
+              />
             </div>
 
             <div className={rowClassName}>
@@ -479,28 +529,57 @@ export function ExpenseEntryForm({ accounts }: Props) {
               </select>
             </div>
 
-            <fieldset className={rowClassName}>
-              <legend className="text-xs">Amount Is</legend>
-              <div className="flex h-9 items-center gap-5 text-xs">
-                {[
-                  ["false", "Tax Exclusive"],
-                  ["true", "Tax Inclusive"],
-                ].map(([value, label]) => (
-                  <label key={value} className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      name="taxInclusiveChoice"
-                      value={value}
-                      checked={taxInclusive === value}
-                      onChange={() => setTaxInclusive(value)}
-                      className="accent-primary"
-                    />
-                    {label}
-                  </label>
-                ))}
+            <fieldset className="grid min-w-0 grid-cols-1 items-start gap-x-3 gap-y-1.5 sm:grid-cols-[8rem_minmax(0,18.5rem)]">
+              <legend className="text-xs sm:pt-2">Amount Is</legend>
+              <div className="min-w-0 space-y-2 sm:col-start-2">
+                <div className="flex min-h-9 flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+                  {[
+                    ["false", "Tax Exclusive"],
+                    ["true", "Tax Inclusive"],
+                  ].map(([value, label]) => (
+                    <label key={value} className="flex shrink-0 items-center gap-2 whitespace-nowrap">
+                      <input
+                        type="radio"
+                        name="taxInclusiveChoice"
+                        value={value}
+                        checked={taxInclusive === value}
+                        onChange={() => setTaxInclusive(value)}
+                        className="accent-primary"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Tax exclusive adds GST to the amount. Tax inclusive treats it as the total paid and shows the GST portion.
+                </p>
               </div>
             </fieldset>
             <input type="hidden" name="taxInclusive" value={taxInclusive} />
+            {expenseTotals && (
+              <div
+                aria-live="polite"
+                aria-atomic="true"
+                className={`rounded-md border px-3 py-2 text-xs ${exceedsMaximum ? "border-destructive/50 text-destructive" : "bg-muted/40 text-muted-foreground"}`}
+              >
+                {exceedsMaximum ? (
+                  <p>Total including tax exceeds the maximum allowed amount.</p>
+                ) : (
+                  <>
+                    <p>
+                      {taxRate === ""
+                        ? "No tax rate selected"
+                        : taxInclusive === "true"
+                          ? `Includes ${formatRupees(expenseTotals.taxAmountCents)} GST`
+                          : `${formatRupees(expenseTotals.taxAmountCents)} GST added`}
+                    </p>
+                    <p className="mt-1 font-medium text-foreground">
+                      Total paid: {formatRupees(expenseTotals.totalAmountCents)}
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
 
             <div className={rowClassName}>
               <Label htmlFor="expense-invoice-number" className="text-xs font-normal">
@@ -572,8 +651,15 @@ export function ExpenseEntryForm({ accounts }: Props) {
                   </Label>
                   <select id="expense-account" name="financialAccountId" required defaultValue="" disabled={activeAccounts.length === 0} className={fieldClassName}>
                     <option value="" disabled>Select an account</option>
-                    {activeAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+                    {activeAccounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.type === "CASH" ? "Cash" : "Bank"} · {account.name}
+                      </option>
+                    ))}
                   </select>
+                  <p className="text-xs text-muted-foreground">
+                    Choose the cash or linked bank account whose tracked balance should reflect this expense.
+                  </p>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="expense-payment-method" className="text-xs">
@@ -602,15 +688,15 @@ export function ExpenseEntryForm({ accounts }: Props) {
           </aside>
         </div>
 
-        <footer className="sticky bottom-[calc(4rem_+_env(safe-area-inset-bottom))] z-10 flex flex-col-reverse gap-2 border-t bg-background/95 px-4 py-3 backdrop-blur sm:flex-row sm:justify-start sm:px-5 md:bottom-0">
-          <Button type="submit" value="save" disabled={isSaving || activeAccounts.length === 0}>
-            {isSaving ? "Saving…" : "Save"}
+        <footer className="sticky bottom-[calc(4rem_+_env(safe-area-inset-bottom))] z-10 flex items-center justify-end gap-2 border-t bg-background/95 px-3 py-3 backdrop-blur sm:px-5 md:bottom-0">
+          <Button type="button" variant="ghost" className="h-10 shrink-0 px-3" onClick={() => router.push("/dashboard/finance")}>
+            Cancel
           </Button>
-          <Button type="submit" value="new" variant="outline" disabled={isSaving || activeAccounts.length === 0}>
+          <Button type="submit" value="new" variant="outline" className="h-10 shrink-0 whitespace-nowrap px-3" disabled={isSaving || activeAccounts.length === 0}>
             Save and New
           </Button>
-          <Button type="button" variant="outline" onClick={() => router.push("/dashboard/finance")}>
-            Cancel
+          <Button type="submit" value="save" className="h-10 shrink-0 px-4" disabled={isSaving || activeAccounts.length === 0}>
+            {isSaving ? "Saving…" : "Save"}
           </Button>
         </footer>
       </form>
@@ -637,4 +723,102 @@ export function ExpenseEntryForm({ accounts }: Props) {
       />
     </main>
   );
+}
+
+function formatRupees(amountCents: number) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amountCents / 100);
+}
+
+function SupplyStateCombobox({
+  id,
+  name,
+  value,
+  onValueChange,
+  placeholder,
+}: {
+  id: string;
+  name: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  placeholder: string;
+}) {
+  const [search, setSearch] = React.useState("");
+  const normalizedSearch = search.trim().replace(/\s+/g, "").toLowerCase();
+  const searchTerm = search.trim().toLowerCase();
+  const filteredStates = supplyStates
+    .filter((state) => {
+      const initials = state[1]
+        .split(/\s+/)
+        .map((word) => word[0])
+        .join("")
+        .toLowerCase();
+      return (
+        state[1].toLowerCase().includes(searchTerm)
+        || state[0].toLowerCase().includes(normalizedSearch)
+        || initials.includes(normalizedSearch)
+      );
+    })
+    .sort((first, second) => (
+      Number(!first[1].toLowerCase().startsWith(searchTerm))
+      - Number(!second[1].toLowerCase().startsWith(searchTerm))
+    ));
+  const selectedState = supplyStates.find((state) => state[0] === value) ?? null;
+
+  return (
+    <>
+      <input type="hidden" name={name} value={value} />
+      <Combobox
+        items={filteredStates}
+        filter={null}
+        value={selectedState}
+        onValueChange={(state) => {
+          if (!state) return;
+          onValueChange(state[0]);
+          setSearch("");
+        }}
+        inputValue={search}
+        onInputValueChange={setSearch}
+        itemToStringLabel={(state) => state?.[1] ?? ""}
+      >
+        <ComboboxTrigger
+          id={id}
+          aria-required="true"
+          render={
+            <Button variant="outline" className="h-9 w-full justify-between font-normal">
+              <ComboboxValue placeholder={placeholder} />
+            </Button>
+          }
+        />
+        <ComboboxContent>
+          <ComboboxInput
+            aria-label={`Search ${name === "sourceOfSupply" ? "source" : "destination"} states`}
+            placeholder="Search by state name or code..."
+            showTrigger={false}
+          />
+          <ComboboxEmpty>No matching states.</ComboboxEmpty>
+          <ComboboxList>
+            {(state) => (
+              <ComboboxItem key={state[0]} value={state}>
+                <span className="min-w-0 truncate">{state[1]}</span>
+                <span className="ml-auto shrink-0 text-xs text-muted-foreground">{state[0]}</span>
+              </ComboboxItem>
+            )}
+          </ComboboxList>
+        </ComboboxContent>
+      </Combobox>
+    </>
+  );
+}
+
+function getLocalDateInputValue() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }

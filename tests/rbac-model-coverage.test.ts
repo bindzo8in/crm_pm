@@ -30,7 +30,7 @@ test("staff model permissions remain limited to self-service and read-only data"
     "view-audit-logs",
   ]);
   assert.equal("tariffs" in staffRole.statements, false);
-  assert.equal("salary" in staffRole.statements, false);
+  assert.deepEqual(staffRole.statements.salary, ["read-own"]);
   assert.equal("company" in staffRole.statements, false);
   assert.equal("bankAccounts" in staffRole.statements, false);
   assert.deepEqual(staffRole.statements.projects, ["read-assigned", "update-status"]);

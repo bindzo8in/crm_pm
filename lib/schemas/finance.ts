@@ -31,7 +31,7 @@ export const expenseSchema = z.object({
     .transform(String)
     .refine((value) => /^\d{1,10}(\.\d{1,2})?$/.test(value), "Enter an amount with up to two decimal places")
     .refine((value) => Number(value) > 0, "Amount must be greater than zero"),
-  expenseDate: z.string().min(1, "Expense date is required"),
+  expenseDate: z.iso.date("Enter a valid expense date"),
   paymentMethod: z.enum(["BANK_TRANSFER", "UPI", "CREDIT_CARD", "DEBIT_CARD", "CHEQUE", "CASH", "OTHER"]).default("BANK_TRANSFER"),
   financialAccountId: z.string().min(1, "Financial account is required"),
   categoryId: z.string().min(1, "Expense category is required"),
@@ -57,8 +57,8 @@ export const expenseSchema = z.object({
     "SEZ_DEVELOPER",
     "INPUT_SERVICE_DISTRIBUTOR",
   ]).optional().nullable(),
-  sourceOfSupply: z.string().trim().max(80).optional().nullable(),
-  destinationOfSupply: z.string().trim().max(80).optional().nullable(),
+  sourceOfSupply: z.string().trim().min(1, "Source of supply is required").max(80),
+  destinationOfSupply: z.string().trim().min(1, "Destination of supply is required").max(80),
   reverseCharge: z.boolean().default(false),
   taxRate: z.number().int().min(0).max(28).optional().nullable(),
   taxInclusive: z.boolean().default(false),

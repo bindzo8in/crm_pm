@@ -409,7 +409,6 @@ export async function getRelatedInvoicesForProject(
     select: {
       id: true,
       invoiceNumber: true,
-      title: true,
       status: true,
       dueDate: true,
       currency: true,

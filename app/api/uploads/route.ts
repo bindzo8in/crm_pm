@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
+import prisma from "@/lib/prisma";
+import { uploadScopes, type UploadScope } from "@/lib/upload-scopes";
 import { hasBusinessWorkspaceAccess } from "@/lib/workspace-access";
 
 export const runtime = "nodejs";
@@ -10,12 +12,11 @@ export const runtime = "nodejs";
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_REQUEST_SIZE = MAX_FILE_SIZE + 64 * 1024;
 const deleteSchema = z.object({
-  scope: z.enum(["customer", "expense"]),
+  scope: z.enum(uploadScopes),
   publicId: z.string().trim().min(1).max(500),
   resourceType: z.enum(["image", "raw"]),
+  ownerId: z.string().trim().min(1).max(100).optional(),
 });
-
-type UploadScope = z.infer<typeof deleteSchema.shape.scope>;
 
 function jsonError(message: string, status: number) {
   return Response.json({ message }, { status });
@@ -42,7 +43,19 @@ async function getAuthorizedUser(request: Request, scope: UploadScope) {
     return null;
   }
 
-  const permissionScope = scope === "customer" ? "customers" : "finance";
+  if (scope === "account-profile" || scope === "attendance-profile") {
+    return session.user;
+  }
+  if (scope === "proposal-signature") return null;
+
+  const permissionScope = {
+    customer: "customers",
+    expense: "finance",
+    company: "company",
+    "bank-account": "bankAccounts",
+    proposal: "proposals",
+    terms: "terms",
+  }[scope];
   const [canCreate, canUpdate] = await Promise.all([
     auth.api.userHasPermission({
       headers: request.headers,
@@ -56,10 +69,43 @@ async function getAuthorizedUser(request: Request, scope: UploadScope) {
   return canCreate.success || canUpdate.success ? session.user : null;
 }
 
-function getUserFolder(scope: UploadScope, userId: string) {
-  return scope === "customer"
-    ? `customers/${userId}`
-    : `finance/expenses/${userId}`;
+async function getAuthorizedFolder(
+  request: Request,
+  scope: UploadScope,
+  ownerId: FormDataEntryValue | null,
+) {
+  if (scope === "proposal-signature") {
+    if (typeof ownerId !== "string" || !ownerId.trim()) return null;
+    const proposal = await prisma.proposal.findUnique({
+      where: { id: ownerId },
+      select: { id: true, status: true },
+    });
+    return proposal?.status === "SENT"
+      ? `proposal-signatures/${proposal.id}`
+      : null;
+  }
+
+  const user = await getAuthorizedUser(request, scope);
+  if (!user) return null;
+
+  switch (scope) {
+    case "customer":
+      return `customers/${user.id}`;
+    case "expense":
+      return `finance/expenses/${user.id}`;
+    case "company":
+      return `company/${user.id}`;
+    case "bank-account":
+      return `bank-accounts/${user.id}`;
+    case "account-profile":
+      return `profiles/account/${user.id}`;
+    case "attendance-profile":
+      return `profiles/attendance/${user.id}`;
+    case "proposal":
+      return `cms/proposals/${user.id}`;
+    case "terms":
+      return `cms/terms/${user.id}`;
+  }
 }
 
 function isOwnedPublicId(publicId: string, folder: string) {
@@ -143,13 +189,14 @@ export async function POST(request: Request) {
 
   try {
     const formData = await request.formData();
-    const scope = formData.get("scope");
-    if (scope !== "customer" && scope !== "expense") {
+    const parsedScope = z.enum(uploadScopes).safeParse(formData.get("scope"));
+    if (!parsedScope.success) {
       return jsonError("Select a valid upload destination.", 400);
     }
+    const scope = parsedScope.data;
 
-    const user = await getAuthorizedUser(request, scope);
-    if (!user) return jsonError("You are not allowed to upload files here.", 403);
+    const folder = await getAuthorizedFolder(request, scope, formData.get("ownerId"));
+    if (!folder) return jsonError("You are not allowed to upload files here.", 403);
 
     const file = formData.get("file");
     if (!(file instanceof File)) return jsonError("Choose a file to upload.", 400);
@@ -170,7 +217,9 @@ export async function POST(request: Request) {
     }
 
     const resourceType = detectedMimeType === "application/pdf" ? "raw" : "image";
-    const folder = getUserFolder(scope, user.id);
+    if (resourceType === "raw" && scope !== "customer" && scope !== "expense") {
+      return jsonError("Only image files are supported in this area.", 415);
+    }
     const oldPublicId = formData.get("replacePublicId");
     const oldResourceType = formData.get("replaceResourceType");
     const isReplacing = oldPublicId !== null || oldResourceType !== null;
@@ -224,10 +273,12 @@ export async function DELETE(request: Request) {
     const parsed = deleteSchema.safeParse(await request.json());
     if (!parsed.success) return jsonError("Invalid file details.", 400);
 
-    const user = await getAuthorizedUser(request, parsed.data.scope);
-    if (!user) return jsonError("You are not allowed to delete files here.", 403);
-
-    const folder = getUserFolder(parsed.data.scope, user.id);
+    const folder = await getAuthorizedFolder(
+      request,
+      parsed.data.scope,
+      parsed.data.ownerId ?? null,
+    );
+    if (!folder) return jsonError("You are not allowed to delete files here.", 403);
     if (!isOwnedPublicId(parsed.data.publicId, folder)) {
       return jsonError("This file cannot be deleted.", 403);
     }

@@ -25,7 +25,6 @@ import { Customer } from "@/app/generated/prisma/client";
 import type { CustomerOption } from "@/components/customers/customer-combobox";
 import { customerDocumentsSchema } from "@/lib/schemas/customer-schema";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { AssetUpload } from "@/components/ui/asset-upload";
@@ -441,7 +440,7 @@ export function CustomerForm({
 
     if (presentation === "dialog") {
         const detailsClass = "h-8 w-full min-w-0 rounded border border-input bg-background px-2 text-xs text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40";
-        const rowClass = "grid grid-cols-[6.25rem_minmax(0,1fr)] items-center gap-x-2.5 gap-y-1.5";
+        const rowClass = "grid grid-cols-1 items-start gap-x-2.5 gap-y-1.5 sm:grid-cols-[6.25rem_minmax(0,1fr)] sm:items-center";
         const fieldLabelClass = "flex items-center gap-1 text-[10px] font-normal text-foreground";
         const requiredMark = <span className="text-destructive">*</span>;
         const infoTip = (text: string) => (
@@ -497,10 +496,10 @@ export function CustomerForm({
                         <Label className={fieldLabelClass}>
                             Primary Contact {infoTip("Main contact for this customer.")}
                         </Label>
-                        <div className="grid min-w-0 grid-cols-[0.9fr_1fr_1fr] gap-1.5">
+                        <div className="grid min-w-0 grid-cols-2 gap-1.5 sm:grid-cols-[0.9fr_1fr_1fr]">
                             <select
                                 aria-label="Salutation"
-                                className={detailsClass}
+                                className={`${detailsClass} col-span-2 sm:col-span-1`}
                                 {...form.register("primaryContactSalutation")}
                             >
                                 <option value="">Salutation</option>
@@ -729,17 +728,6 @@ export function CustomerForm({
                                         ["NET_60", "Net 60"],
                                     ].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                                 </select>
-                            </div>
-                            <div className={rowClass}>
-                                <Label htmlFor="dialog-portal" className={fieldLabelClass}>Enable Portal? {infoTip("Allow this customer to access the customer portal.")}</Label>
-                                <label className="flex h-8 items-center gap-2 text-[10px]">
-                                    <Checkbox
-                                        id="dialog-portal"
-                                        checked={form.watch("portalEnabled")}
-                                        onCheckedChange={(checked) => form.setValue("portalEnabled", checked === true)}
-                                    />
-                                    Allow portal access for this customer
-                                </label>
                             </div>
                             <div className={rowClass}>
                                 <Label className={fieldLabelClass}>Documents</Label>

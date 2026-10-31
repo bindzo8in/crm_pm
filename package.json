@@ -7,6 +7,10 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "seed:payroll": "tsx scripts/seed-last-month-payroll-data.ts",
+    "test:payroll-reconciliation": "tsx scripts/test-september-payroll.ts",
+    "test:payroll": "tsx --test tests/salary-calculation.test.ts tests/rbac-model-coverage.test.ts",
+    "test:attendance": "tsx --test tests/attendance-daily-status.test.ts",
     "prepare": "husky"
   },
   "dependencies": {
@@ -62,7 +66,6 @@
     "lucide-react": "^1.20.0",
     "motion": "^12.40.0",
     "next": "16.4.3",
-    "next-cloudinary": "^6.17.5",
     "next-themes": "^0.4.6",
     "pdf-lib": "^1.17.1",
     "pg": "^8.21.0",

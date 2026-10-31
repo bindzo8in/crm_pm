@@ -102,6 +102,7 @@ export const CustomerQuerySchema = z.object({
     pageSize: z.number().min(1).max(100).default(10),
 
     search: z.string().optional(),
+    customerType: z.enum(CustomerType).optional(),
 
     sortDirection: z.enum([
         "asc",

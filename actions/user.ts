@@ -6,6 +6,7 @@ import {
   Department,
   EmploymentStatus,
   EmploymentStatusAction,
+  PaymentMethod,
   ProjectStatus,
   ProjectTaskStatus,
   UserRole,
@@ -19,6 +20,18 @@ import {
   canManageEmploymentStatus,
   roleLevel,
 } from "@/lib/permissions";
+
+function normalizePayrollPaymentMethod(method: PaymentMethod | null | undefined) {
+  switch (method) {
+    case "UPI":
+    case "CHEQUE":
+    case "CASH":
+    case "OTHER":
+      return method;
+    default:
+      return "BANK_TRANSFER" as const;
+  }
+}
 import { env } from "@/lib/env";
 import prisma from "@/lib/prisma";
 import { headers } from "next/headers";
@@ -110,7 +123,12 @@ export async function getUsers({
   }
 
   const where = input.data.search
-    ? { email: { contains: input.data.search, mode: "insensitive" as const } }
+    ? {
+        OR: [
+          { name: { contains: input.data.search, mode: "insensitive" as const } },
+          { email: { contains: input.data.search, mode: "insensitive" as const } },
+        ],
+      }
     : {};
   const [users, total, activeTotal, verifiedTotal, departmentRows] = await Promise.all([
     prisma.user.findMany({
@@ -154,12 +172,23 @@ export async function getUsers({
           id: true,
           employeeId: true,
           designation: true,
+          dateOfJoining: true,
+          employmentType: true,
+          annualCtc: true,
           bankName: true,
           bankAccountNo: true,
+          bankIfsc: true,
+          bankAccountType: true,
           panNo: true,
+          aadhaarNo: true,
           costCenter: true,
           uanNo: true,
           pfNo: true,
+          esiNo: true,
+          pfEligible: true,
+          esiEligible: true,
+          taxRegime: true,
+          paymentMethod: true,
         },
       })
     : [];
@@ -172,12 +201,23 @@ export async function getUsers({
       workMode: user.workMode ?? WorkMode.OFFICE,
       employeeId: payrollByUserId.get(user.id)?.employeeId ?? null,
       designation: payrollByUserId.get(user.id)?.designation ?? null,
+      dateOfJoining: payrollByUserId.get(user.id)?.dateOfJoining ?? null,
+      employmentType: payrollByUserId.get(user.id)?.employmentType ?? null,
+      annualCtc: payrollByUserId.get(user.id)?.annualCtc?.toString() ?? null,
       bankName: payrollByUserId.get(user.id)?.bankName ?? null,
       bankAccountNo: payrollByUserId.get(user.id)?.bankAccountNo ?? null,
+      bankIfsc: payrollByUserId.get(user.id)?.bankIfsc ?? null,
+      bankAccountType: payrollByUserId.get(user.id)?.bankAccountType ?? null,
       panNo: payrollByUserId.get(user.id)?.panNo ?? null,
+      aadhaarNo: payrollByUserId.get(user.id)?.aadhaarNo ?? null,
       costCenter: payrollByUserId.get(user.id)?.costCenter ?? null,
       uanNo: payrollByUserId.get(user.id)?.uanNo ?? null,
       pfNo: payrollByUserId.get(user.id)?.pfNo ?? null,
+      esiNo: payrollByUserId.get(user.id)?.esiNo ?? null,
+      pfEligible: payrollByUserId.get(user.id)?.pfEligible ?? false,
+      esiEligible: payrollByUserId.get(user.id)?.esiEligible ?? false,
+      taxRegime: payrollByUserId.get(user.id)?.taxRegime ?? "NEW",
+      paymentMethod: normalizePayrollPaymentMethod(payrollByUserId.get(user.id)?.paymentMethod),
     })),
     total,
     stats: {
@@ -393,12 +433,23 @@ export async function updateUserPayrollDetails(
   userId: string,
   data: {
     designation?: string | null;
+    dateOfJoining?: string | null;
+    employmentType?: "PERMANENT" | "CONTRACT" | "PROBATION" | "INTERN" | null;
+    annualCtc?: string | null;
     bankName?: string | null;
     bankAccountNo?: string | null;
+    bankIfsc?: string | null;
+    bankAccountType?: "SAVINGS" | "CURRENT" | null;
     panNo?: string | null;
+    aadhaarNo?: string | null;
     costCenter?: string | null;
     uanNo?: string | null;
     pfNo?: string | null;
+    esiNo?: string | null;
+    pfEligible?: boolean;
+    esiEligible?: boolean;
+    taxRegime?: "OLD" | "NEW";
+    paymentMethod?: "BANK_TRANSFER" | "UPI" | "CHEQUE" | "CASH" | "OTHER";
   }
 ) {
   const session = await auth.api.getSession({
@@ -432,9 +483,34 @@ export async function updateUserPayrollDetails(
     throw new Error("You cannot modify this user's payroll details");
   }
 
+  const parsedAadhaar = data.aadhaarNo?.replace(/\s/g, "") || null;
+  const parsedPan = data.panNo?.trim().toUpperCase() || null;
+  const parsedIfsc = data.bankIfsc?.trim().toUpperCase() || null;
+  const parsedDate = data.dateOfJoining ? new Date(`${data.dateOfJoining}T00:00:00.000Z`) : null;
+
+  if (parsedPan && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(parsedPan)) {
+    throw new Error("Enter a valid PAN number.");
+  }
+  if (parsedIfsc && !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(parsedIfsc)) {
+    throw new Error("Enter a valid IFSC code.");
+  }
+  if (parsedAadhaar && !/^[0-9]{12}$/.test(parsedAadhaar)) {
+    throw new Error("Enter a valid 12-digit Aadhaar number.");
+  }
+  if (parsedDate && Number.isNaN(parsedDate.getTime())) {
+    throw new Error("Enter a valid date of joining.");
+  }
+
   await prisma.user.update({
     where: { id: userId },
-    data,
+    data: {
+      ...data,
+      dateOfJoining: parsedDate,
+      annualCtc: data.annualCtc ? data.annualCtc : null,
+      panNo: parsedPan,
+      aadhaarNo: parsedAadhaar,
+      bankIfsc: parsedIfsc,
+    },
   });
 
   return {

@@ -442,7 +442,7 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
                     {data.relatedInvoices.map((invoice) => (
                       <li key={invoice.id}>
                         <Link className="flex flex-wrap items-center justify-between gap-2 text-primary underline-offset-4 hover:underline" href={`/dashboard/invoices/${invoice.id}`}>
-                          <span>INV-{String(invoice.invoiceNumber).padStart(4, "0")} · {invoice.title}</span>
+                          <span>INV-{String(invoice.invoiceNumber).padStart(4, "0")}</span>
                           <span className="text-xs text-muted-foreground">{invoice.status.replaceAll("_", " ")}</span>
                         </Link>
                         <p className="mt-1 text-xs text-muted-foreground">

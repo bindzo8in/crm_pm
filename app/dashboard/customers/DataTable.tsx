@@ -26,6 +26,7 @@ interface DataTableProps<TData extends RowData, TValue> {
         pageIndex: number;
         pageSize: number;
     };
+    emptyMessage?: string;
     onPaginationChange: Dispatch<
         SetStateAction<{
             pageIndex: number;
@@ -40,6 +41,7 @@ export function DataTable<TData extends RowData, TValue>({
     data,
     total,
     pagination,
+    emptyMessage = "No results found.",
     onPaginationChange,
     mobileTitleColumnId = "displayName",
 }: DataTableProps<TData, TValue>) {
@@ -75,7 +77,7 @@ export function DataTable<TData extends RowData, TValue>({
 
     return (
         <div className="overflow-hidden rounded-lg border">
-            <DataTableView table={table} emptyMessage="No results found." mobileTitleColumnId={mobileTitleColumnId} />
+            <DataTableView table={table} emptyMessage={emptyMessage} mobileTitleColumnId={mobileTitleColumnId} />
 
             <div className="flex flex-col gap-4 border-t p-4 md:flex-row md:items-center md:justify-between">
                 <div className="text-sm text-muted-foreground">

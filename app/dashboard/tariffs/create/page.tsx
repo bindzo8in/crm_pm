@@ -1,7 +1,16 @@
+import { getAvailableServicePackages } from "@/actions/tariffs";
 import DashboardContainer from "@/app/dashboard/dashboard-container";
 import CreateTariffGridForm from "@/components/tariffs/create-tariff-grid-form";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { CircleAlert } from "lucide-react";
 
-export default function CreateTariffGridPage() {
+export const metadata = {
+  title: "Create tariff grid",
+};
+
+export default async function CreateTariffGridPage() {
+  const packagesResult = await getAvailableServicePackages();
+
   return (
     <DashboardContainer
       title="Create tariff grid"
@@ -9,13 +18,19 @@ export default function CreateTariffGridPage() {
         href: "/dashboard/tariffs",
         label: "Back to tariffs",
       }}
+      flush
     >
-      <section className="w-full max-w-2xl rounded-xl border bg-card p-4 sm:p-6">
-        <p className="mb-5 text-sm text-muted-foreground">
-          Create a comparison grid, then choose the active service packages to include.
-        </p>
-        <CreateTariffGridForm />
-      </section>
+      {packagesResult.success && packagesResult.data ? (
+        <CreateTariffGridForm packages={packagesResult.data} />
+      ) : (
+        <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-8 sm:py-8">
+          <Alert variant="destructive">
+            <CircleAlert />
+            <AlertTitle>Packages could not be loaded</AlertTitle>
+            <AlertDescription>{packagesResult.message}</AlertDescription>
+          </Alert>
+        </div>
+      )}
     </DashboardContainer>
   );
 }

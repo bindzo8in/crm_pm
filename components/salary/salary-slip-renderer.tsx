@@ -35,12 +35,15 @@ interface SalarySlipRenderData {
     department: string | null;
     designation: string | null;
     employeeId: number;
+    dateOfJoining: Date | string | null;
     bankName: string | null;
     bankAccountNo: string | null;
+    bankIfsc: string | null;
     panNo: string | null;
     costCenter: string | null;
     uanNo: string | null;
     pfNo: string | null;
+    esiNo: string | null;
   } | null;
 }
 
@@ -166,6 +169,7 @@ export function SalarySlipRenderer({
         <div className="border-r border-gray-400 p-2 space-y-0.5">
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Name:</span><span className="font-medium">{slip.user?.name}</span></div>
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Designation:</span><span className="font-medium">{slip.user?.designation || "-"}</span></div>
+          <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Date of Joining:</span><span className="font-medium">{slip.user?.dateOfJoining ? new Date(slip.user.dateOfJoining).toLocaleDateString("en-IN") : "-"}</span></div>
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Department:</span><span className="font-medium">{slip.user?.department || "-"}</span></div>
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Work Location:</span><span className="font-medium">{company?.city || "-"}</span></div>
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Effective Work Days:</span><span className="font-medium">{slip.paidDays}</span></div>
@@ -175,10 +179,12 @@ export function SalarySlipRenderer({
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Employee No.:</span><span className="font-medium">{slip.user?.employeeId || "-"}</span></div>
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Bank Name:</span><span className="font-medium uppercase">{slip.user?.bankName || "-"}</span></div>
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Bank Account No.:</span><span className="font-medium">{slip.user?.bankAccountNo || "-"}</span></div>
+          <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">IFSC:</span><span className="font-medium">{slip.user?.bankIfsc || "-"}</span></div>
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">PAN No.:</span><span className="font-medium">{slip.user?.panNo || "-"}</span></div>
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Cost Center:</span><span className="font-medium">{slip.user?.costCenter || "-"}</span></div>
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">UAN No.:</span><span className="font-medium">{slip.user?.uanNo || "-"}</span></div>
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">PF No.:</span><span className="font-medium">{slip.user?.pfNo || "-"}</span></div>
+          <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">ESI No.:</span><span className="font-medium">{slip.user?.esiNo || "-"}</span></div>
         </div>
       </div>
 

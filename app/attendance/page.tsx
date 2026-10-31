@@ -1,17 +1,16 @@
 import { requireAttendanceAccess } from "@/lib/attendance-guard";
 import { getTodayAttendanceAction } from "@/actions/attendance";
 import { AttendanceClientHub } from "@/components/attendance/attendance-client-hub";
+import { AttendanceBrand } from "@/components/attendance/attendance-brand";
 import { Metadata } from "next";
 import Link from "next/link";
 import {
-  CommandIcon,
   LayoutDashboardIcon,
   UserIcon,
   AlertCircleIcon,
   ShieldAlertIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { env } from "@/lib/env";
 import { UserRole, WorkMode } from "@/app/generated/prisma/enums";
 
 export const metadata: Metadata = {
@@ -106,18 +105,7 @@ export default async function AttendancePage() {
             href="/dashboard"
             className="flex min-w-0 flex-1 items-center gap-2.5 sm:flex-initial sm:gap-3"
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm sm:h-10 sm:w-10 sm:rounded-2xl">
-              <CommandIcon className="h-5 w-5" />
-            </div>
-
-            <div className="min-w-0">
-              <p className="truncate text-sm font-extrabold tracking-tight sm:text-base">
-                {env.NEXT_PUBLIC_APP_NAME}
-              </p>
-              <p className="text-[11px] font-medium text-muted-foreground sm:text-xs">
-                Attendance Portal
-              </p>
-            </div>
+            <AttendanceBrand subtitle="Attendance Portal" />
           </Link>
 
           {/* Navigation Actions */}
@@ -167,4 +155,3 @@ export default async function AttendancePage() {
     </div>
   );
 }
-

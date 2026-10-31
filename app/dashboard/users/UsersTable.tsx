@@ -14,7 +14,7 @@ import {
   UserRoundPlus,
   UsersRound,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DataTable } from "./DataTable";
 import { columns } from "./columns";
 import { useSession } from "@/lib/auth-client";
@@ -25,6 +25,7 @@ import { CreateStaffDialog } from "./create-staff-dialog";
 export default function UsersTable() {
   const [search, setSearch] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [hasMounted, setHasMounted] = useState(false);
   const debouncedSearch = useDebounce(search, 350);
   const { data: session } = useSession();
   const [pagination, setPagination] = useState({
@@ -40,6 +41,9 @@ export default function UsersTable() {
       search: debouncedSearch,
     }),
   });
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
   const canCreateStaff =
     session?.user.role &&
     canManageUserDirectory(
@@ -79,19 +83,19 @@ export default function UsersTable() {
 
   return (
     <section className="min-w-0 space-y-5">
-      <div className="flex flex-col gap-4 rounded-2xl border bg-card/80 px-4 py-5 shadow-sm sm:px-5 lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex flex-col gap-4 rounded-2xl border bg-card px-4 py-5 shadow-sm sm:px-6 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">People directory</p>
+          <p className="text-xs font-medium text-muted-foreground">People directory</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Users & staff</h1>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
             Manage access, teams, employment, and work arrangements from one place.
           </p>
         </div>
-        {canCreateStaff && (
+        {hasMounted && canCreateStaff && (
           <Button
             type="button"
             onClick={() => setCreateDialogOpen(true)}
-            className="h-10 w-full gap-2 sm:w-auto"
+            className="h-11 w-full gap-2 sm:w-auto"
           >
             <UserRoundPlus className="size-4" />
             Create staff
@@ -131,8 +135,8 @@ export default function UsersTable() {
               setSearch(event.target.value);
               setPagination((current) => ({ ...current, pageIndex: 0 }));
             }}
-            placeholder="Search users by email"
-            aria-label="Search users by email"
+            placeholder="Search by name or email"
+            aria-label="Search users by name or email"
             className="h-11 bg-background pl-9"
           />
         </div>

@@ -1,6 +1,7 @@
 "use server";
 
 import prisma from "@/lib/prisma";
+import { calculateMonthlySalary, countWorkingDays } from "@/lib/salary-calculation";
 import { auth } from "@/lib/auth";
 import { UserRole } from "@/app/generated/prisma/enums";
 import { headers } from "next/headers";
@@ -124,6 +125,14 @@ export async function saveSalaryStructureAction(input: unknown) {
     }
     const validated = parsed.data;
 
+    const employee = await prisma.user.findUnique({
+      where: { id: validated.userId },
+      select: { id: true },
+    });
+    if (!employee) {
+      return { success: false, error: "The selected employee does not exist." };
+    }
+
     const structure = await prisma.salaryStructure.upsert({
       where: { userId: validated.userId },
       update: {
@@ -221,6 +230,13 @@ export async function generateSalarySlipAction(input: unknown) {
         date: { gte: startDate, lte: endDate }
       }
     });
+    const holidays = await prisma.holiday.findMany({
+      where: { date: { gte: startDate, lte: endDate } },
+      select: { date: true },
+    });
+    const holidayKeys = new Set(
+      holidays.map((holiday) => holiday.date.toISOString().slice(0, 10)),
+    );
 
     // We fetch Leave Requests that intersect with this month and are APPROVED
     const leaveRequests = await prisma.leaveRequest.findMany({
@@ -242,8 +258,7 @@ export async function generateSalarySlipAction(input: unknown) {
       // clip leave to current month
       const start = leave.startDate < startDate ? startDate : leave.startDate;
       const end = leave.endDate > endDate ? endDate : leave.endDate;
-      const duration = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-      totalLeaveDaysTaken += duration;
+      totalLeaveDaysTaken += countWorkingDays(start, end, holidayKeys);
     }
 
     for (const att of attendances) {
@@ -265,20 +280,6 @@ export async function generateSalarySlipAction(input: unknown) {
     // Let's calculate total days not worked:
     // Usually weekends are paid. Let's just consider absentDays, halfDays (0.5), and leaves.
     
-    const allowedPaidLeaves = 1;
-    let paidLeaveConsumed = 0;
-
-    if (totalLeaveDaysTaken > 0) {
-      paidLeaveConsumed = Math.min(allowedPaidLeaves, totalLeaveDaysTaken);
-    }
-    
-    const unpaidLeaves = totalLeaveDaysTaken - paidLeaveConsumed;
-
-    // Total LOP Days = absentDays + (halfDays * 0.5) + unpaidLeaves
-    const lopDays = absentDays + (halfDays * 0.5) + unpaidLeaves;
-
-    const paidDays = totalDaysInMonth - lopDays;
-
     // Gross Salary Base
     const grossBase = 
       Number(structure.basicSalary) + 
@@ -286,10 +287,6 @@ export async function generateSalarySlipAction(input: unknown) {
       Number(structure.conveyance) + 
       Number(structure.medical) + 
       Number(structure.specialAllowance);
-
-    const perDayGross = grossBase / totalDaysInMonth;
-    
-    const absentDeduction = lopDays * perDayGross;
 
     // Custom Components from structure
     const parsedCustomComponents = salaryComponentsSchema.safeParse(structure.customComponents ?? []);
@@ -305,15 +302,22 @@ export async function generateSalarySlipAction(input: unknown) {
       if (comp.type === "DEDUCTION") customDeductions += Number(comp.amount);
     });
 
-    const totalEarnings = grossBase - absentDeduction + customEarnings;
-    
     const fixedDeductions = 
       Number(structure.providentFund) + 
       Number(structure.professionalTax) + 
       Number(structure.tds);
       
-    const totalDeductionsCalc = fixedDeductions + customDeductions;
-    const netSalary = totalEarnings - totalDeductionsCalc;
+    const salary = calculateMonthlySalary({
+      grossBase,
+      totalDaysInMonth,
+      presentDays,
+      halfDays,
+      absentDays,
+      chargeableLeaveDays: totalLeaveDaysTaken,
+      customEarnings,
+      fixedDeductions,
+      customDeductions,
+    });
 
     const slipData = {
       userId,
@@ -321,9 +325,9 @@ export async function generateSalarySlipAction(input: unknown) {
       year,
       status: "GENERATED" as const,
       totalDays: totalDaysInMonth,
-      paidDays,
+      paidDays: salary.paidDays,
       presentDays,
-      absentDays: absentDays + unpaidLeaves, // Combine them for visual simplicity
+      absentDays: absentDays + salary.unpaidLeaves, // Combine them for visual simplicity
       leaveDays: totalLeaveDaysTaken,
       halfDays,
       
@@ -337,7 +341,7 @@ export async function generateSalarySlipAction(input: unknown) {
       professionalTax: structure.professionalTax,
       tds: structure.tds,
       
-      absentDeduction,
+      absentDeduction: salary.absentDeduction,
       halfDayDeduction: 0, // already merged into absentDeduction via lopDays
       
       medicalReimbursement,
@@ -345,9 +349,9 @@ export async function generateSalarySlipAction(input: unknown) {
       extraDeductions,
       customComponents: customComps,
       
-      totalEarnings,
-      totalDeductions: totalDeductionsCalc,
-      netSalary
+      totalEarnings: salary.totalEarnings,
+      totalDeductions: salary.totalDeductions,
+      netSalary: salary.netSalary
     };
 
     let slip;
@@ -538,12 +542,15 @@ export async function getSalarySlipByIdAction(slipId: string) {
             department: true,
             designation: true,
             employeeId: true,
+            dateOfJoining: true,
             bankName: true,
             bankAccountNo: true,
+            bankIfsc: true,
             panNo: true,
             costCenter: true,
             uanNo: true,
             pfNo: true,
+            esiNo: true,
           },
         },
       }

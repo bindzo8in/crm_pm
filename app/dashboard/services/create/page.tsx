@@ -10,7 +10,11 @@ export default async function CreateServicePage() {
     await requirePageAccess("/dashboard/services");
 
     return (
-        <DashboardContainer title="Create Service" back={{ href: "/dashboard/services", label: "Back to services" }}>
+        <DashboardContainer
+            title="Create Service"
+            back={{ href: "/dashboard/services", label: "Back to services" }}
+            flush
+        >
             <ServiceForm />
         </DashboardContainer>
     )

@@ -357,7 +357,11 @@ export function ProposalTermForm({
                         control={control}
                         render={({ field, fieldState }) => (
                             <Field data-invalid={fieldState.invalid} className="gap-1">
-                                <RichTextEditor value={field.value} onChange={field.onChange} />
+                                <RichTextEditor
+                                    value={field.value}
+                                    onChange={field.onChange}
+                                    uploadScope="terms"
+                                />
                                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                             </Field>
                         )}

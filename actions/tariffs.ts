@@ -105,9 +105,16 @@ export async function getTariffGridById(id: string) {
   }
 }
 
-const createTariffGridSchema = z.object({
-  name: z.string().min(1, "Name is required"),
+const tariffGridDetailsSchema = z.object({
+  name: z.string().trim().min(1, "Name is required"),
   description: z.string().optional(),
+});
+
+const createTariffGridSchema = tariffGridDetailsSchema.extend({
+  packageIds: z.array(z.string().min(1)).optional().default([]).refine(
+    (packageIds) => new Set(packageIds).size === packageIds.length,
+    "A package can only be added once"
+  ),
 });
 
 export async function createTariffGrid(data: z.infer<typeof createTariffGridSchema>) {
@@ -117,11 +124,40 @@ export async function createTariffGrid(data: z.infer<typeof createTariffGridSche
 
     const validated = createTariffGridSchema.parse(data);
 
-    const grid = await prisma.tariffGrid.create({
-      data: {
-        name: validated.name,
-        description: validated.description,
-      },
+    const grid = await prisma.$transaction(async (tx) => {
+      if (validated.packageIds.length > 0) {
+        const availablePackages = await tx.servicePackage.findMany({
+          where: {
+            id: { in: validated.packageIds },
+            isActive: true,
+            service: { isActive: true, deletedAt: null },
+          },
+          select: { id: true },
+        });
+
+        if (availablePackages.length !== validated.packageIds.length) {
+          throw new Error("One or more selected packages are no longer available. Refresh and try again.");
+        }
+      }
+
+      const createdGrid = await tx.tariffGrid.create({
+        data: {
+          name: validated.name,
+          description: validated.description,
+        },
+      });
+
+      if (validated.packageIds.length > 0) {
+        await tx.tariffGridPackage.createMany({
+          data: validated.packageIds.map((packageId, sortOrder) => ({
+            tariffGridId: createdGrid.id,
+            packageId,
+            sortOrder,
+          })),
+        });
+      }
+
+      return createdGrid;
     });
 
     return successResponse("Tariff grid created successfully", grid);
@@ -130,12 +166,12 @@ export async function createTariffGrid(data: z.infer<typeof createTariffGridSche
   }
 }
 
-export async function updateTariffGrid(id: string, data: z.infer<typeof createTariffGridSchema>) {
+export async function updateTariffGrid(id: string, data: z.infer<typeof tariffGridDetailsSchema>) {
   try {
     const perm = await checkPermission("update");
     if (!perm.success) return errorResponse(perm.error!);
 
-    const validated = createTariffGridSchema.parse(data);
+    const validated = tariffGridDetailsSchema.parse(data);
 
     const grid = await prisma.tariffGrid.update({
       where: { id },

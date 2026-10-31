@@ -1,9 +1,9 @@
 import { requireAttendanceAccess } from "@/lib/attendance-guard";
 import { Metadata } from "next";
 import Link from "next/link";
-import { CommandIcon, LayoutDashboardIcon, ClockIcon, AlertCircleIcon, ShieldAlertIcon } from "lucide-react";
+import { LayoutDashboardIcon, ClockIcon, AlertCircleIcon, ShieldAlertIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { env } from "@/lib/env";
+import { AttendanceBrand } from "@/components/attendance/attendance-brand";
 import {
   AttendanceProfileOverviewCard,
   AttendanceProfileForm,
@@ -65,15 +65,7 @@ export default async function AttendanceProfilePage() {
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans">
       {/* Standalone Header */}
       <header className="w-full border-b border-border/60 bg-card/80 backdrop-blur px-4 md:px-8 py-3 flex items-center justify-between sticky top-0 z-40 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-2xl bg-primary flex items-center justify-center text-primary-foreground font-bold shadow-md">
-            <CommandIcon className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="font-extrabold text-base tracking-tight">{env.NEXT_PUBLIC_APP_NAME}</span>
-            <span className="text-xs text-muted-foreground block font-medium">Attendance Profile</span>
-          </div>
-        </div>
+        <AttendanceBrand subtitle="Attendance Profile" />
 
         <div className="flex items-center gap-2 sm:gap-3">
           <Button asChild variant="default" size="sm" className="rounded-2xl text-xs font-semibold shadow-sm">

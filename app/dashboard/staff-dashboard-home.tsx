@@ -55,7 +55,7 @@ const staffDestinations = [
   {
     title: "My salary",
     description: "Review your salary slips and payment history.",
-    href: "/dashboard/salary",
+    href: "/dashboard/my-salary",
     icon: Wallet,
   },
   {

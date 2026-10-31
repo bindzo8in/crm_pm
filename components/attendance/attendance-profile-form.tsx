@@ -169,6 +169,7 @@ export function AttendanceProfileForm({ user }: AttendanceProfileFormProps) {
               <ImageUpload
                 value={field.value ? { url: field.value, publicId: "" } : null}
                 onChange={(val) => field.onChange(val?.url || null)}
+                scope="attendance-profile"
                 disabled={isSaving}
               />
             </Field>

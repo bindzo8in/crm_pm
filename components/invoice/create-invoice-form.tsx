@@ -6,15 +6,16 @@ import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createInvoice, updateInvoice, getCompanyBankAccounts, getInvoiceById } from "@/actions/invoice";
 import { getLiveExchangeRate } from "@/actions/exchange-rate";
-import { GetCustomers } from "@/actions/customer";
 import { toast } from "sonner";
 import { ServicePackageSearch, ServicePackageSearchResult } from "@/components/invoice/service-package-search";
+import { CustomerForm } from "@/components/customers/create-edit";
+import { CustomerCombobox, type CustomerOption } from "@/components/customers/customer-combobox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PlusIcon, Trash2Icon, ArrowLeftIcon, SaveIcon, Loader2Icon, RefreshCwIcon } from "lucide-react";
+import { PlusIcon, Trash2Icon, ArrowLeftIcon, SaveIcon, Loader2Icon, RefreshCwIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import {
   BillingCycleEnum,
@@ -35,6 +36,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type InvoiceInitialData = NonNullable<
   Extract<Awaited<ReturnType<typeof getInvoiceById>>, { success: true }>["data"]
@@ -44,16 +51,26 @@ export function CreateInvoiceForm({ initialData }: { initialData?: InvoiceInitia
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [fetchingRate, setFetchingRate] = useState(false);
+  const [createCustomerOpen, setCreateCustomerOpen] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerOption | null>(() => (
+    initialData?.customerId
+      ? {
+          id: initialData.customerId,
+          customerNumber: 0,
+          displayName: initialData.customerDisplayName,
+          companyName: initialData.customerCompanyName,
+          primaryContactName: null,
+        }
+      : null
+  ));
   const [currencyConfirmationOpen, setCurrencyConfirmationOpen] = useState(false);
   const [pendingCurrency, setPendingCurrency] = useState<string | null>(null);
-  const [customers, setCustomers] = useState<Array<{ id: string; displayName: string; companyName: string | null }>>([]);
   const [bankAccounts, setBankAccounts] = useState<Array<{ id: string; accountName: string; bankName: string; isDefault: boolean }>>([]);
 
   const form = useForm<InvoiceFormInput, unknown, InvoiceFormValues>({
     resolver: zodResolver(invoiceFormSchema),
     defaultValues: {
       customerId: initialData?.customerId || "",
-      title: initialData?.title || "",
       currency: initialData?.currency || "INR",
       exchangeRate: initialData?.exchangeRate || 83.5,
       placeOfSupply: initialData?.placeOfSupply || "",
@@ -97,16 +114,11 @@ export function CreateInvoiceForm({ initialData }: { initialData?: InvoiceInitia
   const exchangeRate = useWatch({ control: form.control, name: "exchangeRate" }) || 83.5;
   const placeOfSupply = useWatch({ control: form.control, name: "placeOfSupply" }) || "";
   const customerId = useWatch({ control: form.control, name: "customerId" }) || "";
-  const title = useWatch({ control: form.control, name: "title" }) || "";
   const discount = useWatch({ control: form.control, name: "discount" }) || 0;
   const lineItems = useWatch({ control: form.control, name: "lineItems" }) || [];
 
   useEffect(() => {
     async function loadData() {
-      const custRes = await GetCustomers({ page: 0, pageSize: 100, sortDirection: "desc" });
-      if (custRes.success && custRes.data) {
-        setCustomers(custRes.data);
-      }
       const bankRes = await getCompanyBankAccounts();
       if (bankRes.success && bankRes.data && bankRes.data.length > 0) {
         setBankAccounts(bankRes.data);
@@ -223,7 +235,7 @@ export function CreateInvoiceForm({ initialData }: { initialData?: InvoiceInitia
         (item) => item.name.trim() !== "" || item.unitPrice > 0 || (item.description && item.description.trim() !== "")
       ) || lineItems.length > 1;
 
-    const hasHeaderData = customerId !== "" || title.trim() !== "" || placeOfSupply.trim() !== "";
+    const hasHeaderData = customerId !== "" || placeOfSupply.trim() !== "";
 
     return hasLineItemsData || hasHeaderData;
   };
@@ -389,36 +401,41 @@ export function CreateInvoiceForm({ initialData }: { initialData?: InvoiceInitia
                 render={({ field, fieldState }) => (
                   <Field data-invalid={fieldState.invalid} className="sm:col-span-2">
                     <FieldLabel htmlFor="invoice-customer">Customer <span className="text-destructive">*</span></FieldLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger id="invoice-customer" aria-invalid={fieldState.invalid} className="h-11">
-                        <SelectValue placeholder="Select a customer" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {customers.map((customer) => (
-                          <SelectItem key={customer.id} value={customer.id}>
-                            {customer.displayName}{customer.companyName ? ` (${customer.companyName})` : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                  </Field>
-                )}
-              />
-
-              <Controller
-                name="title"
-                control={form.control}
-                render={({ field, fieldState }) => (
-                  <Field data-invalid={fieldState.invalid} className="sm:col-span-2">
-                    <FieldLabel htmlFor="invoice-title">Invoice Title <span className="text-destructive">*</span></FieldLabel>
-                    <Input
-                      {...field}
-                      id="invoice-title"
-                      aria-invalid={fieldState.invalid}
-                      placeholder="e.g. Custom Software Export Billing Phase 1"
-                      className="h-11"
-                    />
+                    <div className="flex min-w-0 gap-2">
+                      <div className="min-w-0 flex-1">
+                        <CustomerCombobox
+                          value={field.value}
+                          selectedCustomer={selectedCustomer}
+                          onValueChange={(customer) => {
+                            setSelectedCustomer(customer);
+                            field.onChange(customer.id);
+                          }}
+                        />
+                      </div>
+                      {field.value && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          aria-label="Clear selected customer"
+                          onClick={() => {
+                            setSelectedCustomer(null);
+                            field.onChange("");
+                          }}
+                        >
+                          <XIcon />
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="icon"
+                        aria-label="Create customer"
+                        onClick={() => setCreateCustomerOpen(true)}
+                      >
+                        <PlusIcon />
+                      </Button>
+                    </div>
                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                   </Field>
                 )}
@@ -841,6 +858,22 @@ export function CreateInvoiceForm({ initialData }: { initialData?: InvoiceInitia
         </Button>
       </div>
     </form>
+    <Dialog open={createCustomerOpen} onOpenChange={setCreateCustomerOpen}>
+      <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[530px] flex-col gap-0 overflow-hidden rounded-xl p-0 sm:max-h-[94dvh]">
+        <DialogHeader className="shrink-0 border-b bg-background px-4 py-3 sm:px-5 sm:py-4">
+          <DialogTitle>New Customer</DialogTitle>
+        </DialogHeader>
+        <CustomerForm
+          presentation="dialog"
+          onCreated={(customer) => {
+            setSelectedCustomer(customer);
+            form.setValue("customerId", customer.id, { shouldValidate: true, shouldDirty: true });
+            setCreateCustomerOpen(false);
+          }}
+          onCancel={() => setCreateCustomerOpen(false)}
+        />
+      </DialogContent>
+    </Dialog>
     <AlertDialog
       open={currencyConfirmationOpen}
       onOpenChange={(open) => {

@@ -212,9 +212,21 @@ export function AppSidebar({
   const navMainItems = data.navMain.filter((item) => {
     if (item.url === "/dashboard") return true
     if (!hasWorkspaceAccess) return false
+    if (item.url === "/dashboard/salary" && userRole === UserRole.STAFF && department !== "HR") {
+      return canAccessRoute("/dashboard/my-salary", userRole, department)
+    }
     if (!canAccessRoute(item.url, userRole, department)) return false
     if (item.url === "/dashboard/finance") return canReadFinance(userRole)
     return true
+  }).map((item) => {
+    if (
+      item.url === "/dashboard/salary" &&
+      userRole === UserRole.STAFF &&
+      department !== "HR"
+    ) {
+      return { ...item, title: "My salary", url: "/dashboard/my-salary" };
+    }
+    return item;
   })
   const navSecondaryItems = hasWorkspaceAccess
     ? data.navSecondary.filter((item) => canAccessRoute(item.url, userRole, department))

@@ -10,14 +10,14 @@ export const salaryComponentsSchema = z.array(salaryComponentSchema);
 
 export const saveSalaryStructureSchema = z.object({
   userId: z.string().min(1, "User ID is required"),
-  basicSalary: z.number().min(0).default(0),
-  hra: z.number().min(0).default(0),
-  conveyance: z.number().min(0).default(0),
-  medical: z.number().min(0).default(0),
-  specialAllowance: z.number().min(0).default(0),
-  providentFund: z.number().min(0).default(0),
-  professionalTax: z.number().min(0).default(0),
-  tds: z.number().min(0).default(0),
+  basicSalary: z.coerce.number().min(0).default(0),
+  hra: z.coerce.number().min(0).default(0),
+  conveyance: z.coerce.number().min(0).default(0),
+  medical: z.coerce.number().min(0).default(0),
+  specialAllowance: z.coerce.number().min(0).default(0),
+  providentFund: z.coerce.number().min(0).default(0),
+  professionalTax: z.coerce.number().min(0).default(0),
+  tds: z.coerce.number().min(0).default(0),
   customComponents: z.array(salaryComponentSchema).optional(),
 });
 

@@ -23,8 +23,8 @@ export default async function TariffsPage() {
         icon: <Plus />,
       }}
     >
-      <p className="text-sm text-muted-foreground">
-        Manage your standalone package comparison grids.
+      <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+        Build and share package comparisons tailored to each client.
       </p>
       {!result.success ? (
         <Alert variant="destructive">
@@ -33,9 +33,7 @@ export default async function TariffsPage() {
           <AlertDescription>{result.message}</AlertDescription>
         </Alert>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <TariffGridList grids={grids} />
-        </div>
+        <TariffGridList grids={grids} />
       )}
     </DashboardContainer>
   );

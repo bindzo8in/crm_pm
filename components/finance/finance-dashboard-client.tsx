@@ -36,7 +36,6 @@ type PendingInvoice = {
   id: string;
   invoiceNumber: number;
   customerDisplayName: string;
-  title: string;
   status: string;
   dueDate: string | null;
   amountDue: number;
@@ -65,7 +64,6 @@ type InvoicePaymentRow = {
   invoice: {
     invoiceNumber: number;
     customerDisplayName: string;
-    title: string;
   };
   financialAccount: { name: string } | null;
 };
@@ -657,7 +655,7 @@ export function FinanceDashboardClient({
                             </Badge>
                           </div>
                           <p className="truncate text-sm text-muted-foreground">
-                            {invoice.customerDisplayName}{invoice.title ? ` · ${invoice.title}` : ""}
+                            {invoice.customerDisplayName}
                           </p>
                           <p className="text-xs text-muted-foreground">
                             {invoice.dueDate ? `Due ${formatDate(invoice.dueDate)}` : "No due date"}
@@ -731,7 +729,7 @@ export function FinanceDashboardClient({
                   Account balances
                 </CardTitle>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Opening balance plus assigned invoice payments minus completed expenses.
+                  Cash and bank balances are tracked from opening balances, invoice payments, and completed expenses.
                 </p>
               </div>
               <Button variant="outline" asChild>

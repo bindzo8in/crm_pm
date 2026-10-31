@@ -393,7 +393,6 @@ export function InvoiceDetailView({
                   {invoice.status.replace("_", " ")}
                 </Badge>
               </div>
-              {invoice.title && <p className="max-w-[min(70vw,28rem)] truncate text-xs font-medium text-muted-foreground">{invoice.title}</p>}
             </div>
           </div>
 

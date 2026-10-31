@@ -50,6 +50,7 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 
 // --- Lib ---
 import { handleImageUpload, MAX_FILE_SIZE } from "@/lib/tiptap-utils"
+import type { UploadScope } from "@/lib/upload-scopes"
 import { cn } from "@/lib/utils"
 
 // --- Styles ---
@@ -61,9 +62,17 @@ export interface RichTextEditorProps {
   disabled?: boolean
   className?: string
   placeholder?: string
+  uploadScope?: Extract<UploadScope, "proposal" | "terms">
 }
 
-export function RichTextEditor({ value, onChange, disabled, className, placeholder }: RichTextEditorProps) {
+export function RichTextEditor({
+  value,
+  onChange,
+  disabled,
+  className,
+  placeholder,
+  uploadScope = "terms",
+}: RichTextEditorProps) {
   const editor = useEditor({
     immediatelyRender: false,
     editable: !disabled,
@@ -103,7 +112,9 @@ export function RichTextEditor({ value, onChange, disabled, className, placehold
         accept: "image/*",
         maxSize: MAX_FILE_SIZE,
         limit: 3,
-        upload: handleImageUpload,
+        upload: (file, onProgress, abortSignal) => (
+          handleImageUpload(file, onProgress, abortSignal, uploadScope)
+        ),
         onError: (error) => console.error("Upload failed:", error),
       }),
     ],

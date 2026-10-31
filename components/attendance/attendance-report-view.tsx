@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AttendanceStatus, Department, WorkMode } from "@/app/generated/prisma/enums";
+import { Department, WorkMode } from "@/app/generated/prisma/enums";
 import {
   getDetailedAttendanceReportAction,
   getAttendanceEmployeesListAction,
@@ -39,6 +39,54 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
+const attendanceStatusStyles: Record<string, string> = {
+  PRESENT: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+  LATE: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-400",
+  HALF_DAY: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  ABSENT: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-400",
+  ON_LEAVE: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-400",
+  PENDING_LEAVE: "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-400",
+  HOLIDAY: "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-400",
+  WEEKEND: "border-slate-400/30 bg-slate-400/10 text-slate-600 dark:text-slate-300",
+  AWAITING_ATTENDANCE: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400",
+};
+
+function getAttendanceStatusLabel(record: {
+  status: string;
+  lateMinutes?: number;
+  leaveType?: string;
+  holidayName?: string;
+  leaveRequestStatus?: string;
+}) {
+  if (record.holidayName && record.status !== "HOLIDAY") {
+    return `${String(record.status).replaceAll("_", " ")} · holiday`;
+  }
+  if (record.leaveRequestStatus === "APPROVED" && record.status !== "ON_LEAVE") {
+    return `${String(record.status).replaceAll("_", " ")} · approved leave`;
+  }
+  if (record.status === "LATE") return `Late · ${record.lateMinutes}m`;
+  if (record.status === "ON_LEAVE" && record.leaveType) {
+    return `Approved leave · ${String(record.leaveType).replaceAll("_", " ")}`;
+  }
+  if (record.status === "PENDING_LEAVE") {
+    return `Leave pending · ${String(record.leaveType ?? "").replaceAll("_", " ")}`.trim();
+  }
+  if (record.status === "HOLIDAY" && record.holidayName) {
+    return `Holiday · ${record.holidayName}`;
+  }
+  if (record.status === "ABSENT" && record.leaveRequestStatus === "REJECTED") {
+    return "Absent · leave rejected";
+  }
+  return String(record.status).replaceAll("_", " ");
+}
+
+function formatLocalDateInput(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 interface AttendanceReportViewProps {
   userRole: string;
   userDepartment?: string;
@@ -56,10 +104,10 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
   const [startDate, setStartDate] = useState<string>(() => {
     const now = new Date();
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-    return firstDay.toISOString().split("T")[0];
+    return formatLocalDateInput(firstDay);
   });
   const [endDate, setEndDate] = useState<string>(() => {
-    return new Date().toISOString().split("T")[0];
+    return formatLocalDateInput(new Date());
   });
 
   const [selectedDept, setSelectedDept] = useState<string>("ALL");
@@ -113,42 +161,42 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
     setDatePreset(preset);
     const now = new Date();
     let s = "";
-    let e = now.toISOString().split("T")[0];
+    let e = formatLocalDateInput(now);
 
     if (preset === "TODAY") {
       s = e;
     } else if (preset === "YESTERDAY") {
       const y = new Date(now);
       y.setDate(y.getDate() - 1);
-      s = y.toISOString().split("T")[0];
+      s = formatLocalDateInput(y);
       e = s;
     } else if (preset === "THIS_WEEK") {
       const day = now.getDay();
       const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Monday
       const monday = new Date(now.setDate(diff));
-      s = monday.toISOString().split("T")[0];
-      e = new Date().toISOString().split("T")[0];
+      s = formatLocalDateInput(monday);
+      e = formatLocalDateInput(new Date());
     } else if (preset === "LAST_WEEK") {
       const prevMonday = new Date();
       prevMonday.setDate(prevMonday.getDate() - ((prevMonday.getDay() + 6) % 7) - 7);
       const prevSunday = new Date(prevMonday);
       prevSunday.setDate(prevSunday.getDate() + 6);
-      s = prevMonday.toISOString().split("T")[0];
-      e = prevSunday.toISOString().split("T")[0];
+      s = formatLocalDateInput(prevMonday);
+      e = formatLocalDateInput(prevSunday);
     } else if (preset === "THIS_MONTH") {
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-      s = firstDay.toISOString().split("T")[0];
-      e = new Date().toISOString().split("T")[0];
+      s = formatLocalDateInput(firstDay);
+      e = formatLocalDateInput(new Date());
     } else if (preset === "LAST_MONTH") {
       const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
-      s = firstDay.toISOString().split("T")[0];
-      e = lastDay.toISOString().split("T")[0];
+      s = formatLocalDateInput(firstDay);
+      e = formatLocalDateInput(lastDay);
     } else if (preset === "THIS_QUARTER") {
       const quarter = Math.floor(now.getMonth() / 3);
       const firstDay = new Date(now.getFullYear(), quarter * 3, 1);
-      s = firstDay.toISOString().split("T")[0];
-      e = new Date().toISOString().split("T")[0];
+      s = formatLocalDateInput(firstDay);
+      e = formatLocalDateInput(new Date());
     }
 
     if (preset !== "CUSTOM") {
@@ -165,7 +213,16 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
       endDate: endDate || undefined,
       department: selectedDept !== "ALL" ? (selectedDept as Department) : undefined,
       userId: selectedEmployee !== "ALL" ? selectedEmployee : undefined,
-      status: selectedStatus !== "ALL" ? (selectedStatus as AttendanceStatus) : undefined,
+      status: selectedStatus !== "ALL" ? selectedStatus as
+        | "PRESENT"
+        | "LATE"
+        | "HALF_DAY"
+        | "ABSENT"
+        | "ON_LEAVE"
+        | "HOLIDAY"
+        | "WEEKEND"
+        | "PENDING_LEAVE"
+        | "AWAITING_ATTENDANCE" : undefined,
       workMode: selectedWorkMode !== "ALL" ? (selectedWorkMode as WorkMode) : undefined,
       onlyLate: onlyLate || undefined,
       minLateMinutes: minLateMins > 0 ? minLateMins : undefined,
@@ -178,6 +235,7 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
       geofenceFilter: geofenceFilter !== "ALL" ? (geofenceFilter as any) : undefined,
       page,
       limit: 25,
+      includeCalendarStatus: true,
     };
   };
 
@@ -280,8 +338,8 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
     setDatePreset("THIS_MONTH");
     const now = new Date();
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-    setStartDate(firstDay.toISOString().split("T")[0]);
-    setEndDate(now.toISOString().split("T")[0]);
+    setStartDate(formatLocalDateInput(firstDay));
+    setEndDate(formatLocalDateInput(now));
     setSelectedDept("ALL");
     setSelectedEmployee("ALL");
     setSelectedStatus("ALL");
@@ -501,7 +559,7 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
 
           <div className="text-xs text-muted-foreground font-medium">
             Showing <strong className="text-foreground">{reportData.records.length}</strong> of{" "}
-            <strong className="text-foreground">{reportData.totalCount}</strong> shifts
+            <strong className="text-foreground">{reportData.totalCount}</strong> daily records
           </div>
         </div>
 
@@ -528,6 +586,11 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
                     <SelectItem value="LATE">Late</SelectItem>
                     <SelectItem value="HALF_DAY">Half Day</SelectItem>
                     <SelectItem value="ABSENT">Absent</SelectItem>
+                    <SelectItem value="ON_LEAVE">Approved leave</SelectItem>
+                    <SelectItem value="PENDING_LEAVE">Leave pending</SelectItem>
+                    <SelectItem value="HOLIDAY">Holiday</SelectItem>
+                    <SelectItem value="WEEKEND">Weekend</SelectItem>
+                    <SelectItem value="AWAITING_ATTENDANCE">Awaiting attendance</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -678,9 +741,9 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
 
       {/* 3. KPI SUMMARY CARDS */}
       {summary && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6">
           <Card className="border border-border/70 rounded-2xl p-4 shadow-sm bg-gradient-to-br from-card to-muted/40">
-            <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Total Shifts</div>
+            <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Daily records</div>
             <div className="text-xl font-extrabold mt-1">{summary.totalRecords}</div>
             <div className="text-[10px] text-muted-foreground mt-0.5">{summary.statusCounts?.PRESENT || 0} Present</div>
           </Card>
@@ -718,6 +781,26 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
           </Card>
 
           <Card className="border border-border/70 rounded-2xl p-4 shadow-sm bg-gradient-to-br from-rose-500/10 via-card to-card">
+            <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Absent</div>
+            <div className="text-xl font-extrabold text-rose-600 dark:text-rose-400 mt-1">
+              {summary.statusCounts?.ABSENT || 0}
+            </div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">
+              {summary.statusCounts?.PENDING_LEAVE || 0} leave requests pending
+            </div>
+          </Card>
+
+          <Card className="border border-border/70 rounded-2xl p-4 shadow-sm bg-gradient-to-br from-sky-500/10 via-card to-card">
+            <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Approved leave</div>
+            <div className="text-xl font-extrabold text-sky-700 dark:text-sky-400 mt-1">
+              {summary.statusCounts?.ON_LEAVE || 0}
+            </div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">
+              {summary.holidayCount || 0} holiday dates in range
+            </div>
+          </Card>
+
+          <Card className="border border-border/70 rounded-2xl p-4 shadow-sm bg-gradient-to-br from-rose-500/10 via-card to-card">
             <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Auto Closed</div>
             <div className="text-xl font-extrabold text-rose-600 dark:text-rose-400 mt-1">
               {summary.autoCheckedOutCount || 0}
@@ -730,7 +813,7 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
       {/* 4. DETAILED DATA TABLE */}
       <Card className="border border-border/70 rounded-3xl shadow-sm overflow-hidden">
         <div className="p-4 border-b border-border/60 flex items-center justify-between">
-          <h3 className="text-sm font-bold">Shift Records Ledger</h3>
+          <h3 className="text-sm font-bold">Daily attendance timeline</h3>
           <div className="text-xs text-muted-foreground">
             Page {reportData.currentPage} of {reportData.totalPages}
           </div>
@@ -747,8 +830,13 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
               No attendance records found matching current filters.
             </p>
           ) : reportData.records.map((rec, idx) => {
-            const clockInFormatted = rec.clockIn ? formatInIST(new Date(rec.clockIn), "hh:mm a") : "-";
-            const clockOutFormatted = rec.clockOut
+            const hasWorkShift = ["PRESENT", "LATE", "HALF_DAY"].includes(rec.status);
+            const clockInFormatted = hasWorkShift && rec.clockIn
+              ? formatInIST(new Date(rec.clockIn), "hh:mm a")
+              : "—";
+            const clockOutFormatted = !hasWorkShift
+              ? "—"
+              : rec.clockOut
               ? formatInIST(new Date(rec.clockOut), "hh:mm a")
               : rec.isAutoCheckedOut
                 ? "Auto-Closed"
@@ -756,13 +844,8 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
             const grossMins = rec.clockIn && rec.clockOut
               ? Math.max(0, Math.round((new Date(rec.clockOut).getTime() - new Date(rec.clockIn).getTime()) / (1000 * 60)))
               : 0;
-            const statusClass = rec.status === "PRESENT"
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600"
-              : rec.status === "LATE"
-                ? "border-destructive/30 bg-destructive/10 text-destructive"
-                : rec.status === "HALF_DAY"
-                  ? "border-amber-500/30 bg-amber-500/10 text-amber-600"
-                  : "border-rose-500/30 bg-rose-500/10 text-rose-600";
+            const statusClass = attendanceStatusStyles[rec.status] ??
+              "border-border bg-muted text-muted-foreground";
             const deviation = rec.overtimeMinutes > 0
               ? `+${Math.floor(rec.overtimeMinutes / 60)}h ${rec.overtimeMinutes % 60}m overtime`
               : rec.lateMinutes > 0
@@ -781,8 +864,12 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
                       {rec.date ? formatInIST(new Date(rec.date), "dd MMM yyyy") : "-"}
                     </p>
                   </div>
-                  <Badge variant="outline" className={`shrink-0 text-[10px] font-bold ${statusClass}`}>
-                    {rec.status === "LATE" ? `LATE (${rec.lateMinutes}m)` : rec.status.replace("_", " ")}
+                  <Badge
+                    variant="outline"
+                    className={`h-auto min-h-5 max-w-48 shrink-0 overflow-visible whitespace-normal py-1 leading-tight text-[10px] font-semibold ${statusClass}`}
+                    title={rec.holidayName || getAttendanceStatusLabel(rec)}
+                  >
+                    {getAttendanceStatusLabel(rec)}
                   </Badge>
                 </div>
                 <dl className="grid grid-cols-2 gap-3 rounded-md bg-muted/40 p-3 sm:grid-cols-3">
@@ -792,7 +879,7 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
                   </div>
                   <div className="space-y-1">
                     <dt className="text-[10px] text-muted-foreground">Work mode</dt>
-                    <dd className="text-xs font-medium">{rec.workMode}</dd>
+                    <dd className="text-xs font-medium">{rec.workMode || "—"}</dd>
                   </div>
                   <div className="space-y-1">
                     <dt className="text-[10px] text-muted-foreground">Clock in</dt>
@@ -867,9 +954,16 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
                 </TableRow>
               ) : (
                 reportData.records.map((rec, idx) => {
-                  const clockInFormatted = rec.clockIn ? formatInIST(new Date(rec.clockIn), "hh:mm a") : "-";
-                  const clockOutFormatted = rec.clockOut
+                  const hasWorkShift = ["PRESENT", "LATE", "HALF_DAY"].includes(rec.status);
+                  const clockInFormatted = hasWorkShift && rec.clockIn
+                    ? formatInIST(new Date(rec.clockIn), "hh:mm a")
+                    : "—";
+                  const clockOutFormatted = !hasWorkShift
+                    ? "—"
+                    : rec.clockOut
                     ? formatInIST(new Date(rec.clockOut), "hh:mm a")
+                    : rec.isSynthetic
+                    ? "—"
                     : rec.isAutoCheckedOut
                     ? "Auto-Closed"
                     : "Active";
@@ -904,30 +998,21 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
                       </TableCell>
 
                       <TableCell>
-                        <span className="text-[11px] font-medium">{rec.workMode}</span>
+                        <span className="text-[11px] font-medium">{rec.workMode || "—"}</span>
                       </TableCell>
 
                       <TableCell>
-                        {rec.status === "PRESENT" && (
-                          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px] font-bold">
-                            PRESENT
-                          </Badge>
-                        )}
-                        {rec.status === "LATE" && (
-                          <Badge variant="destructive" className="text-[10px] font-bold">
-                            LATE ({rec.lateMinutes}m)
-                          </Badge>
-                        )}
-                        {rec.status === "HALF_DAY" && (
-                          <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-[10px] font-bold">
-                            HALF DAY
-                          </Badge>
-                        )}
-                        {rec.status === "ABSENT" && (
-                          <Badge variant="outline" className="bg-rose-500/10 text-rose-600 border-rose-500/30 text-[10px] font-bold">
-                            ABSENT
-                          </Badge>
-                        )}
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "h-5 max-w-none whitespace-nowrap px-2 py-0.5 text-[10px] font-semibold",
+                            attendanceStatusStyles[rec.status] ??
+                              "border-border bg-muted text-muted-foreground",
+                          )}
+                          title={rec.holidayName || getAttendanceStatusLabel(rec)}
+                        >
+                          {getAttendanceStatusLabel(rec)}
+                        </Badge>
                       </TableCell>
 
                       <TableCell className="whitespace-nowrap font-medium text-emerald-600 dark:text-emerald-400">

@@ -5,7 +5,7 @@ import { proposalSchema, type ProposalSchema } from "@/lib/schemas/proposal-sche
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Controller } from "react-hook-form";
 import { getLiveExchangeRate } from "@/actions/exchange-rate";
-import { RefreshCwIcon, Loader2Icon } from "lucide-react";
+import { RefreshCwIcon, Loader2Icon, PlusIcon, XIcon } from "lucide-react";
 import {
     Field,
     FieldGroup,
@@ -24,11 +24,18 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { CustomerCombobox } from "@/components/customers/customer-combobox";
+import { CustomerCombobox, type CustomerOption } from "@/components/customers/customer-combobox";
+import { CustomerForm } from "@/components/customers/create-edit";
 import { Textarea } from "@/components/ui/textarea";
 import { createProposal, updateProposal } from "@/actions/proposal";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 
 interface ProposalCreateEditFormProps {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -38,6 +45,18 @@ interface ProposalCreateEditFormProps {
 export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormProps) {
     const router = useRouter();
     const [fetchingRate, setFetchingRate] = useState(false);
+    const [createCustomerOpen, setCreateCustomerOpen] = useState(false);
+    const [selectedCustomer, setSelectedCustomer] = useState<CustomerOption | null>(() => (
+        initialData?.customerId
+            ? {
+                id: initialData.customerId,
+                customerNumber: 0,
+                displayName: initialData.customerDisplayName || "",
+                companyName: initialData.customerCompanyName || null,
+                primaryContactName: null,
+            }
+            : null
+    ));
 
     const form = useForm<ProposalSchema>({
         resolver: zodResolver(proposalSchema),
@@ -114,6 +133,7 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
     });
 
     return (
+        <>
         <form
             onSubmit={handleSubmit}
             className="p-2 sm:p-5 md:p-8 w-full rounded-md gap-2 border max-w-3xl mx-auto"
@@ -128,22 +148,53 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
                             className="gap-1 col-span-full"
                         >
                             <FieldLabel htmlFor="customerId">Customer</FieldLabel>
-                            <CustomerCombobox
-                                value={field.value}
-                                onValueChange={(customer) => {
-                                    field.onChange(customer.id);
-                                    form.setValue(
-                                        "customerDisplayName",
-                                        customer.displayName,
-                                        { shouldValidate: true, shouldDirty: true },
-                                    );
-                                    form.setValue(
-                                        "customerCompanyName",
-                                        customer.companyName ?? "",
-                                        { shouldValidate: true, shouldDirty: true },
-                                    );
-                                }}
-                            />
+                            <div className="flex min-w-0 gap-2">
+                                <div className="min-w-0 flex-1">
+                                    <CustomerCombobox
+                                        value={field.value}
+                                        selectedCustomer={selectedCustomer}
+                                        onValueChange={(customer) => {
+                                            setSelectedCustomer(customer);
+                                            field.onChange(customer.id);
+                                            form.setValue(
+                                                "customerDisplayName",
+                                                customer.displayName,
+                                                { shouldValidate: true, shouldDirty: true },
+                                            );
+                                            form.setValue(
+                                                "customerCompanyName",
+                                                customer.companyName ?? "",
+                                                { shouldValidate: true, shouldDirty: true },
+                                            );
+                                        }}
+                                    />
+                                </div>
+                                {field.value && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="icon"
+                                        aria-label="Clear selected customer"
+                                        onClick={() => {
+                                            setSelectedCustomer(null);
+                                            field.onChange("");
+                                            form.setValue("customerDisplayName", "", { shouldValidate: true, shouldDirty: true });
+                                            form.setValue("customerCompanyName", "", { shouldValidate: true, shouldDirty: true });
+                                        }}
+                                    >
+                                        <XIcon />
+                                    </Button>
+                                )}
+                                <Button
+                                    type="button"
+                                    variant="default"
+                                    size="icon"
+                                    aria-label="Create customer"
+                                    onClick={() => setCreateCustomerOpen(true)}
+                                >
+                                    <PlusIcon />
+                                </Button>
+                            </div>
 
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                         </Field>
@@ -357,5 +408,24 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
                 </Button>
             </div>
         </form>
+        <Dialog open={createCustomerOpen} onOpenChange={setCreateCustomerOpen}>
+            <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[530px] flex-col gap-0 overflow-hidden rounded-xl p-0 sm:max-h-[94dvh]">
+                <DialogHeader className="shrink-0 border-b bg-background px-4 py-3 sm:px-5 sm:py-4">
+                    <DialogTitle>New Customer</DialogTitle>
+                </DialogHeader>
+                <CustomerForm
+                    presentation="dialog"
+                    onCreated={(customer) => {
+                        setSelectedCustomer(customer);
+                        form.setValue("customerId", customer.id, { shouldValidate: true, shouldDirty: true });
+                        form.setValue("customerDisplayName", customer.displayName, { shouldValidate: true, shouldDirty: true });
+                        form.setValue("customerCompanyName", customer.companyName ?? "", { shouldValidate: true, shouldDirty: true });
+                        setCreateCustomerOpen(false);
+                    }}
+                    onCancel={() => setCreateCustomerOpen(false)}
+                />
+            </DialogContent>
+        </Dialog>
+        </>
     );
 }

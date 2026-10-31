@@ -1,96 +1,167 @@
-"use client"
+"use client";
 
-import { CldUploadWidget, type CloudinaryUploadWidgetResults } from "next-cloudinary"
-import { ImagePlus, Trash } from "lucide-react"
-import { Button } from "./button"
-import { useEffect, useState } from "react"
-import { env } from "@/lib/env"
+import * as React from "react";
+import { Eye, ImagePlus, LoaderCircle, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { uploadImageToServer } from "@/lib/upload-client";
+import type { UploadScope } from "@/lib/upload-scopes";
 
 interface ImageUploadProps {
-  value: { url: string; publicId: string } | null
-  onChange: (value: { url: string; publicId: string } | null) => void
-  disabled?: boolean
+  value: { url: string; publicId: string } | null;
+  onChange: (value: { url: string; publicId: string } | null) => void;
+  scope: UploadScope;
+  ownerId?: string;
+  disabled?: boolean;
 }
 
-export function ImageUpload({ disabled, onChange, value }: ImageUploadProps) {
-  const [isMounted, setIsMounted] = useState(false)
+export function ImageUpload({
+  disabled = false,
+  onChange,
+  value,
+  scope,
+  ownerId,
+}: ImageUploadProps) {
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = React.useState(false);
+  const [uploadProgress, setUploadProgress] = React.useState(0);
+  const [previewOpen, setPreviewOpen] = React.useState(false);
 
-  useEffect(() => {
-    setIsMounted(true)
-  }, [])
+  async function handleFile(file: File | undefined) {
+    if (!file) return;
 
-  if (!isMounted) {
-    return null
-  }
-
-  const handleSuccess = (result: CloudinaryUploadWidgetResults) => {
-    if (result.info && typeof result.info === "object") {
-      onChange({
-        url: result.info.secure_url,
-        publicId: result.info.public_id,
-      })
+    setIsUploading(true);
+    setUploadProgress(0);
+    try {
+      const asset = await uploadImageToServer(file, scope, {
+        ownerId,
+        onProgress: setUploadProgress,
+      });
+      onChange({ url: asset.url, publicId: asset.publicId });
+      toast.success("Image uploaded");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not upload this image.";
+      toast.error(message);
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 
   return (
-    <div>
-      <div className="mb-4 flex items-center gap-4">
-        {value?.url && (
-          <div className="relative h-[200px] w-[200px] overflow-hidden rounded-md border">
-            <div className="absolute top-2 right-2 z-10">
-              <Button type="button" onClick={() => onChange(null)} variant="destructive" size="icon">
-                <Trash className="h-4 w-4" />
-              </Button>
-            </div>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img className="object-cover w-full h-full" alt="Image" src={value.url} />
+    <div className="w-full max-w-sm space-y-3">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="sr-only"
+        aria-label="Choose an image to upload"
+        disabled={disabled || isUploading}
+        onChange={(event) => {
+          void handleFile(event.currentTarget.files?.[0]);
+          event.currentTarget.value = "";
+        }}
+      />
+
+      <div
+        className="relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-xl border bg-muted/30 p-3"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          if (!disabled && !isUploading) void handleFile(event.dataTransfer.files[0]);
+        }}
+      >
+        {value?.url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={value.url}
+            alt="Uploaded image preview"
+            className="max-h-full max-w-full object-contain"
+          />
+        ) : (
+          <div className="space-y-2 text-center text-muted-foreground">
+            <ImagePlus className="mx-auto size-8" aria-hidden="true" />
+            <p className="text-sm">Drop an image here or choose a file</p>
+          </div>
+        )}
+        {isUploading && (
+          <div
+            className="absolute inset-x-0 bottom-0 flex items-center gap-2 bg-background/95 px-3 py-2 text-xs"
+            role="status"
+            aria-live="polite"
+          >
+            <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
+            <span className="flex-1">Uploading image</span>
+            <span>{uploadProgress}%</span>
           </div>
         )}
       </div>
 
-      {!value?.url && (
-        <CldUploadWidget
-          uploadPreset={env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET}
-          options={{
-            singleUploadAutoClose: true,
-            multiple: false,
-          }}
-          onSuccess={handleSuccess}
-          onError={(error) => {
-            console.error("Cloudinary upload error:", error)
-          }}
-          onOpen={() => {
-            // Your Dialog sets pointer-events: none on <body> while open.
-            // The Cloudinary widget iframe is appended to <body> as a sibling,
-            // outside the Dialog's DOM, so it inherits that and becomes unclickable.
-            // Force it back on for as long as the widget is up.
-            document.body.style.pointerEvents = "auto"
-          }}
-          onClose={() => {
-            // Hand control back to the Dialog so its modal behavior is restored.
-            document.body.style.removeProperty("pointer-events")
-          }}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={disabled || isUploading}
+          onClick={() => fileInputRef.current?.click()}
         >
-          {({ open }) => {
-            const onClick = () => {
-              if (disabled) return
-              open()
-            }
+          {isUploading ? <LoaderCircle className="animate-spin" /> : <ImagePlus />}
+          {value?.url ? "Replace image" : "Choose image"}
+        </Button>
+        {value?.url && (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={disabled || isUploading}
+              onClick={() => setPreviewOpen(true)}
+            >
+              <Eye />
+              Preview
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={disabled || isUploading}
+              onClick={() => onChange(null)}
+            >
+              <Trash2 />
+              Remove
+            </Button>
+          </>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        JPG, PNG, or WebP. Maximum file size: 10 MB.
+      </p>
 
-            return (
-              <Button
-                type="button"
-                disabled={disabled}
-                variant="secondary"
-                onClick={onClick}
-              >
-                <ImagePlus className="h-4 w-4 mr-2" />
-                Upload an Image
-              </Button>
-            )
-          }}
-        </CldUploadWidget>
-      )}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="flex h-[min(85dvh,48rem)] max-w-4xl flex-col sm:max-w-4xl">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>Image preview</DialogTitle>
+          </DialogHeader>
+          {value?.url && (
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto rounded-lg bg-muted/40 p-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={value.url}
+                alt="Full-size uploaded image"
+                className="max-h-full max-w-full object-contain"
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
-  )
+  );
 }

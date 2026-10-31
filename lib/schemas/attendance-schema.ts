@@ -82,7 +82,10 @@ export const advancedAttendanceReportSchema = z.object({
   endDate: z.string().optional(),
   department: z.enum(Department).optional(),
   userId: z.string().optional(),
-  status: z.enum(AttendanceStatus).optional(),
+  status: z.union([
+    z.enum(AttendanceStatus),
+    z.enum(["HOLIDAY", "WEEKEND", "PENDING_LEAVE", "AWAITING_ATTENDANCE"]),
+  ]).optional(),
   workMode: z.enum(WorkMode).optional(),
   onlyLate: z.boolean().optional(),
   minLateMinutes: z.number().int().min(0).optional(),
@@ -96,9 +99,9 @@ export const advancedAttendanceReportSchema = z.object({
   onlyRegularized: z.boolean().optional(),
   onlyManuallyEdited: z.boolean().optional(),
   geofenceFilter: z.enum(["ALL", "IN_OFFICE", "OUTSIDE_OR_REMOTE"]).optional(),
+  includeCalendarStatus: z.boolean().default(false),
   page: z.number().int().positive().default(1),
   limit: z.number().int().positive().default(25),
 });
 
 export type AdvancedAttendanceReportInput = z.infer<typeof advancedAttendanceReportSchema>;
-

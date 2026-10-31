@@ -124,6 +124,8 @@ export function AcceptProposalButton({ proposalId, currentStatus, isPublic = fal
               <ImageUpload
                 value={signatureData}
                 onChange={(data) => setSignatureData(data)}
+                scope={isPublic ? "proposal-signature" : "proposal"}
+                ownerId={isPublic ? proposalId : undefined}
               />
               <p className="text-xs text-muted-foreground">Upload an image of your signature or stamp.</p>
             </div>

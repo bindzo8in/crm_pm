@@ -168,6 +168,7 @@ export function BankAccountForm({ defaultValues, onSuccess }: { defaultValues?: 
                             <ImageUpload
                                 value={field.value || null}
                                 onChange={field.onChange}
+                                scope="bank-account"
                                 disabled={isPending}
                             />
                         </Field>

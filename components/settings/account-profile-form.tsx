@@ -96,6 +96,7 @@ export function AccountProfileForm({
                             <ImageUpload
                                 value={field.value ? { url: field.value, publicId: "" } : null}
                                 onChange={(val) => field.onChange(val?.url || null)}
+                                scope="account-profile"
                                 disabled={isSaving}
                             />
                         </Field>

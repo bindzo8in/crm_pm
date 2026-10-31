@@ -1,6 +1,12 @@
 "use server";
 
-import { UserRole, WorkMode, Department } from "@/app/generated/prisma/enums";
+import {
+  AttendanceStatus,
+  UserRole,
+  WorkMode,
+  Department,
+  LeaveStatus,
+} from "@/app/generated/prisma/enums";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { userAgent } from "next/server";
@@ -27,6 +33,7 @@ import {
 import { headers } from "next/headers";
 import { getNowInIST, convertToIST, formatInIST } from "@/lib/date";
 import ExcelJS from "exceljs";
+import { buildResolvedAttendanceTimeline } from "@/lib/attendance-daily-status";
 
 function isAttendanceManager(user: { role?: UserRole | string | null; department?: Department | string | null }): boolean {
   if (!user) return false;
@@ -1233,7 +1240,10 @@ function buildAdvancedAttendanceWhereClause(sessionUser: any, parsed: AdvancedAt
     conditions.push({ workMode: parsed.workMode });
   }
 
-  if (parsed.status && (parsed.status as string) !== "ALL") {
+  if (
+    parsed.status &&
+    Object.values(AttendanceStatus).includes(parsed.status as AttendanceStatus)
+  ) {
     conditions.push({ status: parsed.status });
   }
 
@@ -1338,6 +1348,225 @@ export async function getAttendanceEmployeesListAction() {
   }
 }
 
+async function getResolvedAttendanceTimeline(
+  parsed: AdvancedAttendanceReportInput,
+) {
+  const start = parsed.startDate
+    ? new Date(`${parsed.startDate}T00:00:00.000Z`)
+    : null;
+  const end = parsed.endDate
+    ? new Date(`${parsed.endDate}T00:00:00.000Z`)
+    : null;
+
+  if (
+    !start ||
+    !end ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(parsed.startDate ?? "") ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(parsed.endDate ?? "") ||
+    Number.isNaN(start.getTime()) ||
+    Number.isNaN(end.getTime()) ||
+    start > end
+  ) {
+    throw new Error("Choose a valid start and end date for the attendance timeline.");
+  }
+
+  const rangeDays = Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1;
+  if (rangeDays > 366) {
+    throw new Error("Attendance timelines are limited to 366 days per report.");
+  }
+
+  const endOfRange = new Date(end);
+  endOfRange.setUTCHours(23, 59, 59, 999);
+
+  const users = await prisma.user.findMany({
+    where: parsed.userId ? { id: parsed.userId } : {},
+    select: {
+      id: true,
+      employeeId: true,
+      name: true,
+      email: true,
+      image: true,
+      department: true,
+      designation: true,
+      createdAt: true,
+      dateOfJoining: true,
+      employmentEndedAt: true,
+      employmentStatus: true,
+      banned: true,
+    },
+    orderBy: { name: "asc" },
+  });
+  if (users.length === 0) return [];
+
+  const userIds = users.map((user) => user.id);
+  const [attendanceRecords, leaveRequests, holidays] = await Promise.all([
+    prisma.attendanceRecord.findMany({
+      where: {
+        userId: { in: userIds },
+        date: { gte: start, lte: endOfRange },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            employeeId: true,
+            name: true,
+            email: true,
+            image: true,
+            department: true,
+            designation: true,
+          },
+        },
+        breaks: { orderBy: { breakStart: "asc" } },
+        auditLogs: { orderBy: { createdAt: "desc" }, take: 1 },
+      },
+      orderBy: [{ date: "desc" }, { clockIn: "desc" }],
+    }),
+    prisma.leaveRequest.findMany({
+      where: {
+        userId: { in: userIds },
+        status: {
+          in: [LeaveStatus.APPROVED, LeaveStatus.PENDING, LeaveStatus.REJECTED],
+        },
+        startDate: { lte: endOfRange },
+        endDate: { gte: start },
+      },
+      select: {
+        userId: true,
+        startDate: true,
+        endDate: true,
+        status: true,
+        type: true,
+      },
+    }),
+    prisma.holiday.findMany({
+      where: { date: { gte: start, lte: endOfRange } },
+      select: { date: true, name: true, departments: true },
+    }),
+  ]);
+
+  const normalizedLeaves = leaveRequests.map((leave) => ({
+    ...leave,
+    status: String(leave.status) as "APPROVED" | "PENDING" | "REJECTED",
+    type: String(leave.type),
+  }));
+  const timeline = buildResolvedAttendanceTimeline(
+    users,
+    attendanceRecords.map((record) => ({
+      ...record,
+      status: String(record.status),
+    })),
+    normalizedLeaves,
+    holidays,
+    start,
+    end,
+    getTodayDateOnly(),
+  );
+
+  const filteredTimeline = timeline.filter((record) => {
+    if (
+      parsed.department &&
+      record.department !== parsed.department &&
+      record.user?.department !== parsed.department
+    ) {
+      return false;
+    }
+    if (
+      parsed.status &&
+      (parsed.status === "HOLIDAY"
+        ? record.status !== "HOLIDAY" &&
+          !("holidayName" in record && record.holidayName)
+        : record.status !== parsed.status)
+    ) {
+      return false;
+    }
+    if (parsed.workMode && record.workMode !== parsed.workMode) return false;
+    if (parsed.onlyLate && !((record.lateMinutes ?? 0) > (parsed.minLateMinutes ?? 0))) {
+      return false;
+    }
+    if (
+      !parsed.onlyLate &&
+      parsed.minLateMinutes !== undefined &&
+      !((record.lateMinutes ?? 0) >= parsed.minLateMinutes)
+    ) {
+      return false;
+    }
+    if (parsed.onlyEarlyLeave && !record.earlyLeave) return false;
+    if (parsed.onlyOvertime && !((record.overtimeMinutes ?? 0) > 0)) return false;
+    if (
+      parsed.minWorkMinutes !== undefined &&
+      !((record.workMinutes ?? 0) >= parsed.minWorkMinutes)
+    ) {
+      return false;
+    }
+    if (
+      parsed.maxWorkMinutes !== undefined &&
+      !((record.workMinutes ?? 0) <= parsed.maxWorkMinutes)
+    ) {
+      return false;
+    }
+    if (
+      parsed.onlyExcessiveBreaks &&
+      !((record.breakMinutes ?? 0) > (parsed.minBreakMinutes ?? 60))
+    ) {
+      return false;
+    }
+    if (parsed.onlyAutoCheckedOut && !record.isAutoCheckedOut) return false;
+    if (parsed.onlyRegularized && !record.regularized) return false;
+    if (parsed.onlyManuallyEdited && !record.isManuallyEdited) return false;
+    if (
+      parsed.geofenceFilter === "IN_OFFICE" &&
+      !(
+        record.distanceFromOffice != null &&
+        record.distanceFromOffice <= 500
+      )
+    ) {
+      return false;
+    }
+    if (
+      parsed.geofenceFilter === "OUTSIDE_OR_REMOTE" &&
+      record.workMode !== WorkMode.REMOTE &&
+      !(record.distanceFromOffice == null || record.distanceFromOffice > 500)
+    ) {
+      return false;
+    }
+    return true;
+  });
+
+  const usersById = new Map(users.map((user) => [user.id, user]));
+  return filteredTimeline.map((record) => {
+    const hasWorkShift = ["PRESENT", "LATE", "HALF_DAY"].includes(
+      record.status,
+    );
+    return {
+      ...record,
+      user: record.user ?? usersById.get(record.userId),
+      clockIn: hasWorkShift ? record.clockIn ?? null : null,
+      clockOut: hasWorkShift ? record.clockOut ?? null : null,
+      workMode: hasWorkShift ? record.workMode ?? null : null,
+      department: record.department ?? record.user?.department ?? null,
+      workMinutes: record.workMinutes ?? 0,
+      breakMinutes: record.breakMinutes ?? 0,
+      overtimeMinutes: record.overtimeMinutes ?? 0,
+      lateMinutes: record.lateMinutes ?? 0,
+      earlyLeave: record.earlyLeave ?? false,
+      isAutoCheckedOut: record.isAutoCheckedOut ?? false,
+      regularized: record.regularized ?? false,
+      isManuallyEdited: record.isManuallyEdited ?? false,
+      distanceFromOffice: record.distanceFromOffice ?? null,
+      regularizationReason: record.regularizationReason ?? null,
+      notes: record.notes ?? null,
+      isSynthetic:
+        "isSynthetic" in record ? record.isSynthetic ?? false : false,
+      holidayName:
+        "holidayName" in record ? record.holidayName : undefined,
+      leaveType: "leaveType" in record ? record.leaveType : undefined,
+      leaveRequestStatus:
+        "leaveRequestStatus" in record ? record.leaveRequestStatus : undefined,
+    };
+  });
+}
+
 export async function getDetailedAttendanceReportAction(input: Partial<AdvancedAttendanceReportInput>) {
   try {
     const { session } = await getAuthenticatedUser("analytics-scope");
@@ -1351,55 +1580,11 @@ export async function getDetailedAttendanceReportAction(input: Partial<AdvancedA
     }
 
     const parsed = advancedAttendanceReportSchema.parse(input);
-    const whereClause = buildAdvancedAttendanceWhereClause(effectiveUser, parsed);
-
+    const resolvedRecords = await getResolvedAttendanceTimeline(parsed);
     const skip = (parsed.page - 1) * parsed.limit;
-
-    // Fetch paginated records & full count & aggregate overview in parallel
-    const [records, totalCount, allMatchingRecords] = await Promise.all([
-      prisma.attendanceRecord.findMany({
-        where: whereClause,
-        include: {
-          user: {
-            select: {
-              id: true,
-              employeeId: true,
-              name: true,
-              email: true,
-              image: true,
-              department: true,
-              designation: true,
-            },
-          },
-          breaks: {
-            orderBy: { breakStart: "asc" },
-          },
-          auditLogs: {
-            orderBy: { createdAt: "desc" },
-            take: 1,
-          },
-        },
-        orderBy: [{ date: "desc" }, { clockIn: "desc" }],
-        skip,
-        take: parsed.limit,
-      }),
-      prisma.attendanceRecord.count({ where: whereClause }),
-      prisma.attendanceRecord.findMany({
-        where: whereClause,
-        select: {
-          status: true,
-          workMinutes: true,
-          breakMinutes: true,
-          overtimeMinutes: true,
-          lateMinutes: true,
-          earlyLeave: true,
-          isAutoCheckedOut: true,
-          regularized: true,
-          department: true,
-          workMode: true,
-        },
-      }),
-    ]);
+    const records = resolvedRecords.slice(skip, skip + parsed.limit);
+    const totalCount = resolvedRecords.length;
+    const allMatchingRecords = resolvedRecords;
 
     let totalWorkMinutes = 0;
     let totalBreakMinutes = 0;
@@ -1415,6 +1600,11 @@ export async function getDetailedAttendanceReportAction(input: Partial<AdvancedA
       LATE: 0,
       HALF_DAY: 0,
       ABSENT: 0,
+      ON_LEAVE: 0,
+      PENDING_LEAVE: 0,
+      HOLIDAY: 0,
+      WEEKEND: 0,
+      AWAITING_ATTENDANCE: 0,
     };
 
     const departmentCounts: Record<string, number> = {};
@@ -1451,11 +1641,37 @@ export async function getDetailedAttendanceReportAction(input: Partial<AdvancedA
     });
 
     const totalRecords = allMatchingRecords.length;
-    const punctualityRate = totalRecords > 0 ? Math.round(((totalRecords - lateCount) / totalRecords) * 100) : 100;
-    const avgWorkHoursPerDay = totalRecords > 0 ? Number((totalWorkMinutes / (60 * totalRecords)).toFixed(1)) : 0;
+    const holidayCount = new Set(
+      allMatchingRecords
+        .filter(
+          (record) =>
+            record.status === "HOLIDAY" ||
+            Boolean("holidayName" in record && record.holidayName),
+        )
+        .map((record) => new Date(record.date).toISOString().slice(0, 10)),
+    ).size;
+    const scheduledDays = allMatchingRecords.filter((record) =>
+      ["PRESENT", "LATE", "HALF_DAY", "ABSENT", "ON_LEAVE", "PENDING_LEAVE"].includes(
+        record.status,
+      ),
+    ).length;
+    const workedDays = allMatchingRecords.filter((record) =>
+      ["PRESENT", "LATE", "HALF_DAY"].includes(record.status),
+    ).length;
+    const punctualityRate =
+      workedDays > 0
+        ? Math.round(((workedDays - lateCount) / workedDays) * 100)
+        : 100;
+    const avgWorkHoursPerDay =
+      workedDays > 0
+        ? Number((totalWorkMinutes / (60 * workedDays)).toFixed(1))
+        : 0;
 
     const summary = {
       totalRecords,
+      holidayCount,
+      scheduledDays,
+      workedDays,
       totalWorkHours: Number((totalWorkMinutes / 60).toFixed(1)),
       totalBreakHours: Number((totalBreakMinutes / 60).toFixed(1)),
       totalOvertimeHours: Number((totalOvertimeMinutes / 60).toFixed(1)),
@@ -1475,7 +1691,7 @@ export async function getDetailedAttendanceReportAction(input: Partial<AdvancedA
       success: true,
       records: JSON.parse(JSON.stringify(records)),
       totalCount,
-      totalPages: Math.ceil(totalCount / parsed.limit),
+      totalPages: Math.max(1, Math.ceil(totalCount / parsed.limit)),
       currentPage: parsed.page,
       summary,
     };
@@ -1509,7 +1725,9 @@ export async function exportAttendanceToExcelAction(input: Partial<AdvancedAtten
     const whereClause = buildAdvancedAttendanceWhereClause(effectiveUser, parsed);
 
     // Fetch all matching records without pagination limit
-    const records = await prisma.attendanceRecord.findMany({
+    const records = parsed.includeCalendarStatus
+      ? await getResolvedAttendanceTimeline(parsed)
+      : await prisma.attendanceRecord.findMany({
       where: whereClause,
       include: {
         user: {
@@ -1628,12 +1846,27 @@ export async function exportAttendanceToExcelAction(input: Partial<AdvancedAtten
 
     records.forEach((rec, idx) => {
       const clockInStr = rec.clockIn ? formatInIST(new Date(rec.clockIn), "hh:mm a") : "-";
-      const clockOutStr = rec.clockOut ? formatInIST(new Date(rec.clockOut), "hh:mm a") : rec.isAutoCheckedOut ? "Auto-Closed" : "Active";
+      const clockOutStr =
+        "isSynthetic" in rec && rec.isSynthetic
+          ? "—"
+          : rec.clockOut
+            ? formatInIST(new Date(rec.clockOut), "hh:mm a")
+            : rec.isAutoCheckedOut
+              ? "Auto-Closed"
+              : "Active";
       const grossMins = rec.clockIn && rec.clockOut ? Math.max(0, Math.round((new Date(rec.clockOut).getTime() - new Date(rec.clockIn).getTime()) / (1000 * 60))) : 0;
       const netHoursStr = rec.workMinutes > 0 ? `${Math.floor(rec.workMinutes / 60)}h ${rec.workMinutes % 60}m` : "-";
       const grossHoursStr = grossMins > 0 ? `${Math.floor(grossMins / 60)}h ${grossMins % 60}m` : "-";
       const dateFormatted = rec.date ? formatInIST(new Date(rec.date), "dd/MM/yyyy") : "-";
       const resolvedEmpNo = rec.user?.employeeId ? `DH-${String(rec.user.employeeId).padStart(3, "0")}` : "N/A";
+      const attendanceContext =
+        "holidayName" in rec && rec.holidayName
+        ? `Holiday: ${rec.holidayName}`
+        : "leaveType" in rec && rec.leaveType
+          ? `Leave: ${rec.leaveType}${"leaveRequestStatus" in rec && rec.leaveRequestStatus ? ` (${rec.leaveRequestStatus})` : ""}`
+          : rec.status === "ABSENT"
+            ? "No attendance record for this working day"
+            : "";
 
       totalWorkMinsSum += rec.workMinutes || 0;
       totalBreakMinsSum += rec.breakMinutes || 0;
@@ -1659,7 +1892,7 @@ export async function exportAttendanceToExcelAction(input: Partial<AdvancedAtten
         rec.overtimeMinutes || 0,
         rec.regularized ? `Yes (${rec.regularizationReason || "Approved"})` : "No",
         rec.distanceFromOffice !== null && rec.distanceFromOffice !== undefined ? `${rec.distanceFromOffice}m` : rec.workMode === "REMOTE" ? "Remote" : "N/A",
-        rec.notes || "",
+        rec.notes || attendanceContext,
       ]);
 
       row.height = 20;

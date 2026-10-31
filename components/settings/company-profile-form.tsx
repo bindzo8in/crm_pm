@@ -406,6 +406,7 @@ export function CompanyProfileForm({ defaultValues }: { defaultValues?: CompanyF
                             <ImageUpload
                                 value={field.value || null}
                                 onChange={field.onChange}
+                                scope="company"
                                 disabled={isPending}
                             />
                         </Field>
@@ -421,6 +422,7 @@ export function CompanyProfileForm({ defaultValues }: { defaultValues?: CompanyF
                             <ImageUpload
                                 value={field.value || null}
                                 onChange={field.onChange}
+                                scope="company"
                                 disabled={isPending}
                             />
                         </Field>
@@ -436,6 +438,7 @@ export function CompanyProfileForm({ defaultValues }: { defaultValues?: CompanyF
                             <ImageUpload
                                 value={field.value || null}
                                 onChange={field.onChange}
+                                scope="company"
                                 disabled={isPending}
                             />
                         </Field>
@@ -451,6 +454,7 @@ export function CompanyProfileForm({ defaultValues }: { defaultValues?: CompanyF
                             <ImageUpload
                                 value={field.value || null}
                                 onChange={field.onChange}
+                                scope="company"
                                 disabled={isPending}
                             />
                         </Field>
@@ -466,6 +470,7 @@ export function CompanyProfileForm({ defaultValues }: { defaultValues?: CompanyF
                             <ImageUpload
                                 value={field.value || null}
                                 onChange={field.onChange}
+                                scope="company"
                                 disabled={isPending}
                             />
                         </Field>

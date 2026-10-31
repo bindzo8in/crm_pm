@@ -86,6 +86,10 @@ export const routePermissions: RoutePermission[] = [
     roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF],
     departmentRoles: { [UserRole.STAFF]: ["HR"] },
   },
+  {
+    path: "/dashboard/my-salary",
+    roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF],
+  },
 
   // Accessible only by SUPER_ADMIN (ADMIN and STAFF denied)
   {

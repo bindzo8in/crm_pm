@@ -108,6 +108,7 @@ export function RichTextBlockEditor({ block, onSave }: RichTextBlockEditorProps)
         <RichTextEditor
           value={content}
           onChange={handleContentChange}
+          uploadScope="proposal"
           placeholder="Start typing your section content here..."
           className="bg-background shadow-2xs"
         />

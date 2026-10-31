@@ -90,25 +90,23 @@ async function getProjectReadActor(): Promise<ProjectActor | null> {
   const requestHeaders = await headers();
   const session = await auth.api.getSession({ headers: requestHeaders });
   if (!session?.user || !hasWorkspaceAccess(session.user)) return null;
-  const [readAll, readAssigned, viewBudget, manageProjects] = await Promise.all([
-    auth.api.userHasPermission({
-      headers: requestHeaders,
-      body: { permissions: { projects: ["read-all"] } },
-    }),
-    auth.api.userHasPermission({
-      headers: requestHeaders,
-      body: { permissions: { projects: ["read-assigned"] } },
-    }),
-    auth.api.userHasPermission({
-      headers: requestHeaders,
-      body: { permissions: { projects: ["view-budget"] } },
-    }),
-    auth.api.userHasPermission({
-      headers: requestHeaders,
-      body: { permissions: { projects: ["update"] } },
-    }),
-  ]);
+  const readAll = await auth.api.userHasPermission({
+    headers: requestHeaders,
+    body: { permissions: { projects: ["read-all"] } },
+  });
+  const readAssigned = await auth.api.userHasPermission({
+    headers: requestHeaders,
+    body: { permissions: { projects: ["read-assigned"] } },
+  });
   if (!readAll.success && !readAssigned.success) return null;
+  const viewBudget = await auth.api.userHasPermission({
+    headers: requestHeaders,
+    body: { permissions: { projects: ["view-budget"] } },
+  });
+  const manageProjects = await auth.api.userHasPermission({
+    headers: requestHeaders,
+    body: { permissions: { projects: ["update"] } },
+  });
   return {
     id: session.user.id,
     role: session.user.role as UserRole,
@@ -133,10 +131,8 @@ export async function getProjects(input: unknown) {
   if (!parsed.success) return errorResponse("Project filters are invalid.", parsed.error.issues);
 
   try {
-    const [page, canCreateProjects] = await Promise.all([
-      getProjectPage(parsed.data, actor),
-      hasPermission("projects", "create"),
-    ]);
+    const page = await getProjectPage(parsed.data, actor);
+    const canCreateProjects = await hasPermission("projects", "create");
     return successResponse("Projects loaded.", {
       ...page,
       canCreateProjects: Boolean(canCreateProjects),

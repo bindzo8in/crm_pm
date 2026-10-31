@@ -13,7 +13,8 @@ import {
   type Editor,
   type NodeWithPos,
 } from "@tiptap/react"
-import { env } from "./env"
+import { uploadImageToServer } from "./upload-client"
+import type { UploadScope } from "./upload-scopes"
 
 export const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 
@@ -361,9 +362,9 @@ export function selectionWithinConvertibleTypes(
 export const handleImageUpload = async (
   file: File,
   onProgress?: (event: { progress: number }) => void,
-  abortSignal?: AbortSignal
+  abortSignal?: AbortSignal,
+  scope: Extract<UploadScope, "proposal" | "terms"> = "terms",
 ): Promise<string> => {
-  // Validate file
   if (!file) {
     throw new Error("No file provided")
   }
@@ -374,61 +375,12 @@ export const handleImageUpload = async (
     )
   }
 
-  const cloudName = env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-  if (!cloudName) {
-    throw new Error("Cloudinary cloud name is not configured");
-  }
-
-  const url = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
-
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    
-    xhr.open("POST", url, true);
-    
-    // Setup abort handler
-    if (abortSignal) {
-      abortSignal.addEventListener("abort", () => {
-        xhr.abort();
-        reject(new Error("Upload cancelled"));
-      });
-    }
-
-    // Progress tracking
-    if (onProgress && xhr.upload) {
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const progress = Math.round((event.loaded / event.total) * 100);
-          onProgress({ progress });
-        }
-      };
-    }
-
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const response = JSON.parse(xhr.responseText);
-          resolve(response.secure_url);
-        } catch (error) {
-          reject(new Error("Failed to parse Cloudinary response"));
-        }
-      } else {
-        reject(new Error(`Upload failed with status: ${xhr.status}`));
-      }
-    };
-
-    xhr.onerror = () => {
-      reject(new Error("Network error during upload"));
-    };
-
-    const formData = new FormData();
-    formData.append("file", file);
-    // Using the same upload preset as used elsewhere in the CRM
-    formData.append("upload_preset", env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET);
-
-    xhr.send(formData);
+  const asset = await uploadImageToServer(file, scope, {
+    onProgress: (progress) => onProgress?.({ progress }),
+    signal: abortSignal,
   });
-}
+  return asset.url;
+};
 
 type ProtocolOptions = {
   /**

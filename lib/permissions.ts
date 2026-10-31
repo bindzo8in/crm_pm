@@ -266,6 +266,8 @@ export const staffRole = ac.newRole({
 
     holidays: ["read"],
 
+    salary: ["read-own"],
+
     referenceData: ["read"],
 });
 

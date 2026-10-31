@@ -3,6 +3,11 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import { errorResponse, successResponse } from "@/lib/action-response";
+import {
+  calculateExpenseTotals,
+  MAX_EXPENSE_TOTAL_CENTS,
+  parseExpenseAmountCents,
+} from "@/lib/expense-tax";
 import prisma from "@/lib/prisma";
 import {
   expenseCategoryPageSchema,
@@ -133,8 +138,7 @@ export async function getFinancialAccounts() {
         id: true,
         displayName: true,
         bankAccounts: {
-          where: { isActive: true },
-          select: { id: true, accountName: true },
+          select: { id: true, accountName: true, isActive: true },
         },
       },
     });
@@ -166,12 +170,24 @@ export async function getFinancialAccounts() {
         });
 
         for (const bankAccount of company.bankAccounts) {
+          const accountName = `${company.displayName} ${bankAccount.accountName}`;
+          if (!bankAccount.isActive) {
+            await tx.financialAccount.updateMany({
+              where: {
+                companyId: company.id,
+                companyBankAccountId: bankAccount.id,
+              },
+              data: { name: accountName, isActive: false },
+            });
+            continue;
+          }
+
           await tx.financialAccount.upsert({
             where: { companyBankAccountId: bankAccount.id },
-            update: {},
+            update: { name: accountName, isActive: true },
             create: {
               companyId: company.id,
-              name: `${company.displayName} ${bankAccount.accountName}`,
+              name: accountName,
               type: "BANK",
               companyBankAccountId: bankAccount.id,
               openingBalance: new Prisma.Decimal(0),
@@ -335,7 +351,6 @@ export async function listRecentInvoicePayments(limit = 5) {
           select: {
             invoiceNumber: true,
             customerDisplayName: true,
-            title: true,
           },
         },
         financialAccount: {
@@ -669,7 +684,6 @@ export async function getFinanceOverview(period: string = "month", startDate?: s
           id: true,
           invoiceNumber: true,
           customerDisplayName: true,
-          title: true,
           status: true,
           dueDate: true,
           grandTotal: true,
@@ -720,7 +734,6 @@ export async function getFinanceOverview(period: string = "month", startDate?: s
           id: invoice.id,
           invoiceNumber: invoice.invoiceNumber,
           customerDisplayName: invoice.customerDisplayName,
-          title: invoice.title,
           status: invoice.status,
           dueDate: invoice.dueDate?.toISOString() ?? null,
           amountDue: Math.max(0, numberValue(invoice.grandTotal) - paymentsReceived),
@@ -865,6 +878,14 @@ export async function createExpense(input: unknown) {
     }
 
     const payload = parsed.data;
+    const totals = calculateExpenseTotals(
+      parseExpenseAmountCents(payload.amount),
+      payload.taxRate,
+      payload.taxInclusive,
+    );
+    if (totals.totalAmountCents > MAX_EXPENSE_TOTAL_CENTS) {
+      return errorResponse("Total expense amount including tax exceeds the maximum allowed amount");
+    }
 
     const category = await prisma.expenseCategory.findUnique({ where: { id: payload.categoryId } });
     if (!category || !category.isActive) {
@@ -895,7 +916,7 @@ export async function createExpense(input: unknown) {
       data: {
         transactionNumber,
         description: payload.description,
-        amount: new Prisma.Decimal(payload.amount),
+        amount: new Prisma.Decimal((totals.totalAmountCents / 100).toFixed(2)),
         expenseDate: new Date(payload.expenseDate),
         paymentMethod: payload.paymentMethod,
         status: payload.status,

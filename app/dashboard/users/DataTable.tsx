@@ -210,7 +210,7 @@ export function DataTable<TData, TValue>({
 
                 <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end sm:gap-4">
                     <div className="flex items-center gap-2">
-                        <span className="text-sm text-muted-foreground">
+                        <span className="hidden text-sm text-muted-foreground sm:inline">
                             Rows per page
                         </span>
 
@@ -224,7 +224,7 @@ export function DataTable<TData, TValue>({
                                 }))
                             }
                         >
-                            <SelectTrigger aria-label="Rows per page" className="h-9 w-[80px]">
+                            <SelectTrigger aria-label="Rows per page"                             className="h-11 w-[88px]">
                                 <SelectValue />
                             </SelectTrigger>
 

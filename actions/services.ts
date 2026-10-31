@@ -11,7 +11,9 @@ import { headers } from "next/headers";
 import slugify from "slugify";
 import { revalidatePath } from "next/cache";
 
-export async function CreateService(data: ServiceSchema): Promise<ActionResponse> {
+export async function CreateService(
+    data: ServiceSchema
+): Promise<ActionResponse<{ id: string }>> {
     try {
         const hasPermission = await auth.api.userHasPermission({
             headers: await headers(),
@@ -47,7 +49,7 @@ export async function CreateService(data: ServiceSchema): Promise<ActionResponse
             return errorResponse("Service already exists");
         }
         if (existingService && existingService.deletedAt) {
-            await prisma.service.update({
+            const restoredService = await prisma.service.update({
                 where: {
                     id: existingService.id
                 },
@@ -63,20 +65,23 @@ export async function CreateService(data: ServiceSchema): Promise<ActionResponse
 
             revalidatePath("/dashboard/services", "layout");
             return successResponse(
-                "Previously deleted service restored"
+                "Previously deleted service restored",
+                { id: restoredService.id }
             );
         }
 
-        await prisma.service.create({
+        const service = await prisma.service.create({
             data: {
                 name: validatedData.data.name,
                 slug,
                 description: validatedData.data.description,
+                isActive: validatedData.data.isActive,
                 showInProposal: validatedData.data.showInProposal ?? true,
-            }
-        })
+            },
+            select: { id: true },
+        });
         revalidatePath("/dashboard/services", "layout");
-        return successResponse("Service created successfully");
+        return successResponse("Service created successfully", { id: service.id });
     } catch (error) {
         if (process.env.NODE_ENV === "development") {
             console.error(error);

@@ -30,6 +30,23 @@ enum EmploymentStatusAction {
   REACTIVATED
 }
 
+enum EmploymentType {
+  PERMANENT
+  CONTRACT
+  PROBATION
+  INTERN
+}
+
+enum BankAccountType {
+  SAVINGS
+  CURRENT
+}
+
+enum TaxRegime {
+  OLD
+  NEW
+}
+
 enum Department {
   SALES
   DEVELOPMENT
@@ -81,14 +98,25 @@ model User {
   employeesReassigned   EmployeeStatusHistory[] @relation("EmployeeStatusReassignedTo")
 
   // Payroll Details
-  employeeId    Int     @unique @default(autoincrement())
-  designation   String?
-  bankName      String?
-  bankAccountNo String?
-  panNo         String?
-  costCenter    String?
-  uanNo         String?
-  pfNo          String?
+  employeeId      Int              @unique @default(autoincrement())
+  designation     String?
+  dateOfJoining   DateTime?
+  employmentType  EmploymentType?
+  annualCtc       Decimal?         @db.Decimal(14, 2)
+  bankName        String?
+  bankAccountNo   String?
+  bankIfsc        String?
+  bankAccountType BankAccountType?
+  panNo           String?
+  aadhaarNo       String?
+  costCenter      String?
+  uanNo           String?
+  pfNo            String?
+  esiNo           String?
+  pfEligible      Boolean          @default(false)
+  esiEligible     Boolean          @default(false)
+  taxRegime       TaxRegime        @default(NEW)
+  paymentMethod   PaymentMethod    @default(BANK_TRANSFER)
 
   @@unique([email])
   @@map("user")
@@ -186,24 +214,24 @@ enum CustomerType {
 model Customer {
   id String @id @default(cuid())
 
-  customerNumber      Int     @unique @default(autoincrement())
-  displayName         String
-  companyName         String?
+  customerNumber           Int     @unique @default(autoincrement())
+  displayName              String
+  companyName              String?
   primaryContactSalutation String?
-  primaryContactName  String?
-  primaryContactEmail String?
-  primaryContactPhone String?
-  currency            String            @default("INR")
-  customerLanguage    String            @default("English")
-  gstTreatment        String?
-  placeOfSupply       String?
-  taxPreference       String            @default("TAXABLE")
-  paymentTerms        String            @default("DUE_ON_RECEIPT")
-  portalEnabled       Boolean           @default(false)
-  documents           Json?
-  website             String?
-  addressLine1        String?
-  addressLine2        String?
+  primaryContactName       String?
+  primaryContactEmail      String?
+  primaryContactPhone      String?
+  currency                 String  @default("INR")
+  customerLanguage         String  @default("English")
+  gstTreatment             String?
+  placeOfSupply            String?
+  taxPreference            String  @default("TAXABLE")
+  paymentTerms             String  @default("DUE_ON_RECEIPT")
+  portalEnabled            Boolean @default(false)
+  documents                Json?
+  website                  String?
+  addressLine1             String?
+  addressLine2             String?
 
   billingAddressLine1 String?
   billingAddressLine2 String?
@@ -279,7 +307,7 @@ model Service {
 
   description String?
 
-  isActive Boolean @default(true)
+  isActive       Boolean @default(true)
   showInProposal Boolean @default(true)
 
   packages ServicePackage[]
@@ -912,7 +940,6 @@ model Invoice {
   customerDisplayName String
   customerCompanyName String?
 
-  title     String
   notes     String?
   terms     String?
   status    InvoiceStatus @default(DRAFT)
@@ -1041,24 +1068,24 @@ model ExpenseCategory {
 model Expense {
   id String @id @default(cuid())
 
-  transactionNumber String        @unique
-  description       String
-  amount            Decimal       @db.Decimal(12, 2)
-  currency          String        @default("INR")
-  expenseDate       DateTime      @default(now())
-  paymentMethod     PaymentMethod @default(BANK_TRANSFER)
-  status            ExpenseStatus @default(PENDING)
-  referenceNumber   String?
-  notes             String?
-  receiptUrl        String?
-  expenseType       String        @default("SERVICES")
-  sacCode           String?
-  gstTreatment      String?
-  sourceOfSupply    String?
+  transactionNumber   String        @unique
+  description         String
+  amount              Decimal       @db.Decimal(12, 2)
+  currency            String        @default("INR")
+  expenseDate         DateTime      @default(now())
+  paymentMethod       PaymentMethod @default(BANK_TRANSFER)
+  status              ExpenseStatus @default(PENDING)
+  referenceNumber     String?
+  notes               String?
+  receiptUrl          String?
+  expenseType         String        @default("SERVICES")
+  sacCode             String?
+  gstTreatment        String?
+  sourceOfSupply      String?
   destinationOfSupply String?
-  reverseCharge     Boolean       @default(false)
-  taxRate           Int?
-  taxInclusive      Boolean       @default(false)
+  reverseCharge       Boolean       @default(false)
+  taxRate             Int?
+  taxInclusive        Boolean       @default(false)
 
   categoryId String
   category   ExpenseCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
@@ -1289,16 +1316,16 @@ model LeaveRequest {
 }
 
 model Holiday {
-  id          String   @id @default(cuid())
-  eventId     String?  @map("event_id")
+  id          String          @id @default(cuid())
+  eventId     String?         @map("event_id")
   name        String
-  date        DateTime @db.Date
+  date        DateTime        @db.Date
   category    HolidayCategory @default(MANDATORY_GAZETTED)
   departments Department[]    @default([])
-  notifyStaff Boolean  @default(false) @map("notify_staff")
+  notifyStaff Boolean         @default(false) @map("notify_staff")
   description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 
   @@unique([date])
   @@index([eventId])

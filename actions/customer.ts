@@ -192,38 +192,52 @@ export async function GetCustomers(
       page,
       pageSize,
       search,
+      customerType,
       sortDirection,
     } = query;
 
+    const normalizedSearch = search?.trim();
+    const customerNumberSearch = normalizedSearch?.match(/^(?:CUS-)?(\d+)$/i);
+
     const where = {
       deletedAt: null,
+      ...(customerType ? { customerType } : {}),
 
-      ...(search && {
+      ...(normalizedSearch && {
         OR: [
           {
             displayName: {
-              contains: search,
+              contains: normalizedSearch,
               mode: "insensitive" as const,
             },
           },
           {
             companyName: {
-              contains: search,
+              contains: normalizedSearch,
+              mode: "insensitive" as const,
+            },
+          },
+          {
+            primaryContactName: {
+              contains: normalizedSearch,
               mode: "insensitive" as const,
             },
           },
           {
             primaryContactEmail: {
-              contains: search,
+              contains: normalizedSearch,
               mode: "insensitive" as const,
             },
           },
           {
             primaryContactPhone: {
-              contains: search,
+              contains: normalizedSearch,
               mode: "insensitive" as const,
             },
           },
+          ...(customerNumberSearch
+            ? [{ customerNumber: Number(customerNumberSearch[1]) }]
+            : []),
         ],
       }),
     };

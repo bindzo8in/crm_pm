@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { RefreshCwIcon, SaveIcon, PlusIcon, TrashIcon } from "lucide-react";
+import { ExternalLinkIcon, RefreshCwIcon, SaveIcon, PlusIcon, TrashIcon } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { SalaryEmployee } from "./types";
+import { EditPayrollDetailsDialog } from "@/app/dashboard/users/edit-payroll-details-dialog";
 
 interface SalaryStructureDialogProps {
   isOpen: boolean;
@@ -21,6 +22,7 @@ export function SalaryStructureDialog({ isOpen, onClose, user }: SalaryStructure
   const [fetching, setFetching] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const [payrollProfileOpen, setPayrollProfileOpen] = useState(false);
   
   const [basicSalary, setBasicSalary] = useState("0");
   const [hra, setHra] = useState("0");
@@ -55,6 +57,16 @@ export function SalaryStructureDialog({ isOpen, onClose, user }: SalaryStructure
             setProfessionalTax(st.professionalTax.toString());
             setTds(st.tds.toString());
             setCustomComponents(st.customComponents || []);
+          } else {
+            setBasicSalary("0");
+            setHra("0");
+            setConveyance("0");
+            setMedical("0");
+            setSpecialAllowance("0");
+            setProvidentFund("0");
+            setProfessionalTax("0");
+            setTds("0");
+            setCustomComponents([]);
           }
         } catch (error) {
           console.error("Failed to fetch structure", error);
@@ -101,12 +113,28 @@ export function SalaryStructureDialog({ isOpen, onClose, user }: SalaryStructure
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl bg-background border-border p-6 rounded-3xl">
+    <>
+    <Dialog open={isOpen && !payrollProfileOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto bg-background border-border p-4 sm:max-w-3xl sm:p-6 rounded-2xl sm:rounded-3xl">
         <DialogHeader>
           <DialogTitle>Salary Structure</DialogTitle>
           <DialogDescription>Set the fixed earnings and deductions for {user.name}.</DialogDescription>
         </DialogHeader>
+        <div className="flex flex-col gap-3 rounded-xl border bg-muted/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold truncate">{user.name}</p>
+            <p className="text-xs text-muted-foreground break-all">{user.email}</p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-11 shrink-0"
+            onClick={() => setPayrollProfileOpen(true)}
+          >
+              Payroll profile
+              <ExternalLinkIcon className="ml-2 size-3.5" />
+          </Button>
+        </div>
 
         {fetching ? (
           <div className="py-10 text-center text-muted-foreground text-sm flex items-center justify-center gap-2">
@@ -121,7 +149,7 @@ export function SalaryStructureDialog({ isOpen, onClose, user }: SalaryStructure
           </div>
         ) : (
           <div className="space-y-6 mt-4">
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid gap-6 sm:grid-cols-2">
               <div className="space-y-4">
                 <h3 className="font-bold text-sm border-b pb-2">Earnings</h3>
                 
@@ -166,23 +194,23 @@ export function SalaryStructureDialog({ isOpen, onClose, user }: SalaryStructure
             </div>
 
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <h3 className="font-bold text-sm">Custom Components</h3>
-                <Button type="button" variant="outline" size="sm" className="rounded-xl h-7" onClick={() => setCustomComponents([...customComponents, { name: "", type: "EARNING", amount: 0 }])}>
+                <Button type="button" variant="outline" size="sm" className="h-11 rounded-xl" onClick={() => setCustomComponents([...customComponents, { name: "", type: "EARNING", amount: 0 }])}>
                   <PlusIcon className="w-3.5 h-3.5 mr-1" /> Add
                 </Button>
               </div>
               {customComponents.map((comp, idx) => (
-                <div key={idx} className="flex items-end gap-2">
-                  <div className="flex-1 space-y-1.5">
+                <div key={idx} className="grid min-w-0 grid-cols-2 gap-3 rounded-xl border bg-muted/20 p-3 sm:grid-cols-[minmax(0,1fr)_8rem_7rem_2.75rem]">
+                  <div className="col-span-2 space-y-1.5 sm:col-span-1">
                     <Label className="text-xs">Name</Label>
-                    <Input type="text" value={comp.name} onChange={e => {
+                    <Input type="text" value={comp.name} className="min-w-0 rounded-xl" onChange={e => {
                       const updated = [...customComponents];
                       updated[idx].name = e.target.value;
                       setCustomComponents(updated);
-                    }} className="rounded-xl" placeholder="Component name" />
+                    }} placeholder="Component name" />
                   </div>
-                  <div className="w-36 space-y-1.5">
+                  <div className="space-y-1.5">
                     <Label className="text-xs">Type</Label>
                     <Select value={comp.type} onValueChange={(val) => {
                       if (val !== "EARNING" && val !== "DEDUCTION") return;
@@ -190,7 +218,7 @@ export function SalaryStructureDialog({ isOpen, onClose, user }: SalaryStructure
                       updated[idx].type = val;
                       setCustomComponents(updated);
                     }}>
-                      <SelectTrigger className="rounded-xl">
+                      <SelectTrigger className="w-full min-w-0 rounded-xl">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -199,24 +227,24 @@ export function SalaryStructureDialog({ isOpen, onClose, user }: SalaryStructure
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="w-32 space-y-1.5">
+                  <div className="space-y-1.5">
                     <Label className="text-xs">Amount</Label>
-                    <Input type="number" min="0" value={comp.amount} onChange={e => {
+                    <Input type="number" min="0" value={comp.amount} className="min-w-0 rounded-xl" onChange={e => {
                       const updated = [...customComponents];
                       updated[idx].amount = Number(e.target.value) || 0;
                       setCustomComponents(updated);
-                    }} className="rounded-xl" />
+                    }} />
                   </div>
-                  <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-rose-500" onClick={() => setCustomComponents(customComponents.filter((_, i) => i !== idx))}>
+                  <Button type="button" variant="ghost" size="icon" className="size-11 self-end justify-self-end text-destructive" aria-label={`Remove ${comp.name || `component ${idx + 1}`}`} onClick={() => setCustomComponents(customComponents.filter((_, i) => i !== idx))}>
                     <TrashIcon className="w-3.5 h-3.5" />
                   </Button>
                 </div>
               ))}
             </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t">
-              <Button variant="outline" onClick={onClose} disabled={loading} className="rounded-xl">Cancel</Button>
-              <Button onClick={handleSave} disabled={loading || fetching || !!fetchError} className="rounded-xl">
+            <div className="flex flex-col-reverse gap-3 border-t pt-4 sm:flex-row sm:justify-end">
+              <Button variant="outline" onClick={onClose} disabled={loading} className="min-h-11 rounded-xl sm:w-auto">Cancel</Button>
+              <Button onClick={handleSave} disabled={loading || fetching || !!fetchError} className="min-h-11 rounded-xl">
                 {loading ? <RefreshCwIcon className="w-4 h-4 mr-2 animate-spin" /> : <SaveIcon className="w-4 h-4 mr-2" />}
                 Save Structure
               </Button>
@@ -225,5 +253,11 @@ export function SalaryStructureDialog({ isOpen, onClose, user }: SalaryStructure
         )}
       </DialogContent>
     </Dialog>
+      <EditPayrollDetailsDialog
+        open={payrollProfileOpen}
+        onOpenChange={setPayrollProfileOpen}
+        user={user}
+      />
+    </>
   );
 }

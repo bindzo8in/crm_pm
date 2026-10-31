@@ -24,7 +24,6 @@ export type InvoiceRow = {
   invoiceNumber: number;
   customerDisplayName: string;
   customerCompanyName: string | null;
-  title: string;
   status: InvoiceStatus;
   issueDate: string | Date;
   dueDate: string | Date | null;
@@ -50,10 +49,6 @@ export const columns: ColumnDef<InvoiceRow>[] = [
         INV-{String(row.original.invoiceNumber).padStart(4, "0")}
       </Link>
     ),
-  },
-  {
-    accessorKey: "title",
-    header: "Title",
   },
   {
     id: "customer",

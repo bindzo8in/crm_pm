@@ -24,7 +24,7 @@ export default async function CreateExpensePage() {
     );
   }
 
-  const accounts = accountsResult.data?.map(({ id, name, isActive }) => ({ id, name, isActive })) ?? [];
+  const accounts = accountsResult.data?.map(({ id, name, type, isActive }) => ({ id, name, type, isActive })) ?? [];
 
   return (
     <DashboardContainer title="Record Expense">

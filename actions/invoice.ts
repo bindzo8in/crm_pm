@@ -134,7 +134,6 @@ export async function getInvoices(query: InvoiceQuerySchema) {
       ...(search
         ? {
             OR: [
-              { title: { contains: search, mode: "insensitive" } },
               { customerDisplayName: { contains: search, mode: "insensitive" } },
               { customerCompanyName: { contains: search, mode: "insensitive" } },
             ],
@@ -205,7 +204,6 @@ async function getInvoiceDataById(id: string, includeInternalAudit: boolean) {
         bankAccountId: true,
         customerDisplayName: true,
         customerCompanyName: true,
-        title: true,
         notes: true,
         terms: true,
         status: true,
@@ -418,7 +416,6 @@ export async function createInvoice(input: CreateInvoiceInput) {
         customerCompanyName: customer.companyName || null,
         proposalId: validated.data.proposalId || null,
         createdById: user.id,
-        title: validated.data.title,
         notes: validated.data.notes || null,
         terms: validated.data.terms || null,
         dueDate: validated.data.dueDate || null,
@@ -492,7 +489,7 @@ export async function updateInvoice(input: UpdateInvoiceInput) {
       return errorResponse("Invalid input data", validated.error.issues);
     }
 
-    const { id, customerId, title, notes, terms, dueDate, bankAccountId, currency, exchangeRate, placeOfSupply, discount, lineItems, status } = validated.data;
+    const { id, customerId, notes, terms, dueDate, bankAccountId, currency, exchangeRate, placeOfSupply, discount, lineItems, status } = validated.data;
 
     const existing = await (prisma as any).invoice.findFirst({
       where: { id, deletedAt: null },
@@ -570,7 +567,6 @@ export async function updateInvoice(input: UpdateInvoiceInput) {
         where: { id },
         data: {
           ...(customerId ? { customerId, customerDisplayName, customerCompanyName } : {}),
-          ...(title ? { title } : {}),
           ...(notes !== undefined ? { notes } : {}),
           ...(terms !== undefined ? { terms } : {}),
           ...(dueDate !== undefined ? { dueDate } : {}),
@@ -974,7 +970,6 @@ export async function createInvoiceFromProposal(proposalId: string) {
         customerCompanyName: proposal.customerCompanyName || null,
         proposalId: proposal.id,
         createdById: user.id,
-        title: `Invoice for ${proposal.title}`,
         notes: proposal.notes || null,
         bankAccountId: proposal.bankAccountId || null,
         currency: proposal.currency || "INR",

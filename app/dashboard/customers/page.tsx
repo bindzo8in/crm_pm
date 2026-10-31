@@ -18,7 +18,7 @@ export default async function CustomersPage() {
   const queryClient = getQueryClient();
 
   await queryClient.prefetchQuery({
-    queryKey: ["customers", 0, 10, ""],
+    queryKey: ["customers", 0, 10, "", "ALL", "desc"],
 
     queryFn: () =>
       GetCustomers({

@@ -143,8 +143,14 @@ export async function DeleteBankAccount(id: string) {
       return { error: "Unauthorized", message: "You do not have permission to update settings" }
     }
 
-    await prisma.companyBankAccount.delete({
-      where: { id }
+    await prisma.$transaction(async (tx) => {
+      await tx.financialAccount.updateMany({
+        where: { companyBankAccountId: id },
+        data: { isActive: false },
+      });
+      await tx.companyBankAccount.delete({
+        where: { id },
+      });
     })
 
     return { success: true, message: "Bank account deleted successfully" }
