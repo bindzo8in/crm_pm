@@ -35,6 +35,8 @@ import { getNowInIST, convertToIST, formatInIST } from "@/lib/date";
 import ExcelJS from "exceljs";
 import { buildResolvedAttendanceTimeline } from "@/lib/attendance-daily-status";
 import { getWeekendDays } from "@/services/attendance-settings-service";
+import { getCompanyEmployeeIdPrefix } from "@/services/company-service";
+import { formatEmployeeId } from "@/lib/employee-id";
 import { DEFAULT_WEEKEND_DAYS } from "@/lib/weekend-policy";
 
 function isAttendanceManager(user: { role?: UserRole | string | null; department?: Department | string | null }): boolean {
@@ -694,6 +696,10 @@ export async function getAttendanceLogsAction(input: Partial<AttendanceFilterInp
 
     const whereClause: any = {};
 
+    if (isManager) {
+      whereClause.user = { includeInAttendanceReports: true };
+    }
+
     if (targetUserId) {
       whereClause.userId = targetUserId;
     }
@@ -775,7 +781,7 @@ export async function getAttendanceAnalyticsAction(filters: {
     const effectiveUser = dbUser || session.user;
     const isManager = isAttendanceManager(effectiveUser);
 
-    const conditions: any[] = [];
+    const conditions: any[] = [{ user: { includeInAttendanceReports: true } }];
 
     if (!isManager) {
       conditions.push({ userId: effectiveUser.id });
@@ -816,6 +822,7 @@ export async function getAttendanceAnalyticsAction(filters: {
       },
       orderBy: { date: "asc" },
     });
+    const employeeIdPrefix = await getCompanyEmployeeIdPrefix();
 
     const totalShifts = records.length;
     let presentCount = 0;
@@ -934,7 +941,7 @@ export async function getAttendanceAnalyticsAction(filters: {
         employeeAgg[uId] = {
           name: rec.user?.name || "Unknown",
           email: rec.user?.email || "",
-          employeeId: rec.user?.employeeId ? `DH-${String(rec.user.employeeId).padStart(3, "0")}` : "N/A",
+          employeeId: formatEmployeeId(rec.user?.employeeId, employeeIdPrefix) ?? "N/A",
           image: rec.user?.image,
           department: deptName,
           shifts: 0,
@@ -1223,7 +1230,7 @@ export async function editAttendanceAction(input: EditAttendanceInput) {
 
 function buildAdvancedAttendanceWhereClause(sessionUser: any, parsed: AdvancedAttendanceReportInput) {
   const isManager = isAttendanceManager(sessionUser);
-  const conditions: any[] = [];
+  const conditions: any[] = [{ user: { includeInAttendanceReports: true } }];
 
   if (!isManager) {
     conditions.push({ userId: sessionUser.id });
@@ -1327,7 +1334,7 @@ export async function getAttendanceEmployeesListAction() {
     }
 
     const users = await prisma.user.findMany({
-      where: { banned: false },
+      where: { banned: false, includeInAttendanceReports: true },
       select: {
         id: true,
         employeeId: true,
@@ -1339,10 +1346,11 @@ export async function getAttendanceEmployeesListAction() {
       },
       orderBy: { name: "asc" },
     });
+    const employeeIdPrefix = await getCompanyEmployeeIdPrefix();
 
     const formattedUsers = users.map((u) => ({
       ...u,
-      employeeId: u.employeeId ? `DH-${String(u.employeeId).padStart(3, "0")}` : null,
+      employeeId: formatEmployeeId(u.employeeId, employeeIdPrefix),
     }));
 
     return { success: true, users: JSON.parse(JSON.stringify(formattedUsers)) };
@@ -1383,7 +1391,10 @@ async function getResolvedAttendanceTimeline(
   endOfRange.setUTCHours(23, 59, 59, 999);
 
   const users = await prisma.user.findMany({
-    where: parsed.userId ? { id: parsed.userId } : {},
+    where: {
+      includeInAttendanceReports: true,
+      ...(parsed.userId ? { id: parsed.userId } : {}),
+    },
     select: {
       id: true,
       employeeId: true,
@@ -1429,9 +1440,7 @@ async function getResolvedAttendanceTimeline(
     prisma.leaveRequest.findMany({
       where: {
         userId: { in: userIds },
-        status: {
-          in: [LeaveStatus.APPROVED, LeaveStatus.PENDING, LeaveStatus.REJECTED],
-        },
+        status: LeaveStatus.APPROVED,
         startDate: { lte: endOfRange },
         endDate: { gte: start },
       },
@@ -1452,7 +1461,7 @@ async function getResolvedAttendanceTimeline(
 
   const normalizedLeaves = leaveRequests.map((leave) => ({
     ...leave,
-    status: String(leave.status) as "APPROVED" | "PENDING" | "REJECTED",
+    status: "APPROVED" as const,
     type: String(leave.type),
   }));
   const timeline = buildResolvedAttendanceTimeline(
@@ -1468,6 +1477,7 @@ async function getResolvedAttendanceTimeline(
     getTodayDateOnly(),
     weekendDays,
   );
+  const employeeIdPrefix = await getCompanyEmployeeIdPrefix();
 
   const filteredTimeline = timeline.filter((record) => {
     if (
@@ -1546,7 +1556,15 @@ async function getResolvedAttendanceTimeline(
     );
     return {
       ...record,
-      user: record.user ?? usersById.get(record.userId),
+      user: (() => {
+        const user = record.user ?? usersById.get(record.userId);
+        return user
+          ? {
+              ...user,
+              employeeId: formatEmployeeId(user.employeeId, employeeIdPrefix),
+            }
+          : undefined;
+      })(),
       clockIn: hasWorkShift ? record.clockIn ?? null : null,
       clockOut: hasWorkShift ? record.clockOut ?? null : null,
       workMode: hasWorkShift ? record.workMode ?? null : null,
@@ -1607,7 +1625,6 @@ export async function getDetailedAttendanceReportAction(input: Partial<AdvancedA
       HALF_DAY: 0,
       ABSENT: 0,
       ON_LEAVE: 0,
-      PENDING_LEAVE: 0,
       HOLIDAY: 0,
       WEEKEND: 0,
       AWAITING_ATTENDANCE: 0,
@@ -1657,7 +1674,7 @@ export async function getDetailedAttendanceReportAction(input: Partial<AdvancedA
         .map((record) => new Date(record.date).toISOString().slice(0, 10)),
     ).size;
     const scheduledDays = allMatchingRecords.filter((record) =>
-      ["PRESENT", "LATE", "HALF_DAY", "ABSENT", "ON_LEAVE", "PENDING_LEAVE"].includes(
+      ["PRESENT", "LATE", "HALF_DAY", "ABSENT", "ON_LEAVE"].includes(
         record.status,
       ),
     ).length;
@@ -1729,6 +1746,7 @@ export async function exportAttendanceToExcelAction(input: Partial<AdvancedAtten
 
     const parsed = advancedAttendanceReportSchema.parse(input);
     const whereClause = buildAdvancedAttendanceWhereClause(effectiveUser, parsed);
+    const employeeIdPrefix = await getCompanyEmployeeIdPrefix();
 
     // Fetch all matching records without pagination limit
     const records = parsed.includeCalendarStatus
@@ -1864,7 +1882,7 @@ export async function exportAttendanceToExcelAction(input: Partial<AdvancedAtten
       const netHoursStr = rec.workMinutes > 0 ? `${Math.floor(rec.workMinutes / 60)}h ${rec.workMinutes % 60}m` : "-";
       const grossHoursStr = grossMins > 0 ? `${Math.floor(grossMins / 60)}h ${grossMins % 60}m` : "-";
       const dateFormatted = rec.date ? formatInIST(new Date(rec.date), "dd/MM/yyyy") : "-";
-      const resolvedEmpNo = rec.user?.employeeId ? `DH-${String(rec.user.employeeId).padStart(3, "0")}` : "N/A";
+      const resolvedEmpNo = formatEmployeeId(rec.user?.employeeId, employeeIdPrefix) ?? "N/A";
       const attendanceContext =
         "holidayName" in rec && rec.holidayName
         ? `Holiday: ${rec.holidayName}`
@@ -1887,7 +1905,7 @@ export async function exportAttendanceToExcelAction(input: Partial<AdvancedAtten
         rec.user?.email || "N/A",
         rec.department || rec.user?.department || "N/A",
         rec.workMode,
-        rec.status,
+        String(rec.status).replaceAll("_", " "),
         clockInStr,
         clockOutStr,
         grossHoursStr,
@@ -2048,7 +2066,7 @@ export async function exportAttendanceToExcelAction(input: Partial<AdvancedAtten
     records.forEach((rec) => {
       const uId = rec.userId;
       if (!employeeMap.has(uId)) {
-        const empNo = rec.user?.employeeId ? `DH-${String(rec.user.employeeId).padStart(3, "0")}` : "N/A";
+        const empNo = formatEmployeeId(rec.user?.employeeId, employeeIdPrefix) ?? "N/A";
         employeeMap.set(uId, {
           id: uId,
           employeeId: empNo,

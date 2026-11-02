@@ -91,6 +91,22 @@ export const columns: ColumnDef<UserRow>[] = [
         )
     },
     {
+        accessorKey: "includeInAttendanceReports",
+        header: "Attendance report",
+        cell: ({ row }) => (
+            <Badge
+                variant={row.original.includeInAttendanceReports ? "outline" : "secondary"}
+                className={
+                    row.original.includeInAttendanceReports
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-muted-foreground"
+                }
+            >
+                {row.original.includeInAttendanceReports ? "Included" : "Excluded"}
+            </Badge>
+        ),
+    },
+    {
         accessorKey: "emailVerified",
         header: "Email Verified",
         cell: ({ row }) => (

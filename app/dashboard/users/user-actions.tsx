@@ -12,6 +12,8 @@ import {
     MoreHorizontalIcon,
     Copy,
     CopyCheck,
+    Eye,
+    EyeOff,
     UserKey,
     Building2,
     ReceiptIndianRupee,
@@ -27,16 +29,24 @@ import { EmploymentStatus, UserRole } from "@/app/generated/prisma/enums";
 import {
     canAssignUserDepartment,
     canManageEmploymentStatus,
+    canManageAttendanceReportInclusion,
     canManageUser,
 } from "@/lib/permissions";
 import { OffboardEmployeeDialog } from "./offboard-employee-dialog";
-import type { getUsers } from "@/actions/user";
+import {
+    setUserAttendanceReportInclusion,
+    type getUsers,
+} from "@/actions/user";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 type UserActionRow = Awaited<ReturnType<typeof getUsers>>["users"][number];
 
 export const UserActions = ({ user }: { user: UserActionRow }) => {
     const { data: session } = useSession();
+    const queryClient = useQueryClient();
     const [copied, setCopied] = useState(false);
+    const [isUpdatingReportInclusion, setIsUpdatingReportInclusion] = useState(false);
     const [roleDialogOpen, setRoleDialogOpen] = useState(false);
     const [deptDialogOpen, setDeptDialogOpen] = useState(false);
     const [workModeDialogOpen, setWorkModeDialogOpen] = useState(false);
@@ -75,6 +85,38 @@ export const UserActions = ({ user }: { user: UserActionRow }) => {
             user.role,
         );
     const isActive = user.employmentStatus === EmploymentStatus.ACTIVE;
+    const canManageReportInclusion =
+        session?.user.role
+            ? canManageAttendanceReportInclusion(
+                currentUserRole,
+                session.user.department,
+                user.role,
+            )
+            : false;
+
+    const toggleAttendanceReportInclusion = async () => {
+        setIsUpdatingReportInclusion(true);
+        try {
+            await setUserAttendanceReportInclusion(
+                user.id,
+                !user.includeInAttendanceReports,
+            );
+            toast.success(
+                user.includeInAttendanceReports
+                    ? "User excluded from attendance reports."
+                    : "User included in attendance reports.",
+            );
+            await queryClient.invalidateQueries({ queryKey: ["users"] });
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : "Unable to update attendance report setting.",
+            );
+        } finally {
+            setIsUpdatingReportInclusion(false);
+        }
+    };
 
     return (
         <>
@@ -103,6 +145,16 @@ export const UserActions = ({ user }: { user: UserActionRow }) => {
                     >
                         {isActive ? <UserRoundX /> : <UserRoundCheck />}
                         {isActive ? "Deactivate employee" : "Reactivate employee"}
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                        onSelect={() => void toggleAttendanceReportInclusion()}
+                        disabled={!canManageReportInclusion || isUpdatingReportInclusion}
+                    >
+                        {user.includeInAttendanceReports ? <EyeOff /> : <Eye />}
+                        {user.includeInAttendanceReports
+                            ? "Exclude from attendance reports"
+                            : "Include in attendance reports"}
                     </DropdownMenuItem>
 
                     <DropdownMenuItem

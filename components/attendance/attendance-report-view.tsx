@@ -45,7 +45,6 @@ const attendanceStatusStyles: Record<string, string> = {
   HALF_DAY: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
   ABSENT: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-400",
   ON_LEAVE: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-400",
-  PENDING_LEAVE: "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-400",
   HOLIDAY: "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-400",
   WEEKEND: "border-slate-400/30 bg-slate-400/10 text-slate-600 dark:text-slate-300",
   AWAITING_ATTENDANCE: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400",
@@ -65,12 +64,7 @@ function getAttendanceStatusLabel(record: {
     return `${String(record.status).replaceAll("_", " ")} · approved leave`;
   }
   if (record.status === "LATE") return `Late · ${record.lateMinutes}m`;
-  if (record.status === "ON_LEAVE" && record.leaveType) {
-    return `Approved leave · ${String(record.leaveType).replaceAll("_", " ")}`;
-  }
-  if (record.status === "PENDING_LEAVE") {
-    return `Leave pending · ${String(record.leaveType ?? "").replaceAll("_", " ")}`.trim();
-  }
+  if (record.status === "ON_LEAVE") return "ON LEAVE";
   if (record.status === "HOLIDAY" && record.holidayName) {
     return `Holiday · ${record.holidayName}`;
   }
@@ -221,7 +215,6 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
         | "ON_LEAVE"
         | "HOLIDAY"
         | "WEEKEND"
-        | "PENDING_LEAVE"
         | "AWAITING_ATTENDANCE" : undefined,
       workMode: selectedWorkMode !== "ALL" ? (selectedWorkMode as WorkMode) : undefined,
       onlyLate: onlyLate || undefined,
@@ -587,7 +580,6 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
                     <SelectItem value="HALF_DAY">Half Day</SelectItem>
                     <SelectItem value="ABSENT">Absent</SelectItem>
                     <SelectItem value="ON_LEAVE">Approved leave</SelectItem>
-                    <SelectItem value="PENDING_LEAVE">Leave pending</SelectItem>
                     <SelectItem value="HOLIDAY">Holiday</SelectItem>
                     <SelectItem value="WEEKEND">Weekend</SelectItem>
                     <SelectItem value="AWAITING_ATTENDANCE">Awaiting attendance</SelectItem>
@@ -786,7 +778,7 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
               {summary.statusCounts?.ABSENT || 0}
             </div>
             <div className="text-[10px] text-muted-foreground mt-0.5">
-              {summary.statusCounts?.PENDING_LEAVE || 0} leave requests pending
+              Attendance is based on approved leave and recorded shifts.
             </div>
           </Card>
 

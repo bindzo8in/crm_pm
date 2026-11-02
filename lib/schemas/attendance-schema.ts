@@ -84,7 +84,7 @@ export const advancedAttendanceReportSchema = z.object({
   userId: z.string().optional(),
   status: z.union([
     z.enum(AttendanceStatus),
-    z.enum(["HOLIDAY", "WEEKEND", "PENDING_LEAVE", "AWAITING_ATTENDANCE"]),
+    z.enum(["HOLIDAY", "WEEKEND", "AWAITING_ATTENDANCE"]),
   ]).optional(),
   workMode: z.enum(WorkMode).optional(),
   onlyLate: z.boolean().optional(),

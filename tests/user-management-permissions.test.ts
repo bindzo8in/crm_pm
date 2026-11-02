@@ -3,6 +3,7 @@ import test from "node:test";
 import { Department, UserRole } from "@/app/generated/prisma/enums";
 import {
   canAssignUserDepartment,
+  canManageAttendanceReportInclusion,
   canManageEmploymentStatus,
   canManageUserDirectory,
 } from "@/lib/permissions";
@@ -104,5 +105,48 @@ test("employment status management preserves HR and role boundaries", () => {
       UserRole.SUPER_ADMIN,
     ),
     false,
+  );
+});
+
+test("attendance report inclusion lets super admins manage every role", () => {
+  assert.equal(
+    canManageAttendanceReportInclusion(
+      UserRole.SUPER_ADMIN,
+      null,
+      UserRole.SUPER_ADMIN,
+    ),
+    true,
+  );
+  assert.equal(
+    canManageAttendanceReportInclusion(
+      UserRole.SUPER_ADMIN,
+      null,
+      UserRole.ADMIN,
+    ),
+    true,
+  );
+  assert.equal(
+    canManageAttendanceReportInclusion(
+      UserRole.ADMIN,
+      null,
+      UserRole.SUPER_ADMIN,
+    ),
+    false,
+  );
+  assert.equal(
+    canManageAttendanceReportInclusion(
+      UserRole.ADMIN,
+      null,
+      UserRole.STAFF,
+    ),
+    true,
+  );
+  assert.equal(
+    canManageAttendanceReportInclusion(
+      UserRole.STAFF,
+      Department.HR,
+      UserRole.STAFF,
+    ),
+    true,
   );
 });

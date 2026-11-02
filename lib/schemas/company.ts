@@ -3,6 +3,7 @@ import { z } from "zod";
 export const companySchema = z.object({
   displayName: z.string().min(1, "Display Name is required"),
   legalName: z.string().min(1, "Legal Name is required"),
+  employeeIdPrefix: z.string().trim().min(1, "Employee ID prefix is required").max(20),
   tagline: z.string().optional().nullable(),
   about: z.string().optional().nullable(),
 

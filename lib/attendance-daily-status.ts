@@ -6,7 +6,6 @@ export type DailyAttendanceStatus =
   | "HALF_DAY"
   | "ABSENT"
   | "ON_LEAVE"
-  | "PENDING_LEAVE"
   | "HOLIDAY"
   | "WEEKEND"
   | "AWAITING_ATTENDANCE";
@@ -134,12 +133,6 @@ export function buildResolvedAttendanceTimeline<TUser extends {
           date >= dayStartUtc(request.startDate) &&
           date <= dayStartUtc(request.endDate),
       );
-      const pendingLeave = userLeaves.find(
-        (request) =>
-          request.status === "PENDING" &&
-          date >= dayStartUtc(request.startDate) &&
-          date <= dayStartUtc(request.endDate),
-      );
       const isWorkedStatus =
         actual &&
         ["PRESENT", "LATE", "HALF_DAY"].includes(actual.status);
@@ -212,43 +205,8 @@ export function buildResolvedAttendanceTimeline<TUser extends {
         continue;
       }
 
-      if (pendingLeave && !isWeekendDate(date, weekendDays)) {
-        timeline.push({
-          ...(actual ?? {}),
-          id: actual?.id ?? `pending-leave:${key}`,
-          userId: user.id,
-          user,
-          date,
-          status: "PENDING_LEAVE",
-          leaveType: pendingLeave.type,
-          leaveRequestStatus: pendingLeave.status,
-          workMinutes: actual?.workMinutes ?? 0,
-          breakMinutes: actual?.breakMinutes ?? 0,
-          overtimeMinutes: actual?.overtimeMinutes ?? 0,
-          lateMinutes: actual?.lateMinutes ?? 0,
-          workMode: actual?.workMode ?? null,
-          isSynthetic: !actual,
-        });
-        continue;
-      }
-
-      const rejectedLeave = userLeaves.find(
-        (leave) =>
-          leave.status === "REJECTED" &&
-          date >= dayStartUtc(leave.startDate) &&
-          date <= dayStartUtc(leave.endDate),
-      );
-
       if (actual) {
-        timeline.push(
-          rejectedLeave
-            ? {
-                ...actual,
-                leaveType: rejectedLeave.type,
-                leaveRequestStatus: rejectedLeave.status,
-              }
-            : actual,
-        );
+        timeline.push(actual);
         continue;
       }
 
@@ -292,12 +250,6 @@ export function buildResolvedAttendanceTimeline<TUser extends {
         user,
         date,
         status: "ABSENT",
-        ...(rejectedLeave
-          ? {
-              leaveType: rejectedLeave.type,
-              leaveRequestStatus: rejectedLeave.status,
-            }
-          : {}),
         workMinutes: 0,
         breakMinutes: 0,
         overtimeMinutes: 0,

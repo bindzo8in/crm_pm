@@ -12,7 +12,7 @@ const employee = {
 
 const date = (day: number) => new Date(Date.UTC(2026, 9, day));
 
-test("daily timeline resolves actual shifts, approved leave, pending leave, holidays, and absences", () => {
+test("daily timeline resolves actual shifts, approved leave, holidays, and absences", () => {
   const timeline = buildResolvedAttendanceTimeline(
     [employee],
     [
@@ -69,9 +69,46 @@ test("daily timeline resolves actual shifts, approved leave, pending leave, holi
 
   assert.equal(statusByDate.get("2026-10-05"), "PRESENT");
   assert.equal(statusByDate.get("2026-10-06"), "ON_LEAVE");
-  assert.equal(statusByDate.get("2026-10-07"), "PENDING_LEAVE");
+  assert.equal(statusByDate.get("2026-10-07"), "ABSENT");
   assert.equal(statusByDate.get("2026-10-08"), "HOLIDAY");
   assert.equal(statusByDate.get("2026-10-09"), "ABSENT");
+});
+
+test("pending leave does not override actual attendance or inferred absence", () => {
+  const timeline = buildResolvedAttendanceTimeline(
+    [employee],
+    [
+      {
+        id: "attendance-during-pending-leave",
+        userId: employee.id,
+        date: date(5),
+        status: "PRESENT",
+      },
+    ],
+    [
+      {
+        userId: employee.id,
+        startDate: date(5),
+        endDate: date(6),
+        status: "PENDING",
+        type: "CASUAL",
+      },
+    ],
+    [],
+    date(5),
+    date(6),
+    date(7),
+  );
+  const statusByDate = new Map(
+    timeline.map((record) => [record.date.toISOString().slice(0, 10), record.status]),
+  );
+
+  assert.equal(statusByDate.get("2026-10-05"), "PRESENT");
+  assert.equal(statusByDate.get("2026-10-06"), "ABSENT");
+  assert.equal(
+    timeline.some((record) => record.status === "PENDING_LEAVE"),
+    false,
+  );
 });
 
 test("actual attendance and holidays take precedence, weekends are not absences, and future days are omitted", () => {

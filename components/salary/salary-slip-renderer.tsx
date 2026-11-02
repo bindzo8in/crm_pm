@@ -2,6 +2,7 @@
 
 import React from "react";
 import { env } from "@/lib/env";
+import { formatEmployeeId } from "@/lib/employee-id";
 
 type SalaryComponent = {
   name: string;
@@ -51,6 +52,7 @@ interface SalaryCompanyRenderData {
   logo: unknown;
   legalName: string;
   displayName: string;
+  employeeIdPrefix?: string;
   address: string;
   city: string;
   state: string;
@@ -176,7 +178,7 @@ export function SalarySlipRenderer({
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">LOP:</span><span className="font-medium">{slip.absentDays}</span></div>
         </div>
         <div className="p-2 space-y-0.5">
-          <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Employee No.:</span><span className="font-medium">{slip.user?.employeeId || "-"}</span></div>
+          <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Employee No.:</span><span className="font-medium">{formatEmployeeId(slip.user?.employeeId, company?.employeeIdPrefix) || "-"}</span></div>
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Bank Name:</span><span className="font-medium uppercase">{slip.user?.bankName || "-"}</span></div>
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Bank Account No.:</span><span className="font-medium">{slip.user?.bankAccountNo || "-"}</span></div>
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">IFSC:</span><span className="font-medium">{slip.user?.bankIfsc || "-"}</span></div>

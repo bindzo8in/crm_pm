@@ -88,7 +88,7 @@ export default function UsersTable() {
           <p className="text-xs font-medium text-muted-foreground">People directory</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Users & staff</h1>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Manage access, teams, employment, and work arrangements from one place.
+            Manage access, teams, employment, work arrangements, and attendance report inclusion.
           </p>
         </div>
         {hasMounted && canCreateStaff && (

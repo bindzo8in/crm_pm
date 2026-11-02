@@ -18,6 +18,7 @@ import {
   canManageUser,
   canManageUserDirectory,
   canManageEmploymentStatus,
+  canManageAttendanceReportInclusion,
   roleLevel,
 } from "@/lib/permissions";
 
@@ -152,6 +153,7 @@ export async function getUsers({
         banExpires: true,
         department: true,
         workMode: true,
+        includeInAttendanceReports: true,
       },
     }),
     prisma.user.count({ where }),
@@ -427,6 +429,43 @@ export async function assignUserWorkMode(
   return {
     success: true,
   };
+}
+
+export async function setUserAttendanceReportInclusion(
+  userId: string,
+  includeInAttendanceReports: boolean,
+) {
+  const parsedUserId = userIdSchema.safeParse(userId);
+  const parsedInclusion = z.boolean().safeParse(includeInAttendanceReports);
+  if (!parsedUserId.success || !parsedInclusion.success) {
+    throw new Error("Invalid user or attendance report setting.");
+  }
+
+  const actor = await getCurrentActor();
+  if (!canManageUserDirectory(actor.role, actor.department)) {
+    throw new Error("You are not allowed to manage attendance report inclusion.");
+  }
+
+  const target = await prisma.user.findUnique({
+    where: { id: parsedUserId.data },
+    select: { role: true },
+  });
+  if (!target) {
+    throw new Error("User not found.");
+  }
+  if (!canManageAttendanceReportInclusion(actor.role, actor.department, target.role)) {
+    throw new Error("You cannot modify this user's attendance report setting.");
+  }
+
+  await prisma.user.update({
+    where: { id: parsedUserId.data },
+    data: { includeInAttendanceReports: parsedInclusion.data },
+  });
+
+  revalidatePath("/dashboard/users");
+  revalidatePath("/dashboard/attendance");
+  revalidatePath("/attendance");
+  return { success: true };
 }
 
 export async function updateUserPayrollDetails(

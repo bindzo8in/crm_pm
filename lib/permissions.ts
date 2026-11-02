@@ -388,3 +388,18 @@ export function canManageEmploymentStatus(
         ? targetRole === UserRole.STAFF
         : canManageUser(actorRole, targetRole);
 }
+
+export function canManageAttendanceReportInclusion(
+    actorRole: UserRole,
+    actorDepartment: string | null | undefined,
+    targetRole: UserRole,
+): boolean {
+    if (!canManageUserDirectory(actorRole, actorDepartment)) {
+        return false;
+    }
+
+    return (
+        actorRole === UserRole.SUPER_ADMIN ||
+        canManageEmploymentStatus(actorRole, actorDepartment, targetRole)
+    );
+}

@@ -70,6 +70,7 @@ model User {
   employmentEndedAt     DateTime?
   department            Department?
   workMode              WorkMode                @default(OFFICE)
+  includeInAttendanceReports Boolean             @default(true) @map("include_in_attendance_reports")
   banned                Boolean?                @default(false)
   banReason             String?
   banExpires            DateTime?
@@ -683,6 +684,7 @@ model Company {
 
   displayName String
   legalName   String
+  employeeIdPrefix String @default("EMP-") @map("employee_id_prefix")
   tagline     String?
   about       String?
 

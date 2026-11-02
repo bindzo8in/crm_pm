@@ -28,6 +28,7 @@ export function CompanyProfileForm({ defaultValues }: { defaultValues?: CompanyF
         defaultValues: {
             displayName: defaultValues?.displayName || "",
             legalName: defaultValues?.legalName || "",
+            employeeIdPrefix: defaultValues?.employeeIdPrefix || "EMP-",
             tagline: defaultValues?.tagline || "",
             about: defaultValues?.about || "",
 
@@ -115,6 +116,19 @@ export function CompanyProfileForm({ defaultValues }: { defaultValues?: CompanyF
                         <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full md:col-span-3">
                             <FieldLabel htmlFor="legalName">Legal Name</FieldLabel>
                             <Input {...field} id="legalName" placeholder="e.g. Acme Corporation Inc." />
+                            {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                        </Field>
+                    )}
+                />
+
+                <Controller
+                    name="employeeIdPrefix"
+                    control={form.control}
+                    render={({ field, fieldState }) => (
+                        <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full md:col-span-3">
+                            <FieldLabel htmlFor="employeeIdPrefix">Employee ID Prefix</FieldLabel>
+                            <Input {...field} id="employeeIdPrefix" placeholder="e.g. EMP-" maxLength={20} />
+                            <p className="text-sm text-muted-foreground">Used in employee IDs shown in attendance reports and salary slips.</p>
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                         </Field>
                     )}
