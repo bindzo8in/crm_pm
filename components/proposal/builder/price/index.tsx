@@ -9,15 +9,10 @@ import { PricingSummaryCard } from "./pricing-summary-card";
 import { getProposalPricing, reorderProposalServices } from "@/actions/proposal-pricing";
 import { toast } from "sonner";
 import {
-  Loader2,
   PackageOpen,
   Sparkles,
-  Building2,
   FileText,
-  Calendar,
   RefreshCw,
-  ArrowLeft,
-  CheckCircle2,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -37,6 +32,10 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { ProposalWorkflowNav } from "@/components/proposal/proposal-workflow-nav";
+import { ProposalWorkflowActionBar } from "@/components/proposal/proposal-workflow-action-bar";
+import { CustomLineItemDialog } from "./custom-line-item-dialog";
+import { proposalPricingStepSchema } from "@/lib/schemas/proposal-workflow-schema";
 
 interface ProposalPriceBuilderProps {
   proposalId: string;
@@ -64,6 +63,7 @@ interface ProposalPricingData {
 interface SortableServiceSectionProps {
   service: ProposalServiceSection;
   proposalId: string;
+  currency: string;
   onRefresh: () => void;
   idx: number;
   totalCount: number;
@@ -73,6 +73,7 @@ interface SortableServiceSectionProps {
 function SortableServiceSection({
   service,
   proposalId,
+  currency,
   onRefresh,
   idx,
   totalCount,
@@ -98,6 +99,7 @@ function SortableServiceSection({
       <ServiceSectionCard
         service={service}
         proposalId={proposalId}
+        currency={currency}
         onRefresh={onRefresh}
         dragHandleProps={{ ...attributes, ...listeners }}
         idx={idx}
@@ -227,111 +229,136 @@ export function ProposalPriceBuilder({ proposalId }: ProposalPriceBuilderProps) 
     );
   }
 
-  return (
-    <div className="space-y-8 pb-16">
-      {/* Top Banner / Header */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 p-6 rounded-3xl border border-border/80 bg-gradient-to-r from-card via-card to-primary/5 shadow-lg backdrop-blur-md">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Button asChild variant="ghost" size="sm" className="size-8 p-0 text-muted-foreground hover:text-foreground">
-              <Link href="/dashboard/proposals" title="Back to proposals list">
-                <ArrowLeft className="size-4" />
-              </Link>
+  if (data.status !== "DRAFT") {
+    return (
+      <div className="w-full space-y-6">
+        <ProposalWorkflowNav
+          proposalId={proposalId}
+          activeStep={2}
+          title={data.title}
+          customerName={data.customer?.displayName}
+          status={data.status}
+          maxAvailableStep={2}
+        />
+        <section className="max-w-2xl space-y-3 py-4">
+          <h2 className="text-lg font-semibold">This proposal is read-only</h2>
+          <p className="text-sm text-muted-foreground">
+            {data.status} proposals cannot be changed. Duplicate this proposal from the proposals list to create a new draft.
+          </p>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <Button asChild>
+              <Link href={`/dashboard/proposals/${proposalId}/preview`}>View proposal</Link>
             </Button>
-            <Badge variant="outline" className="text-xs font-mono px-2.5 py-0.5 bg-background shadow-xs">
-              ID: {data.id.slice(-6).toUpperCase()}
-            </Badge>
-            <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-bold px-2.5 py-0.5 flex items-center gap-1">
-              <CheckCircle2 className="size-3" />
-              <span>Source of Truth</span>
-            </Badge>
-            <Badge variant="secondary" className="text-xs uppercase tracking-wider font-semibold px-2.5 py-0.5">
-              {data.status}
-            </Badge>
+            <Button asChild variant="outline">
+              <Link href="/dashboard/proposals">Back to proposals</Link>
+            </Button>
           </div>
+        </section>
+      </div>
+    );
+  }
 
-          <h1 className="text-2xl sm:text-3xl font-black text-foreground tracking-tight">
-            {data.title}
-          </h1>
+  const pricingValidation = proposalPricingStepSchema.safeParse({
+    services: data.proposalServices.map((service) => ({
+      items: service.items.map((item) => ({
+        name: item.name,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+      })),
+    })),
+  });
+  const sectionCount = data.proposalServices.length;
+  const itemCount = data.proposalServices.reduce(
+    (total, service) => total + service.items.length,
+    0,
+  );
 
-          <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-            {data.customer && (
-              <div className="flex items-center gap-1.5 font-medium text-foreground bg-muted/60 px-2.5 py-1 rounded-lg border border-border/40">
-                <Building2 className="size-3.5 text-primary" />
-                <span>{data.customer.displayName}</span>
-                {data.customer.companyName && (
-                  <span className="text-muted-foreground">({data.customer.companyName})</span>
-                )}
-              </div>
-            )}
-            {data.validUntil && (
-              <div className="flex items-center gap-1.5">
-                <Calendar className="size-3.5" />
-                <span>Valid until {new Date(data.validUntil).toLocaleDateString()}</span>
-              </div>
-            )}
+  return (
+    <div className="space-y-5 pb-28 sm:space-y-6">
+      <ProposalWorkflowNav
+        proposalId={proposalId}
+        activeStep={2}
+        title={data.title}
+        customerName={data.customer?.displayName}
+        status={data.status}
+        maxAvailableStep={pricingValidation.success ? 3 : 2}
+      />
+
+      <div className="space-y-4 border-b pb-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1">
+            <h1 className="text-xl font-semibold tracking-tight">Proposal pricing</h1>
+            <p className="max-w-2xl text-sm text-muted-foreground">
+              Add services or custom items, then review the total before creating the document.
+            </p>
           </div>
+          <Badge variant="outline" className="w-fit shrink-0 font-normal">
+            {data.currency}
+          </Badge>
         </div>
-
-        <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
+          <div className="min-w-0 [&_button]:w-full sm:[&_button]:w-auto">
+            <ServicePackageImporter proposalId={proposalId} onSuccess={() => loadPricingData(true)} />
+          </div>
+          <div className="min-w-0 [&_button]:w-full sm:[&_button]:w-auto">
+            <CustomLineItemDialog proposalId={proposalId} currency={data.currency} onAdded={() => loadPricingData(true)} />
+          </div>
           <Button
             variant="outline"
-            size="icon"
+            size="default"
             onClick={() => loadPricingData(true)}
             disabled={refreshing}
-            className="size-10 rounded-xl"
-            title="Refresh Pricing"
+            className="col-span-2 gap-2 sm:col-span-1 sm:size-9 sm:px-0"
+            aria-label={refreshing ? "Refreshing pricing" : "Refresh pricing"}
+            title="Refresh pricing"
           >
             <RefreshCw className={`size-4 ${refreshing ? "animate-spin text-primary" : ""}`} />
-          </Button>
-          <ServicePackageImporter proposalId={proposalId} onSuccess={() => loadPricingData(true)} />
-
-          <Button asChild className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 shadow-md rounded-xl h-10 px-4">
-            <Link href={`/dashboard/proposals/${proposalId}/composer`}>
-              <FileText className="size-4" />
-              <span className="font-semibold text-xs sm:text-sm">Document Composer</span>
-            </Link>
+            <span className="sm:sr-only">Refresh</span>
           </Button>
         </div>
       </div>
 
+      {!pricingValidation.success && (
+        <p role="status" className="border-l-2 border-amber-500 py-2 pl-3 text-sm text-muted-foreground">
+          Add at least one priced line item to complete Step 2 and unlock Step 3: Document.
+        </p>
+      )}
+
       {/* Main Grid Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-12 lg:gap-6">
         {/* Left Column: Service Sections & Line Items */}
-        <div className="lg:col-span-8 space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold flex items-center gap-2">
-              <span>Service Sections & Line Items</span>
-              <Badge variant="secondary" className="rounded-full px-2.5 py-0.5 text-xs font-mono">
-                {data.proposalServices.length} {data.proposalServices.length === 1 ? "Section" : "Sections"}
-              </Badge>
-            </h2>
+        <div className="order-first min-w-0 space-y-4 lg:order-first lg:col-span-8">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold">Sections and items</h2>
+            <Badge variant="secondary" className="font-normal">
+              {sectionCount} {sectionCount === 1 ? "section" : "sections"}
+              <span className="mx-1.5 text-muted-foreground" aria-hidden="true">/</span>
+              {itemCount} {itemCount === 1 ? "item" : "items"}
+            </Badge>
           </div>
 
           {data.proposalServices.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-12 rounded-3xl border-2 border-dashed border-border bg-card/40 text-center space-y-4 shadow-xs">
-              <div className="p-5 rounded-2xl bg-primary/10 text-primary shadow-inner">
-                <PackageOpen className="size-10" />
+            <div className="rounded-xl border border-dashed bg-muted/10 px-5 py-9 text-center sm:px-6 sm:py-10">
+              <div className="mx-auto mb-4 flex size-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <PackageOpen className="size-5" aria-hidden="true" />
               </div>
-              <div className="space-y-1 max-w-md">
-                <h3 className="text-lg font-bold text-foreground">No Packages Imported Yet</h3>
+              <div className="mx-auto max-w-md space-y-1">
+                <h3 className="font-semibold">No pricing items yet</h3>
                 <p className="text-sm text-muted-foreground">
-                  Get started by importing a service package. A snapshot of all its items will be copied over so you can customize quantities, pricing, and billing cycles freely.
+                  Add a service package or a custom item using the actions above.
                 </p>
-              </div>
-              <div className="pt-2">
-                <ServicePackageImporter proposalId={proposalId} onSuccess={() => loadPricingData(true)} />
               </div>
             </div>
           ) : (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleServiceDragEnd}>
               <SortableContext items={data.proposalServices.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-                <div className="space-y-6">
+                <div className="space-y-4">
                   {data.proposalServices.map((service, idx) => (
                     <SortableServiceSection
                       key={service.id}
                       service={service}
                       proposalId={proposalId}
+                      currency={data.currency}
                       onRefresh={() => loadPricingData(true)}
                       idx={idx}
                       totalCount={data.proposalServices.length}
@@ -345,7 +372,7 @@ export function ProposalPriceBuilder({ proposalId }: ProposalPriceBuilderProps) 
         </div>
 
         {/* Right Column: Pricing Summary Card */}
-        <div className="lg:col-span-4">
+        <div className="order-last min-w-0 lg:sticky lg:top-4 lg:order-last lg:col-span-4">
           <PricingSummaryCard
             proposalId={proposalId}
             subtotal={data.subtotal}
@@ -358,6 +385,28 @@ export function ProposalPriceBuilder({ proposalId }: ProposalPriceBuilderProps) 
           />
         </div>
       </div>
+      <ProposalWorkflowActionBar>
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          {!pricingValidation.success && (
+            <p role="status" className="text-xs text-muted-foreground">
+              Add at least one priced item to continue.
+            </p>
+          )}
+          {pricingValidation.success ? (
+            <Button asChild className="w-full gap-2 sm:w-auto">
+              <Link href={`/dashboard/proposals/${proposalId}/composer`}>
+                <FileText className="size-4" />
+                <span>Continue to document</span>
+              </Link>
+            </Button>
+          ) : (
+            <Button disabled className="w-full gap-2 sm:w-auto">
+              <FileText className="size-4" />
+              <span>Continue to document</span>
+            </Button>
+          )}
+        </div>
+      </ProposalWorkflowActionBar>
     </div>
   );
 }

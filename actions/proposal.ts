@@ -6,12 +6,18 @@ import { errorResponse, successResponse } from "@/lib/action-response";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { getErrorMessage } from "@/lib/schemas/prisma-utils";
-import { ProposalQuerySchema, proposalSchema, ProposalSchema } from "@/lib/schemas/proposal-schema"
+import {
+    ProposalQuerySchema,
+    proposalQuerySchema,
+    proposalSchema,
+    ProposalSchema,
+} from "@/lib/schemas/proposal-schema";
 import { addDays } from "date-fns";
 import { headers } from "next/headers";
 import { sendProposalLinkEmail } from "@/lib/email";
 import { syncProposalComposerTermsAndFeatures } from "@/actions/proposal-composer";
 import { hasBusinessWorkspaceAccess } from "@/lib/workspace-access";
+import { z } from "zod";
 
 type ProposalPermission = "create" | "read" | "update" | "delete" | "send";
 
@@ -141,6 +147,41 @@ export async function updateProposalStatus(proposalId: string, status: "DRAFT" |
     } catch (error) {
         console.error("Failed to update proposal status:", error);
         return errorResponse("Failed to update proposal status", getErrorMessage(error));
+    }
+}
+
+export async function manuallyAcceptProposal(proposalId: string) {
+    try {
+        const validatedProposalId = z.string().min(1).safeParse(proposalId);
+        if (!validatedProposalId.success) {
+            return errorResponse("Invalid proposal");
+        }
+
+        if (!(await hasProposalPermission("update"))) {
+            return errorResponse("You don't have permission to update proposals");
+        }
+
+        const result = await prisma.proposal.updateMany({
+            where: { id: validatedProposalId.data, status: "SENT" },
+            data: { status: "ACCEPTED", acceptedAt: new Date() },
+        });
+
+        if (result.count === 0) {
+            const existingProposal = await prisma.proposal.findUnique({
+                where: { id: validatedProposalId.data },
+                select: { id: true },
+            });
+            return errorResponse(
+                existingProposal
+                    ? "Only sent proposals can be manually accepted"
+                    : "Proposal not found",
+            );
+        }
+
+        return successResponse("Proposal marked as accepted");
+    } catch (error) {
+        console.error("Failed to manually accept proposal:", error);
+        return errorResponse("Failed to accept proposal", getErrorMessage(error));
     }
 }
 
@@ -362,11 +403,30 @@ export async function getProposals(query: ProposalQuerySchema) {
             return errorResponse("Your account is not allowed to read proposals.");
         }
 
-        const { page, pageSize, search, status, sortDirection, customerId } = query
+        const validatedQuery = proposalQuerySchema.safeParse(query);
+        if (!validatedQuery.success) {
+            return errorResponse("Invalid proposal filters", validatedQuery.error.issues);
+        }
+
+        const { page, pageSize, search, status, sortDirection, customerId, validUntilFrom, validUntilTo } = validatedQuery.data
+        const validUntil: Prisma.DateTimeFilter | undefined =
+            validUntilFrom || validUntilTo
+                ? {
+                    ...(validUntilFrom ? { gte: new Date(`${validUntilFrom}T00:00:00.000Z`) } : {}),
+                    ...(validUntilTo
+                        ? {
+                            lt: new Date(
+                                new Date(`${validUntilTo}T00:00:00.000Z`).getTime() + 24 * 60 * 60 * 1000,
+                            ),
+                        }
+                        : {}),
+                }
+                : undefined
 
         const where: ProposalWhereInput = {
             status: status ? { equals: status } : undefined,
             customerId: customerId ? { equals: customerId } : undefined,
+            validUntil,
             ...(search && {
                 OR: [
                     {
@@ -398,8 +458,15 @@ export async function getProposals(query: ProposalQuerySchema) {
 
                 select: {
                     id: true,
+                    customerId: true,
                     customerDisplayName: true,
                     customerCompanyName: true,
+                    customer: {
+                        select: {
+                            primaryContactEmail: true,
+                            primaryContactPhone: true,
+                        },
+                    },
                     preparedByName: true,
                     status: true,
                     validUntil: true,
@@ -421,6 +488,8 @@ export async function getProposals(query: ProposalQuerySchema) {
 
         const data = proposals.map((proposal) => ({
             ...proposal,
+            customerEmail: proposal.customer.primaryContactEmail,
+            customerPhone: proposal.customer.primaryContactPhone,
             grandTotal: proposal.grandTotal.toNumber(),
         }));
 

@@ -17,6 +17,11 @@ export const serviceSchema = z.object({
   showInProposal: z.boolean().optional(),
 });
 
+export const serviceProposalVisibilitySchema = z.object({
+  id: z.string().min(1),
+  showInProposal: z.boolean(),
+});
+
 export const serviceQuerySchema = z.object({
   page: z.number().min(0).default(0),
   pageSize: z.number().min(1).max(100).default(10),
@@ -32,4 +37,5 @@ export const serviceQuerySchema = z.object({
 });
 
 export type ServiceSchema = z.infer<typeof serviceSchema>
+export type ServiceProposalVisibilitySchema = z.infer<typeof serviceProposalVisibilitySchema>
 export type ServiceQuerySchema = z.infer<typeof serviceQuerySchema>

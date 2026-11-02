@@ -18,6 +18,7 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { ProposalBlockType, Prisma } from "@/app/generated/prisma/client";
 import { hasBusinessWorkspaceAccess } from "@/lib/workspace-access";
+import { getProposalDraftError } from "@/lib/proposal-draft";
 
 async function checkPermission(permission: "read" | "create" | "update" | "delete") {
   const session = await auth.api.getSession({
@@ -56,6 +57,12 @@ export async function getProposalComposerData(proposalId: string, options?: { fo
     if (!pricingRes.success || !pricingRes.data) {
       return errorResponse(pricingRes.message || "Failed to fetch proposal pricing data");
     }
+    if (
+      pricingRes.data.status !== "DRAFT" &&
+      (options?.forceRebuild || options?.autoSync)
+    ) {
+      return errorResponse("Only draft proposals can be updated.");
+    }
 
     // Check existing proposal blocks
     let blocks = await prisma.proposalBlock.findMany({
@@ -66,7 +73,7 @@ export async function getProposalComposerData(proposalId: string, options?: { fo
 
     let justInitialized = false;
     // If no blocks exist, initialize default 6 system blocks inside a transaction
-    if (blocks.length === 0) {
+    if (blocks.length === 0 && pricingRes.data.status === "DRAFT") {
       justInitialized = true;
       const defaultBlocks = [
         {
@@ -166,6 +173,7 @@ export async function getProposalComposerData(proposalId: string, options?: { fo
           type: "TIMELINE" as const,
           sortOrder: 3,
           title: "Project Timeline & Milestones",
+          isVisible: false,
           isLocked: false,
           isSystemGenerated: true,
           content: {
@@ -371,7 +379,7 @@ export async function getProposalComposerData(proposalId: string, options?: { fo
             content: [{ type: "text", text: group.title }],
           });
           
-          let currentList: any[] = [];
+          let currentList: Array<Record<string, unknown>> = [];
           for (const feature of group.features) {
             if (feature.isHeading) {
               if (currentList.length > 0) {
@@ -421,7 +429,7 @@ export async function getProposalComposerData(proposalId: string, options?: { fo
               });
             }
             
-            let currentList: any[] = [];
+            let currentList: Array<Record<string, unknown>> = [];
             for (const feature of missingInGroup) {
               if (feature.isHeading) {
                 if (currentList.length > 0) {
@@ -561,6 +569,9 @@ export async function syncProposalComposerTermsAndFeatures(proposalId: string, f
     const perm = await checkPermission("update");
     if (!perm.success) return errorResponse(perm.error!);
 
+    const draftError = await getProposalDraftError(proposalId);
+    if (draftError) return errorResponse(draftError);
+
     const res = await getProposalComposerData(proposalId, { forceRebuild, autoSync: true });
     if (!res.success) return errorResponse(res.message || "Failed to sync");
 
@@ -577,6 +588,8 @@ export async function createProposalBlock(input: CreateProposalBlockInput) {
     if (!perm.success) return errorResponse(perm.error!);
 
     const validated = createProposalBlockSchema.parse(input);
+    const draftError = await getProposalDraftError(validated.proposalId);
+    if (draftError) return errorResponse(draftError);
 
     // Protect against creating system blocks via manual insertion
     const systemTypes: ProposalBlockTypeEnum[] = ["COVER", "PRICING", "FEATURES", "TERMS", "SIGNATURE"];
@@ -642,7 +655,7 @@ export async function createProposalBlock(input: CreateProposalBlockInput) {
         type: validated.type as ProposalBlockType,
         title: defaultTitle,
         sortOrder,
-        isVisible: true,
+        isVisible: validated.type !== "TIMELINE",
         isLocked: false,
         isSystemGenerated: validated.type === "TIMELINE",
         content: defaultContent,
@@ -663,6 +676,8 @@ export async function updateProposalBlock(id: string, proposalId: string, input:
     if (!perm.success) return errorResponse(perm.error!);
 
     const validated = updateProposalBlockSchema.parse(input);
+    const draftError = await getProposalDraftError(proposalId);
+    if (draftError) return errorResponse(draftError);
 
     const existing = await prisma.proposalBlock.findFirst({
       where: { id, proposalId },
@@ -699,6 +714,8 @@ export async function reorderProposalBlocks(input: ReorderProposalBlocksInput) {
     if (!perm.success) return errorResponse(perm.error!);
 
     const validated = reorderProposalBlocksSchema.parse(input);
+    const draftError = await getProposalDraftError(validated.proposalId);
+    if (draftError) return errorResponse(draftError);
 
     await prisma.$transaction(
       validated.items.map((item) =>
@@ -721,6 +738,9 @@ export async function duplicateProposalBlock(id: string, proposalId: string) {
   try {
     const perm = await checkPermission("update");
     if (!perm.success) return errorResponse(perm.error!);
+
+    const draftError = await getProposalDraftError(proposalId);
+    if (draftError) return errorResponse(draftError);
 
     const existing = await prisma.proposalBlock.findFirst({
       where: { id, proposalId },
@@ -773,6 +793,9 @@ export async function deleteProposalBlock(id: string, proposalId: string) {
     const perm = await checkPermission("update");
     if (!perm.success) return errorResponse(perm.error!);
 
+    const draftError = await getProposalDraftError(proposalId);
+    if (draftError) return errorResponse(draftError);
+
     const existing = await prisma.proposalBlock.findFirst({
       where: { id, proposalId },
     });
@@ -802,6 +825,9 @@ export async function toggleBlockVisibility(id: string, proposalId: string, isVi
   try {
     const perm = await checkPermission("update");
     if (!perm.success) return errorResponse(perm.error!);
+
+    const draftError = await getProposalDraftError(proposalId);
+    if (draftError) return errorResponse(draftError);
 
     const updated = await prisma.proposalBlock.updateMany({
       where: { id, proposalId },

@@ -2,14 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   Loader2,
-  ArrowLeft,
   RefreshCw,
   RotateCcw,
-  DollarSign,
   HelpCircle,
   Eye,
 } from "lucide-react";
@@ -52,10 +49,14 @@ import { RichTextBlockEditor } from "./rich-text-block-editor";
 import { TimelineBlockEditor } from "./timeline-block-editor";
 import { SignatureBlockEditor } from "./signature-block-editor";
 import { ProposalBlockType } from "@/app/generated/prisma/client";
+import { ProposalWorkflowNav } from "@/components/proposal/proposal-workflow-nav";
+import { ProposalWorkflowActionBar } from "@/components/proposal/proposal-workflow-action-bar";
+import { proposalDocumentStepSchema } from "@/lib/schemas/proposal-workflow-schema";
 
 interface ProposalData {
   id: string;
   title: string;
+  status?: string;
   customerDisplayName?: string;
   customer?: { displayName: string; companyName?: string | null };
   subtotal: number;
@@ -180,7 +181,10 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
     }
   };
 
-  const handleAddBlock = async (type: "CUSTOM" | "PAGE_BREAK" | "TIMELINE", title?: string) => {
+  const handleAddBlock = async (
+    type: "CUSTOM" | "PAGE_BREAK" | "TIMELINE" | "PRICING_SUMMARY",
+    title?: string
+  ) => {
     setIsAdding(true);
     try {
       const res = await createProposalBlock({
@@ -354,7 +358,7 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
       }
       toast.dismiss(toastId);
       router.push(`/dashboard/proposals/${proposalId}/preview`);
-    } catch (error) {
+    } catch {
       toast.dismiss(toastId);
       toast.error("Failed to save some changes before previewing");
       setIsPreviewing(false);
@@ -373,44 +377,76 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
   }
 
   const hasTimeline = blocks.some((b) => b.type === "TIMELINE");
+  const documentValidation = proposalDocumentStepSchema.safeParse({
+    blocks: blocks.map((block) => ({
+      type: block.type,
+      sortOrder: block.sortOrder,
+      isVisible: block.isVisible,
+    })),
+  });
+
+  if (proposal && proposal.status !== "DRAFT") {
+    return (
+      <div className="w-full space-y-6">
+        <ProposalWorkflowNav
+          proposalId={proposalId}
+          activeStep={3}
+          title={proposal.title}
+          customerName={proposal.customerDisplayName || proposal.customer?.displayName}
+          status={proposal.status}
+          maxAvailableStep={4}
+        />
+        <section className="max-w-2xl space-y-3 py-4">
+          <h2 className="text-lg font-semibold">This proposal is read-only</h2>
+          <p className="text-sm text-muted-foreground">
+            {proposal.status} proposals cannot be changed. Duplicate this proposal from the proposals list to create a new draft.
+          </p>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <Button asChild>
+              <Link href={`/dashboard/proposals/${proposalId}/preview`}>View proposal</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/dashboard/proposals">Back to proposals</Link>
+            </Button>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto pb-20">
-      {/* Top Banner Navigation & Status */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-4 rounded-xl bg-card border shadow-xs">
-        <div className="flex items-center gap-3">
-          <Button asChild variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-            <Link href={`/dashboard/proposals/${proposalId}/builder`} title="Back to Pricing Builder">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
+    <div className="w-full space-y-6 pb-28">
+      <ProposalWorkflowNav
+        proposalId={proposalId}
+        activeStep={3}
+        title={proposal?.title}
+        customerName={proposal?.customerDisplayName || proposal?.customer?.displayName}
+        status={proposal?.status}
+        maxAvailableStep={documentValidation.success ? 4 : 3}
+      />
 
-          <div className="space-y-0.5 min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold truncate text-foreground">
-                {proposal?.title || "Proposal Composer"}
-              </h1>
-              <Badge variant="outline" className="text-[10px] bg-primary/5 text-primary border-primary/20">
-                Phase 3: Document Composer
-              </Badge>
-            </div>
-            <p className="text-xs text-muted-foreground truncate">
-              {proposal?.customerDisplayName || proposal?.customer?.displayName || "Client"} • {blocks.length} Sections
-            </p>
-          </div>
+      <div className="flex flex-col gap-4 border-b pb-5 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold tracking-tight">Document content</h2>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+            Arrange sections and refine the wording before previewing the proposal.
+          </p>
         </div>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
+          <div className="order-2 sm:order-none">
+            <AddBlockMenu onAddBlock={handleAddBlock} isAdding={isAdding} hasTimeline={hasTimeline} />
+          </div>
 
-        <div className="flex items-center gap-2.5 w-full md:w-auto justify-end flex-wrap">
           <Button
             variant="outline"
             size="sm"
             onClick={handleSync}
             disabled={refreshing}
-            className="h-8 gap-1.5 text-xs"
-            title="Sync terms & features from server without overwriting edits"
+            className="order-3 h-9 gap-2 sm:order-none"
+            title="Refresh document terms and features without replacing custom edits"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-            <span>Sync</span>
+            <RefreshCw className={`size-4 ${refreshing ? "animate-spin" : ""}`} />
+            <span>Sync content</span>
           </Button>
 
           <ConfirmDialog
@@ -419,11 +455,11 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
                 variant="outline"
                 size="sm"
                 disabled={refreshing}
-                className="h-8 gap-1.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/20"
-                title="Reset features and terms to match the source table (overwrites edits)"
+                className="order-4 h-9 gap-2 border-destructive/20 text-destructive hover:bg-destructive/10 hover:text-destructive sm:order-none"
+                title="Replace edited terms and features with the source table"
               >
-                <RotateCcw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-                <span>Reset</span>
+                <RotateCcw className={`size-4 ${refreshing ? "animate-spin" : ""}`} />
+                <span>Reset content</span>
               </Button>
             }
             title="Reset features and terms?"
@@ -432,38 +468,24 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
             disabled={refreshing}
             onConfirm={() => void handleReset()}
           />
-
-          <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 text-xs bg-emerald-50/50 hover:bg-emerald-100/50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">
-            <Link href={`/dashboard/proposals/${proposalId}/builder`}>
-              <DollarSign className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>Pricing Builder</span>
-            </Link>
-          </Button>
-
-          <Button 
-            onClick={handlePreviewClick}
-            disabled={isPreviewing}
-            size="sm" 
-            className="h-8 gap-1.5 text-xs"
-          >
-            {isPreviewing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
-            <span>{isPreviewing ? "Preparing..." : "Preview Proposal"}</span>
-          </Button>
-
-          <AddBlockMenu onAddBlock={handleAddBlock} isAdding={isAdding} hasTimeline={hasTimeline} />
         </div>
       </div>
 
-      {/* Philosophy Hint Banner */}
-      <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-200 text-xs">
-        <HelpCircle className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
+      {!documentValidation.success && (
+        <p role="status" className="border-l-2 border-amber-500 py-2 pl-3 text-sm text-muted-foreground">
+          Show at least one document section to unlock Step 4: Review &amp; send.
+        </p>
+      )}
+
+      <div className="flex items-start gap-3 border-l-2 border-primary/40 py-1 pl-3 text-sm text-muted-foreground">
+        <HelpCircle className="mt-0.5 size-4 shrink-0 text-primary" />
         <div className="flex-1">
-          <span className="font-semibold">Document Structure:</span> You can reorder sections via drag-and-drop or Up/Down arrows. Click on custom section titles to rename them. All rich text edits are saved as structured JSON.
+          Reorder sections with drag and drop or the move controls. Rich-text edits save as you leave each section; use Preview to review the finished proposal.
         </div>
       </div>
 
       {/* Block List / Composer Canvas */}
-      <div className="space-y-4">
+      <div className="space-y-6">
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -510,6 +532,23 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
           </SortableContext>
         </DndContext>
       </div>
+      <ProposalWorkflowActionBar>
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          {!documentValidation.success && (
+            <p role="status" className="text-xs text-muted-foreground">
+              Show at least one document section to enable preview.
+            </p>
+          )}
+          <Button
+            onClick={handlePreviewClick}
+            disabled={isPreviewing || !documentValidation.success}
+            className="w-full gap-2 sm:w-auto"
+          >
+            {isPreviewing ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
+            <span>{isPreviewing ? "Saving changes…" : "Preview proposal"}</span>
+          </Button>
+        </div>
+      </ProposalWorkflowActionBar>
     </div>
   );
 }

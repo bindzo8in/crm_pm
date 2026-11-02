@@ -2,10 +2,9 @@
 
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, GripVertical } from "lucide-react";
+import { Loader2, GripVertical, FileText, PackageOpen, Settings2 } from "lucide-react";
 import {
     DndContext,
     closestCenter,
@@ -17,7 +16,6 @@ import {
 } from "@dnd-kit/core";
 import {
     SortableContext,
-    arrayMove,
     sortableKeyboardCoordinates,
     verticalListSortingStrategy,
     useSortable,
@@ -26,7 +24,6 @@ import { CSS } from "@dnd-kit/utilities";
 
 // shadcn/ui components
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -43,10 +40,8 @@ import { termSchema, TermSchema } from "@/lib/schemas/term-schema";
 // Custom Field components (as per your sample)
 import {
     Field,
-    FieldContent,
     FieldLabel,
     FieldError,
-    FieldSeparator,
 } from "@/components/ui/field";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { CreateTerm, EditTerm, GetTerm } from "@/actions/terms";
@@ -144,9 +139,8 @@ export function ProposalTermForm({
         watch,
         setValue,
         getValues,
-        formState: { isSubmitting, errors },
+        formState: { isSubmitting },
     } = form;
-    console.log(errors)
     const { fields, move } = useFieldArray({
         control,
         name: "packages",
@@ -226,234 +220,257 @@ export function ProposalTermForm({
     });
 
     return (
-        <form onSubmit={onSubmit} className="max-w-[900px] mx-auto p-2 sm:p-5 md:p-8 w-full rounded-md border">
-            {/* Header */}
-            <h1 className="mt-6 mb-1 font-extrabold text-3xl tracking-tight">
-                {initialData?.id ? "Edit Proposal Term" : "Create Proposal Term"}
-            </h1>
-            <FieldSeparator className="my-4 w-full" />
+        <form onSubmit={onSubmit} className="w-full">
+            <header className="mb-8 border-b border-border pb-6">
+                <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                    {initialData?.id ? "Edit proposal term" : "Create proposal term"}
+                </h1>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                    Write reusable terms for your proposals, choose which packages they apply to, and set how they are used.
+                </p>
+            </header>
 
-            {/* ============================================================
-          CARD 1 — Basic Information
-          ============================================================ */}
-            <Card className="mb-8">
-                <CardHeader>
-                    <CardTitle>Basic Information</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                    {/* Title */}
+            <section aria-labelledby="term-details-heading" className="grid gap-8 border-b border-border pb-8 lg:grid-cols-[minmax(11rem,0.6fr)_minmax(0,2fr)]">
+                <div className="flex gap-3">
+                    <FileText aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-primary" />
+                    <div>
+                        <h2 id="term-details-heading" className="text-base font-semibold">Term details</h2>
+                        <p className="mt-1 max-w-sm text-sm leading-5 text-muted-foreground">
+                            Give this clause a clear name so your team can find it when preparing a proposal.
+                        </p>
+                    </div>
+                </div>
+                <div className="space-y-7">
                     <Controller
                         name="title"
                         control={control}
                         render={({ field, fieldState }) => (
-                            <Field data-invalid={fieldState.invalid} className="gap-1">
-                                <FieldLabel htmlFor="title">Proposal Term Title *</FieldLabel>
+                            <Field data-invalid={fieldState.invalid} className="gap-2">
+                                <FieldLabel htmlFor="title">Term name <span className="text-destructive">*</span></FieldLabel>
                                 <Input
                                     {...field}
                                     id="title"
                                     type="text"
-                                    placeholder="e.g., Payment Terms, Source Code Ownership, SEO Disclaimer"
+                                    placeholder="e.g. Payment schedule"
                                     aria-invalid={fieldState.invalid}
+                                    aria-describedby={fieldState.invalid ? "term-title-error" : "term-title-hint"}
+                                    className="h-11 max-w-2xl"
                                 />
-                                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                                <p id="term-title-hint" className="text-xs text-muted-foreground">
+                                    Use a short label, such as payment terms or ownership.
+                                </p>
+                                {fieldState.invalid && (
+                                    <FieldError id="term-title-error" errors={[fieldState.error]} />
+                                )}
                             </Field>
                         )}
                     />
 
-                    {/* Packages Table */}
-                    <div>
-                        <FieldLabel className="mb-2 block">Applicable Packages</FieldLabel>
-                        <div className="border rounded-md overflow-x-auto">
-                            <DndContext
-                                sensors={sensors}
-                                collisionDetection={closestCenter}
-                                onDragEnd={handleDragEnd}
-                            >
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead className="w-[40px]"></TableHead>
-                                            <TableHead className="min-w-[180px]">Package</TableHead>
-                                            <TableHead className="text-center">Include</TableHead>
-                                            <TableHead className="text-center">Required</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        <SortableContext
-                                            items={fields.map((f) => f.id)}
-                                            strategy={verticalListSortingStrategy}
-                                        >
-                                            {fields.map((field, index) => {
-                                                const pkg = watchedPackages[index];
-                                                const isDisabled = pkg?.disabled || false;
-                                                const isIncluded = pkg?.include || false;
+                </div>
+            </section>
 
-                                                return (
-                                                    <SortableTableRow key={field.id} id={field.id}>
-                                                        <TableCell className="font-medium">
-                                                            {pkg?.packageName}
-                                                            {isDisabled && (
-                                                                <span className="ml-2 text-xs text-muted-foreground">
-                                                                    (disabled)
-                                                                </span>
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell className="text-center">
-                                                            <Controller
-                                                                name={`packages.${index}.include`}
-                                                                control={control}
-                                                                render={({ field: checkboxField }) => (
-                                                                    <Checkbox
-                                                                        checked={checkboxField.value}
-                                                                        onCheckedChange={(checked) => {
-                                                                            checkboxField.onChange(checked);
-                                                                            handleIncludeChange(index, !!checked);
-                                                                        }}
-                                                                        disabled={isDisabled}
-                                                                        aria-label={`Include ${pkg?.packageName}`}
-                                                                    />
-                                                                )}
-                                                            />
-                                                        </TableCell>
-                                                        <TableCell className="text-center">
-                                                            <Controller
-                                                                name={`packages.${index}.isRequired`}
-                                                                control={control}
-                                                                render={({ field: checkboxField }) => (
-                                                                    <Checkbox
-                                                                        checked={checkboxField.value}
-                                                                        onCheckedChange={checkboxField.onChange}
-                                                                        disabled={!isIncluded || isDisabled}
-                                                                        aria-label={`Required for ${pkg?.packageName}`}
-                                                                    />
-                                                                )}
-                                                            />
-                                                        </TableCell>
-                                                    </SortableTableRow>
-                                                );
-                                            })}
-                                        </SortableContext>
-                                    </TableBody>
-                                </Table>
-                            </DndContext>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            Select which packages this term applies to. Required is only available when Include is checked.
+            <section aria-labelledby="term-packages-heading" className="border-b border-border py-8">
+                <div className="mb-4 flex gap-3">
+                    <PackageOpen aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-primary" />
+                    <div>
+                        <h2 id="term-packages-heading" className="text-base font-semibold">Applicable packages</h2>
+                        <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                            Choose where this term appears. Mark it required when the client must accept it.
                         </p>
                     </div>
-                </CardContent>
-            </Card>
+                </div>
+                {fields.length > 0 ? (
+                    <div className="border-y border-border">
+                        <DndContext
+                            id="proposal-term-packages"
+                            sensors={sensors}
+                            collisionDetection={closestCenter}
+                            onDragEnd={handleDragEnd}
+                        >
+                            <Table className="table-fixed">
+                                <TableHeader>
+                                    <TableRow className="hover:bg-transparent">
+                                        <TableHead className="w-12" aria-label="Reorder" />
+                                        <TableHead>Package</TableHead>
+                                        <TableHead className="w-28 text-center">Include</TableHead>
+                                        <TableHead className="w-28 text-center">Required</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    <SortableContext
+                                        items={fields.map((item) => item.id)}
+                                        strategy={verticalListSortingStrategy}
+                                    >
+                                        {fields.map((field, index) => {
+                                            const pkg = watchedPackages[index];
+                                            const isDisabled = pkg?.disabled || false;
+                                            const isIncluded = pkg?.include || false;
 
-            {/* ============================================================
-          CARD 2 — Content
-          ============================================================ */}
-            <Card className="mb-8">
-                <CardHeader>
-                    <CardTitle>Content</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <Controller
-                        name="content"
-                        control={control}
-                        render={({ field, fieldState }) => (
-                            <Field data-invalid={fieldState.invalid} className="gap-1">
-                                <RichTextEditor
-                                    value={field.value}
-                                    onChange={field.onChange}
-                                    uploadScope="terms"
-                                />
-                                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                            </Field>
-                        )}
-                    />
-                </CardContent>
-            </Card>
+                                            return (
+                                                <SortableTableRow key={field.id} id={field.id}>
+                                                    <TableCell>
+                                                        <span className="block truncate font-medium" title={pkg?.packageName}>
+                                                            {pkg?.packageName}
+                                                        </span>
+                                                        {isDisabled && (
+                                                            <span className="text-xs text-muted-foreground">
+                                                                Unavailable
+                                                            </span>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-center">
+                                                        <Controller
+                                                            name={`packages.${index}.include`}
+                                                            control={control}
+                                                            render={({ field: checkboxField }) => (
+                                                                <Checkbox
+                                                                    checked={checkboxField.value}
+                                                                    onCheckedChange={(checked) => {
+                                                                        checkboxField.onChange(checked);
+                                                                        handleIncludeChange(index, !!checked);
+                                                                    }}
+                                                                    disabled={isDisabled}
+                                                                    aria-label={`Include ${pkg?.packageName}`}
+                                                                />
+                                                            )}
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="text-center">
+                                                        <Controller
+                                                            name={`packages.${index}.isRequired`}
+                                                            control={control}
+                                                            render={({ field: checkboxField }) => (
+                                                                <Checkbox
+                                                                    checked={checkboxField.value}
+                                                                    onCheckedChange={checkboxField.onChange}
+                                                                    disabled={!isIncluded || isDisabled}
+                                                                    aria-label={`Require ${pkg?.packageName}`}
+                                                                />
+                                                            )}
+                                                        />
+                                                    </TableCell>
+                                                </SortableTableRow>
+                                            );
+                                        })}
+                                    </SortableContext>
+                                </TableBody>
+                            </Table>
+                        </DndContext>
+                    </div>
+                ) : (
+                    <div className="flex items-start gap-3 border-y border-border py-5 text-sm">
+                        <PackageOpen aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                        <p className="text-muted-foreground">
+                            No active packages are available. You can still create this term and apply it to proposals as a default.
+                        </p>
+                    </div>
+                )}
+            </section>
 
-            {/* ============================================================
-          CARD 3 — Settings
-          ============================================================ */}
-            <Card className="mb-8">
-                <CardHeader>
-                    <CardTitle>Settings</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                    {/* Active Switch */}
+            <section aria-labelledby="term-content-heading" className="border-b border-border py-8">
+                <div className="mb-4 flex gap-3">
+                    <FileText aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-primary" />
+                    <div>
+                        <h2 id="term-content-heading" className="text-base font-semibold">Term content</h2>
+                        <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                            Write the clause as it should appear to the client. Use the toolbar to format text, add links, or insert a table.
+                        </p>
+                    </div>
+                </div>
+                <Controller
+                    name="content"
+                    control={control}
+                    render={({ field, fieldState }) => (
+                        <Field data-invalid={fieldState.invalid} className="gap-2">
+                            <RichTextEditor
+                                value={field.value}
+                                onChange={field.onChange}
+                                uploadScope="terms"
+                                className="rounded-lg [&_.tiptap]:min-h-[320px] [&_.tiptap]:p-6"
+                            />
+                            {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                        </Field>
+                    )}
+                />
+            </section>
+
+            <section aria-labelledby="term-settings-heading" className="grid gap-8 border-b border-border py-8 lg:grid-cols-[minmax(11rem,0.6fr)_minmax(0,2fr)]">
+                <div className="flex gap-3">
+                    <Settings2 aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-primary" />
+                    <div>
+                        <h2 id="term-settings-heading" className="text-base font-semibold">Usage settings</h2>
+                        <p className="mt-1 max-w-sm text-sm leading-5 text-muted-foreground">
+                            Control whether this term is available and when proposals include it automatically.
+                        </p>
+                    </div>
+                </div>
+                <div className="divide-y divide-border">
                     <Controller
                         name="isActive"
                         control={control}
                         render={({ field }) => (
-                            <Field orientation="horizontal" className="items-center">
-                                <FieldContent className="flex flex-row items-center gap-3">
-                                    <Switch
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
-                                        id="isActive"
-                                    />
-                                    <div>
-                                        <FieldLabel htmlFor="isActive" className="text-base">
-                                            Active
-                                        </FieldLabel>
-                                        <p className="text-sm text-muted-foreground">
-                                            This term can be selected while creating proposals.
-                                        </p>
-                                    </div>
-                                </FieldContent>
-                            </Field>
+                            <div className="flex items-center justify-between gap-6 py-4 first:pt-0">
+                                <div className="space-y-1">
+                                    <FieldLabel htmlFor="isActive">Available for proposals</FieldLabel>
+                                    <p className="text-sm text-muted-foreground">
+                                        Turn off to keep this term saved without offering it to your team.
+                                    </p>
+                                </div>
+                                <Switch
+                                    checked={field.value}
+                                    onCheckedChange={field.onChange}
+                                    id="isActive"
+                                    aria-label="Available for proposals"
+                                />
+                            </div>
                         )}
                     />
-
-                    {/* Default Switch */}
                     <Controller
                         name="isDefault"
                         control={control}
                         render={({ field }) => (
-                            <Field orientation="horizontal" className="items-center">
-                                <FieldContent className="flex flex-row items-center gap-3">
-                                    <Switch
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
-                                        id="isDefault"
-                                    />
-                                    <div>
-                                        <FieldLabel htmlFor="isDefault" className="text-base">
-                                            Default Term
-                                        </FieldLabel>
-                                        <p className="text-sm text-muted-foreground">
-                                            Automatically include this term in every proposal regardless of the selected packages.
-                                        </p>
-                                    </div>
-                                </FieldContent>
-                            </Field>
+                            <div className="flex items-center justify-between gap-6 py-4 last:pb-0">
+                                <div className="space-y-1">
+                                    <FieldLabel htmlFor="isDefault">Include by default</FieldLabel>
+                                    <p className="max-w-2xl text-sm text-muted-foreground">
+                                        Add this term to every proposal automatically, regardless of the selected packages.
+                                    </p>
+                                </div>
+                                <Switch
+                                    checked={field.value}
+                                    onCheckedChange={field.onChange}
+                                    id="isDefault"
+                                    aria-label="Include by default"
+                                />
+                            </div>
                         )}
                     />
-                </CardContent>
-            </Card>
+                </div>
+            </section>
 
-            {/* ============================================================
-          Footer
-          ============================================================ */}
-            <div className="flex justify-end gap-3 pt-4 border-t">
+            <footer className="flex flex-col-reverse gap-3 py-6 sm:flex-row sm:justify-end">
                 <Button
                     type="button"
                     variant="outline"
                     onClick={onCancel || (() => router.back())}
                     disabled={isSubmitting}
+                    className="sm:min-w-28"
                 >
                     Cancel
                 </Button>
-                <Button type="submit" disabled={isSubmitting}>
+                <Button type="submit" disabled={isSubmitting} className="sm:min-w-36">
                     {isSubmitting ? (
                         <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Saving...
+                            <Loader2 className="mr-2 size-4 animate-spin" />
+                            Saving term...
                         </>
                     ) : initialData?.id ? (
-                        "Update Term"
+                        "Save changes"
                     ) : (
-                        "Save Term"
+                        "Create term"
                     )}
                 </Button>
-            </div>
+            </footer>
         </form>
     );
 }

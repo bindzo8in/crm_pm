@@ -23,7 +23,7 @@ import { Label } from "@/components/ui/label";
 import { Plus, FileText, Scissors, Calendar, Sparkles, Lock } from "lucide-react";
 
 interface AddBlockMenuProps {
-  onAddBlock: (type: "CUSTOM" | "PAGE_BREAK" | "TIMELINE", title?: string) => Promise<void>;
+  onAddBlock: (type: "CUSTOM" | "PAGE_BREAK" | "TIMELINE" | "PRICING_SUMMARY", title?: string) => Promise<void>;
   isAdding: boolean;
   hasTimeline: boolean;
 }
@@ -43,9 +43,14 @@ export function AddBlockMenu({ onAddBlock, isAdding, hasTimeline }: AddBlockMenu
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button disabled={isAdding} className="bg-primary text-primary-foreground gap-2 shadow-sm">
+          <Button
+            disabled={isAdding}
+            variant="outline"
+            size="sm"
+            className="h-9 w-full justify-center gap-2 sm:w-auto"
+          >
             <Plus className="h-4 w-4" />
-            Add Block
+            Add section
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-64">
@@ -106,7 +111,7 @@ export function AddBlockMenu({ onAddBlock, isAdding, hasTimeline }: AddBlockMenu
           </DropdownMenuItem>
           
           <DropdownMenuItem
-            onClick={() => onAddBlock("PRICING_SUMMARY" as any)}
+            onClick={() => onAddBlock("PRICING_SUMMARY")}
             className="gap-2.5 py-2.5 cursor-pointer"
           >
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400">

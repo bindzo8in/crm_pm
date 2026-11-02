@@ -49,6 +49,33 @@ interface SortableBlockWrapperProps {
   children: React.ReactNode;
 }
 
+function getDefaultBlockTitle(type: string) {
+  switch (type) {
+    case "COVER":
+      return "Cover Page";
+    case "PRICING":
+      return "Pricing & Financial Summary";
+    case "FEATURES":
+      return "Key Features & Capabilities";
+    case "TERMS":
+      return "Terms & Conditions";
+    case "TIMELINE":
+      return "Project Timeline & Milestones";
+    case "SIGNATURE":
+      return "Acceptance & Sign-off";
+    case "PRICING_SUMMARY":
+      return "Package Comparison Grid";
+    case "SECTION":
+      return "Section";
+    case "SERVICE":
+      return "Service";
+    case "CUSTOM":
+      return "Custom Section";
+    default:
+      return "Proposal Section";
+  }
+}
+
 export function SortableBlockWrapper({
   block,
   index,
@@ -60,9 +87,11 @@ export function SortableBlockWrapper({
   onMoveArrow,
   children,
 }: SortableBlockWrapperProps) {
+  const displayTitle = block.title?.trim() || getDefaultBlockTitle(block.type);
+  const isDisabledTimeline = block.type === "TIMELINE" && !block.isVisible;
   const [isExpanded, setIsExpanded] = useState(true);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [titleValue, setTitleValue] = useState(block.title || "");
+  const [titleValue, setTitleValue] = useState(displayTitle);
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: block.id,
@@ -103,10 +132,10 @@ export function SortableBlockWrapper({
 
   const handleTitleSubmit = async () => {
     setIsEditingTitle(false);
-    if (titleValue.trim() && titleValue !== block.title) {
+    if (titleValue.trim() && titleValue.trim() !== displayTitle) {
       await onUpdateTitle(block.id, titleValue.trim());
     } else {
-      setTitleValue(block.title || "");
+      setTitleValue(displayTitle);
     }
   };
 
@@ -190,14 +219,14 @@ export function SortableBlockWrapper({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "group rounded-xl border bg-card text-card-foreground shadow-xs transition-all",
+        "group relative border-b border-border/70 pb-5 text-card-foreground last:border-b-0",
         isDragging && "opacity-50 ring-2 ring-primary ring-offset-2",
-        !block.isVisible && "opacity-60 border-dashed bg-muted/20"
+        !block.isVisible && !isDisabledTimeline && "opacity-60"
       )}
     >
       {/* Block Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3 bg-muted/30 rounded-t-xl">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
+      <div className="flex flex-col gap-2 border-b pb-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-3">
           <button
             {...attributes}
             {...listeners}
@@ -220,7 +249,7 @@ export function SortableBlockWrapper({
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleTitleSubmit();
                 if (e.key === "Escape") {
-                  setTitleValue(block.title || "");
+                  setTitleValue(displayTitle);
                   setIsEditingTitle(false);
                 }
               }}
@@ -238,7 +267,7 @@ export function SortableBlockWrapper({
               )}
               title={canEditTitle ? "Click to rename" : "Protected title"}
             >
-              <span>{block.title || "Untitled Block"}</span>
+              <span>{displayTitle}</span>
               {block.isLocked && <span title="Locked Block"><Lock className="h-3 w-3 text-muted-foreground" /></span>}
             </div>
           )}
@@ -247,15 +276,19 @@ export function SortableBlockWrapper({
             {block.type === "CUSTOM" ? "Custom Block" : `${block.type} Block`}
           </Badge>
 
-          {!block.isVisible && (
+          {isDisabledTimeline ? (
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+              Disabled
+            </Badge>
+          ) : !block.isVisible ? (
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
               Hidden in PDF/Preview
             </Badge>
-          )}
+          ) : null}
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center justify-end gap-1">
           <div className="flex items-center border-r pr-1 mr-1 gap-0.5">
             <Button
               variant="ghost"
@@ -279,15 +312,17 @@ export function SortableBlockWrapper({
             </Button>
           </div>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground"
-            onClick={() => onToggleVisibility(block.id, !block.isVisible)}
-            title={block.isVisible ? "Hide Block" : "Show Block"}
-          >
-            {block.isVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-          </Button>
+          {!isDisabledTimeline && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground"
+              onClick={() => onToggleVisibility(block.id, !block.isVisible)}
+              title={block.isVisible ? "Hide Block" : "Show Block"}
+            >
+              {block.isVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+            </Button>
+          )}
 
           {canDuplicate && (
             <Button
@@ -301,7 +336,7 @@ export function SortableBlockWrapper({
             </Button>
           )}
 
-          {canDelete && (
+          {canDelete && !isDisabledTimeline && (
             <Button
               variant="ghost"
               size="icon"
@@ -313,23 +348,58 @@ export function SortableBlockWrapper({
             </Button>
           )}
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground ml-1"
-            onClick={() => setIsExpanded(!isExpanded)}
-            title={isExpanded ? "Collapse Block" : "Expand Block"}
-          >
-            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </Button>
+          {!isDisabledTimeline && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="ml-1 h-7 w-7 text-muted-foreground"
+              onClick={() => setIsExpanded(!isExpanded)}
+              title={isExpanded ? "Collapse Block" : "Expand Block"}
+            >
+              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
+          )}
         </div>
       </div>
 
       {/* Block Content Body */}
-      {isExpanded ? (
-        <div className="p-4">{children}</div>
+      {isDisabledTimeline ? (
+        <div className="mt-4 flex flex-col gap-4 rounded-lg border border-dashed bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <EyeOff className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <p className="text-sm text-muted-foreground">
+              Timeline is disabled and won’t appear in the proposal preview or PDF.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="w-full gap-2 sm:w-auto"
+              onClick={() => onToggleVisibility(block.id, true)}
+            >
+              <Eye className="size-4" />
+              Enable timeline
+            </Button>
+            {canDelete && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="w-full gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive sm:w-auto"
+                onClick={() => onDelete(block.id)}
+              >
+                <Trash2 className="size-4" />
+                Delete block
+              </Button>
+            )}
+          </div>
+        </div>
+      ) : isExpanded ? (
+        <div className="pt-4">{children}</div>
       ) : (
-        <div className="px-4 py-2.5 text-xs text-muted-foreground italic bg-muted/10">
+        <div className="pt-3 text-xs italic text-muted-foreground">
           Block content collapsed. Click the expand arrow above to view or edit.
         </div>
       )}

@@ -9,9 +9,6 @@ import { customerKeys } from "@/components/customers/customer-query-key";
 import { GetCustomerOptions } from "@/actions/customer";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import prisma from "@/lib/prisma";
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { requirePageAccess } from "@/lib/auth-guard";
 import DashboardContainer from "@/app/dashboard/dashboard-container";
 
@@ -55,7 +52,7 @@ export default async function ProposalEditPage({ params }: ProposalEditPageProps
         queryFn: () => GetCustomerOptions("")
     });
 
-    let validUntilEnum = "07_Days";
+    let validUntilEnum: "07_Days" | "15_Days" | "30_Days" = "07_Days";
     if (proposal.validUntil && proposal.createdAt) {
         const days = differenceInDays(proposal.validUntil, proposal.createdAt);
         if (days > 7 && days <= 15) validUntilEnum = "15_Days";
@@ -69,8 +66,11 @@ export default async function ProposalEditPage({ params }: ProposalEditPageProps
         title: proposal.title,
         customerCompanyName: proposal.customerCompanyName,
         customerDisplayName: proposal.customerDisplayName,
-        notes: proposal.notes,
-        validUntil: validUntilEnum, 
+        notes: proposal.notes ?? "",
+        validUntil: validUntilEnum,
+        currency: proposal.currency === "USD" ? "USD" as const : "INR" as const,
+        exchangeRate: proposal.exchangeRate?.toNumber() ?? 83.5,
+        placeOfSupply: proposal.placeOfSupply,
     };
 
     return (

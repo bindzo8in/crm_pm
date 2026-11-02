@@ -22,7 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { GetAllActiveServices, GetServicePackages } from "@/actions/services";
 import { importServicePackageToProposal } from "@/actions/proposal-pricing";
 import { toast } from "sonner";
-import { Package, Check, Loader2, Sparkles } from "lucide-react";
+import { Package, Check, Loader2 } from "lucide-react";
 
 interface ServicePackageImporterProps {
   proposalId: string;
@@ -74,7 +74,6 @@ export function ServicePackageImporter({ proposalId, onSuccess }: ServicePackage
     if (selectedServiceId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoadingPackages(true);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedPackageId("");
       GetServicePackages(selectedServiceId)
         .then((res) => {
@@ -131,9 +130,9 @@ export function ServicePackageImporter({ proposalId, onSuccess }: ServicePackage
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="gap-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-medium shadow-md transition-all duration-200 hover:shadow-lg">
-          <Sparkles className="size-4" />
-          <span>Add Service Package</span>
+        <Button variant="outline" className="gap-2">
+          <Package className="size-4" />
+          <span>Add package</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-xl p-6 bg-card text-card-foreground border rounded-xl shadow-2xl">
@@ -187,16 +186,22 @@ export function ServicePackageImporter({ proposalId, onSuccess }: ServicePackage
               </div>
             ) : (
               <div className="grid gap-3 max-h-60 overflow-y-auto pr-1">
+                <p className="text-xs text-muted-foreground">
+                  Catalog prices are shown in INR. Imported item prices use the proposal currency.
+                </p>
                 {packages.map((pkg) => {
                   const isSelected = selectedPackageId === pkg.id;
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={pkg.id}
-                      onClick={() => !importing && setSelectedPackageId(pkg.id)}
-                      className={`relative flex flex-col p-4 rounded-xl border-2 transition-all cursor-pointer ${
+                      disabled={importing}
+                      aria-pressed={isSelected}
+                      onClick={() => setSelectedPackageId(pkg.id)}
+                      className={`relative flex w-full flex-col rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 ${
                         isSelected
-                          ? "border-primary bg-primary/5 shadow-md"
-                          : "border-border hover:border-primary/50 bg-background"
+                          ? "border-primary bg-primary/5"
+                          : "border-border bg-background hover:bg-muted/30"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -218,11 +223,11 @@ export function ServicePackageImporter({ proposalId, onSuccess }: ServicePackage
                         </p>
                       )}
                       {isSelected && (
-                        <div className="absolute top-3 right-3 bg-primary text-primary-foreground rounded-full p-0.5">
+                        <span className="absolute right-3 top-3 rounded-full bg-primary p-0.5 text-primary-foreground">
                           <Check className="size-3" />
-                        </div>
+                        </span>
                       )}
-                    </div>
+                    </button>
                   );
                 })}
               </div>

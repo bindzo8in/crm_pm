@@ -26,6 +26,10 @@ import TableHeader from "@tiptap/extension-table-header";
 import { HorizontalRule } from "@/components/tiptap-node/horizontal-rule-node/horizontal-rule-node-extension";
 import { PageBreak } from "@/components/tiptap-node/page-break-node/page-break-node-extension";
 import { PageHeader } from "./templates/PageHeader";
+import {
+  getProposalFeaturePageTitle,
+  getProposalFeatureServiceLabel,
+} from "./feature-service-label";
 
 // A4 at 96dpi
 const A4_WIDTH_PX = 793;
@@ -96,38 +100,34 @@ export function PdfRichTextRenderer({
 
   if (!block.content || typeof block.content !== "object") return null;
 
-  let pages: string[] = [];
+  let pages: Array<{ html: string; title: string | null }> = [];
   try {
     const doc = block.content as JSONContent;
     const topNodes = Array.isArray(doc.content) ? doc.content : [];
     const hasPageBreaks = topNodes.some((n) => n.type === "pageBreak");
 
-    if (hasPageBreaks) {
-      pages = splitAtPageBreaks(topNodes)
-        .filter((section) => section.length > 0)
-        .map((section) => generateHTML({ type: "doc", content: section }, TIPTAP_EXTENSIONS))
-        .filter((html) => html.replace(/<[^>]*>/g, "").trim().length > 0);
-    } else {
-      const html = generateHTML(doc, TIPTAP_EXTENSIONS);
-      pages = [html];
-    }
+    const pageSections = hasPageBreaks
+      ? splitAtPageBreaks(topNodes)
+      : [topNodes];
+    pages = pageSections
+      .filter((section) => section.length > 0)
+      .map((section) => ({
+        html: generateHTML({ type: "doc", content: section }, TIPTAP_EXTENSIONS),
+        title: getProposalFeaturePageTitle(section),
+      }))
+      .filter(({ html }) => html.replace(/<[^>]*>/g, "").trim().length > 0);
   } catch (error) {
     console.error("[PdfRichTextRenderer] Failed to generate HTML:", error);
-    pages = ["<p>Error rendering content.</p>"];
+    pages = [{ html: "<p>Error rendering content.</p>", title: null }];
   }
 
   if (pages.length === 0) return null;
 
   return (
     <>
-      {pages.map((html, i) => {
-        const currentService = services?.[i] ?? services?.[0];
+      {pages.map(({ html, title }, i) => {
         const serviceName = isFeaturesBlock
-          ? (currentService?.packageName
-              ? (currentService.packageName.trim().toLowerCase() === currentService.serviceName.trim().toLowerCase()
-                  ? currentService.serviceName
-                  : `${currentService.serviceName} (${currentService.packageName})`)
-              : currentService?.serviceName)
+          ? getProposalFeatureServiceLabel(title, services)
           : null;
 
         return (

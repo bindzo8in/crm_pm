@@ -2,6 +2,11 @@
 
 import prisma from "@/lib/prisma";
 import { getProposalPricing } from "@/actions/proposal-pricing";
+import { z } from "zod";
+import {
+  clientProposalSignatureSchema,
+  type ClientProposalSignature,
+} from "@/lib/schemas/public-proposal-schema";
 
 export async function getPublicProposalData(proposalId: string) {
   try {
@@ -40,11 +45,39 @@ export async function getPublicProposalData(proposalId: string) {
 
 export async function publicAcceptProposal(
   proposalId: string,
-  signatureData?: { url: string; publicId: string }
+  signatureData: ClientProposalSignature,
+  termsAccepted: boolean,
 ) {
   try {
+    const validatedInput = z.object({
+      proposalId: z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9_-]+$/),
+      signatureData: clientProposalSignatureSchema,
+      termsAccepted: z.literal(true),
+    }).safeParse({ proposalId, signatureData, termsAccepted });
+
+    if (!validatedInput.success) {
+      return { success: false, message: "A valid signature and agreement to the proposal terms are required" };
+    }
+
+    if (validatedInput.data.signatureData.method !== "TYPED") {
+      const signature = validatedInput.data.signatureData;
+      const signatureUrl = new URL(signature.url);
+      const proposalFolder = `proposal-signatures/${validatedInput.data.proposalId}/`;
+      if (
+        signatureUrl.protocol !== "https:"
+        || signatureUrl.hostname !== "res.cloudinary.com"
+        || !signatureUrl.pathname.includes("/image/upload/")
+        || !signatureUrl.pathname.includes(`/${proposalFolder}`)
+        || !signature.publicId.startsWith(proposalFolder)
+        || signature.publicId.includes("..")
+        || signature.publicId.includes("\\")
+      ) {
+        return { success: false, message: "The uploaded signature is not valid for this proposal" };
+      }
+    }
+
     const proposal = await prisma.proposal.findUnique({
-      where: { id: proposalId },
+      where: { id: validatedInput.data.proposalId },
     });
 
     if (!proposal) {
@@ -55,18 +88,22 @@ export async function publicAcceptProposal(
       return { success: false, message: "Proposal is already accepted" };
     }
 
-    if (!signatureData || !signatureData.url) {
-      return { success: false, message: "Signature is required to accept this proposal" };
+    if (proposal.status !== "SENT") {
+      return { success: false, message: "Only sent proposals can be accepted" };
     }
 
-    await prisma.proposal.update({
-      where: { id: proposalId },
+    const updateResult = await prisma.proposal.updateMany({
+      where: { id: validatedInput.data.proposalId, status: "SENT" },
       data: {
         status: "ACCEPTED",
         acceptedAt: new Date(),
-        clientSignature: signatureData as any,
+        clientSignature: validatedInput.data.signatureData,
       },
     });
+
+    if (updateResult.count === 0) {
+      return { success: false, message: "Proposal can no longer be accepted" };
+    }
 
     return { success: true, message: "Proposal accepted successfully" };
   } catch (error) {

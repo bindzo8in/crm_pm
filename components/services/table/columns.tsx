@@ -3,6 +3,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import { ServiceActions } from "./actions";
 import { Badge } from "@/components/ui/badge";
 import { PackagesCell } from "./packages-cell";
+import { ProposalVisibilitySwitch } from "./proposal-visibility-switch";
 
 type ServiceRow = NonNullable<
     Extract<Awaited<ReturnType<typeof GetServices>>, { success: true }>["data"]
@@ -48,11 +49,13 @@ export const columns: ColumnDef<ServiceRow>[] = [
     {
         id: "showInProposal",
         accessorKey: "showInProposal",
-        header: "Proposal Visibility",
+        header: "Core Services",
         cell: ({ row }) => (
-            <Badge variant={row.original.showInProposal ? "default" : "secondary"} className="text-xs">
-                {row.original.showInProposal ? "Shown" : "Hidden"}
-            </Badge>
+            <ProposalVisibilitySwitch
+                id={row.original.id}
+                serviceName={row.original.name}
+                showInProposal={row.original.showInProposal}
+            />
         ),
     },
     {

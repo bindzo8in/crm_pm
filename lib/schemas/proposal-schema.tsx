@@ -7,7 +7,7 @@ export const proposalSchema = z.object({
     customerDisplayName: z.string().nonempty("customerDisplayName is required"),
     customerCompanyName: z.string().optional(),
 
-    title: z.string().optional(),
+    title: z.string().trim(),
 
     validUntil: z.enum(["07_Days", "15_Days", "30_Days"]),
 
@@ -37,7 +37,17 @@ export const proposalQuerySchema = z.object({
         "desc",
     ]).default("desc"),
     customerId: z.string().optional(),
-})
+    validUntilFrom: z.iso.date().optional(),
+    validUntilTo: z.iso.date().optional(),
+}).superRefine((query, ctx) => {
+    if (query.validUntilFrom && query.validUntilTo && query.validUntilFrom > query.validUntilTo) {
+        ctx.addIssue({
+            code: "custom",
+            message: "The start date must be on or before the end date",
+            path: ["validUntilTo"],
+        });
+    }
+});
 
 
 export const proposalBlockSchema = z.object({

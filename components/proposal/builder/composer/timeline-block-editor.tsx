@@ -86,13 +86,13 @@ export function TimelineBlockEditor({ block, onSave }: TimelineBlockEditorProps)
   return (
     <div className="space-y-6">
       {/* Description & Header */}
-      <div className="flex items-center justify-between bg-muted/20 px-4 py-3 rounded-lg border text-xs">
+      <div className="flex flex-col gap-3 border-b pb-3 text-xs sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2 text-muted-foreground">
           <Calendar className="h-4 w-4 text-indigo-500" />
           <span>Structured Project Timeline (Phases, Duration & Key Deliverables)</span>
         </div>
 
-        <Button onClick={handleSave} disabled={isSaving || (!isDirty && !justSaved)} size="sm" className="h-7 px-3 text-xs gap-1.5">
+        <Button onClick={handleSave} disabled={isSaving || (!isDirty && !justSaved)} size="sm" className="h-8 w-full gap-1.5 px-3 text-xs sm:w-auto">
           {justSaved ? (
             <>
               <Check className="h-3.5 w-3.5 text-emerald-500" />
@@ -189,13 +189,13 @@ export function TimelineBlockEditor({ block, onSave }: TimelineBlockEditorProps)
       )}
 
       {milestones.length > 0 && (
-        <div className="flex justify-between items-center pt-2">
-          <Button onClick={handleAddMilestone} variant="outline" size="sm" className="gap-1.5 text-xs">
+        <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
+          <Button onClick={handleAddMilestone} variant="outline" size="sm" className="w-full gap-1.5 text-xs sm:w-auto">
             <Plus className="h-3.5 w-3.5" />
             Add Another Phase
           </Button>
 
-          <Button onClick={handleSave} disabled={isSaving || (!isDirty && !justSaved)} size="sm" className="gap-1.5 text-xs">
+          <Button onClick={handleSave} disabled={isSaving || (!isDirty && !justSaved)} size="sm" className="w-full gap-1.5 text-xs sm:w-auto">
             {justSaved ? (
               <>
                 <Check className="h-3.5 w-3.5 text-emerald-500" />

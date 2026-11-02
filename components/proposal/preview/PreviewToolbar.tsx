@@ -1,15 +1,29 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import Link from "next/link";
+import React, { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Printer, FileDown, ZoomIn, ZoomOut, Maximize, MessageCircle, Mail, Loader2 } from "lucide-react";
+import {
+  ArrowUpRight,
+  ClipboardCheck,
+  Copy,
+  FileDown,
+  List,
+  ZoomIn,
+  ZoomOut,
+  Maximize,
+  MessageCircle,
+  Mail,
+  Loader2,
+} from "lucide-react";
 import { updateProposalStatus, sendProposalEmailAction } from "@/actions/proposal";
 import { toast } from "sonner";
+import { ProposalWorkflowNav } from "@/components/proposal/proposal-workflow-nav";
+import Link from "next/link";
 
 interface PreviewToolbarProps {
   proposalId: string;
   proposalNumber: number;
+  proposalStatus: string;
   clientEmail?: string | null;
   proposalDetails: {
     title: string;
@@ -36,13 +50,24 @@ interface PreviewToolbarProps {
   };
 }
 
-export function PreviewToolbar({ proposalId, proposalNumber, clientEmail, proposalDetails }: PreviewToolbarProps) {
+export function PreviewToolbar({ proposalId, proposalNumber, proposalStatus, clientEmail, proposalDetails }: PreviewToolbarProps) {
   const [zoom, setZoom] = useState(100);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [isLinkCopied, setIsLinkCopied] = useState(false);
+  const [isAfterSharingOpen, setIsAfterSharingOpen] = useState(false);
 
-  const handlePrint = () => {
-    window.print();
+  const handleCopyPublicLink = async () => {
+    const publicUrl = `${window.location.origin}/p/${proposalId}`;
+    try {
+      await navigator.clipboard.writeText(publicUrl);
+      setIsLinkCopied(true);
+      toast.success("Public proposal link copied");
+      window.setTimeout(() => setIsLinkCopied(false), 2000);
+    } catch (error) {
+      console.error("Failed to copy public proposal link:", error);
+      toast.error("Could not copy the public link. Please open the public view and copy its URL.");
+    }
   };
 
   const handleDownloadPdf = async () => {
@@ -52,8 +77,7 @@ export function PreviewToolbar({ proposalId, proposalNumber, clientEmail, propos
       // Using fetch + blob so we can show a loading state while the server renders.
       const response = await fetch(`/api/proposals/${proposalId}/pdf`);
       if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: "Unknown error" }));
-        console.error("[PDF] server error:", err);
+        toast.error("Could not generate the proposal PDF. Try again.");
         return;
       }
       const blob = await response.blob();
@@ -65,6 +89,7 @@ export function PreviewToolbar({ proposalId, proposalNumber, clientEmail, propos
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error("Failed to download PDF:", error);
+      toast.error("Could not download the proposal PDF. Try again.");
     } finally {
       setIsDownloading(false);
     }
@@ -114,9 +139,13 @@ export function PreviewToolbar({ proposalId, proposalNumber, clientEmail, propos
 
     // Update status in the background
     try {
-      await updateProposalStatus(proposalId, "SENT");
+      const result = await updateProposalStatus(proposalId, "SENT");
+      if (!result.success) {
+        toast.error(result.message || "The proposal was shared, but its status could not be updated.");
+      }
     } catch (error) {
       console.error("Failed to update proposal status", error);
+      toast.error("The proposal was shared, but its status could not be updated.");
     }
   };
 
@@ -141,7 +170,7 @@ export function PreviewToolbar({ proposalId, proposalNumber, clientEmail, propos
     }
   };
 
-  const fitToScreen = () => {
+  const fitToScreen = useCallback(() => {
     const screenWidth = window.innerWidth;
     // 794px is roughly 210mm at 96dpi. Leave a small padding (e.g., 32px)
     if (screenWidth < 826) {
@@ -150,12 +179,13 @@ export function PreviewToolbar({ proposalId, proposalNumber, clientEmail, propos
     } else {
       setZoom(100);
     }
-  };
+  }, []);
 
   // Auto-scale on mount
   useEffect(() => {
-    fitToScreen();
-  }, []);
+    const frame = window.requestAnimationFrame(fitToScreen);
+    return () => window.cancelAnimationFrame(frame);
+  }, [fitToScreen]);
 
   // Apply zoom to document wrapper
   useEffect(() => {
@@ -167,22 +197,20 @@ export function PreviewToolbar({ proposalId, proposalNumber, clientEmail, propos
   }, [zoom]);
 
   return (
-    <div className="proposal-preview-toolbar sticky top-0 z-50 w-full bg-white border-b shadow-sm py-2 sm:py-3 px-2 sm:px-6 flex flex-wrap items-center justify-between gap-y-2">
-      <div className="flex items-center">
-        <Button asChild variant="outline" size="sm" className="gap-2 hidden sm:flex">
-          <Link href={`/dashboard/proposals/${proposalId}/composer`}>
-            <ArrowLeft className="h-4 w-4" />
-            Back to Composer
-          </Link>
-        </Button>
-        <Button asChild variant="outline" size="sm" className="sm:hidden h-8 px-2">
-          <Link href={`/dashboard/proposals/${proposalId}/composer`}>
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
+    <div className="proposal-preview-toolbar relative z-50 w-full border-b bg-background shadow-sm sm:sticky sm:top-0 print:hidden">
+      <div className="mx-auto w-full max-w-[1760px] px-3 pt-2 sm:px-6">
+        <ProposalWorkflowNav
+          proposalId={proposalId}
+          activeStep={4}
+          title={proposalDetails.title}
+          customerName={proposalDetails.customerName}
+          status={proposalStatus}
+          maxAvailableStep={4}
+        />
       </div>
 
-      <div className="flex items-center gap-1 sm:gap-2 border-x px-2 sm:px-4 mx-2">
+      <div className="mx-auto flex w-full max-w-[1760px] items-center justify-between gap-2 px-3 py-2 sm:px-6">
+        <div className="flex w-fit items-center gap-1 rounded-lg border bg-muted/20 p-1 sm:gap-2">
         <Button 
           variant="ghost" 
           size="icon" 
@@ -214,26 +242,26 @@ export function PreviewToolbar({ proposalId, proposalNumber, clientEmail, propos
         >
           <Maximize className="h-3 w-3 sm:h-4 sm:w-4 text-slate-700" />
         </Button>
-      </div>
+        </div>
 
-      <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center justify-end gap-1 sm:gap-2">
         {clientEmail && (
           <>
-            <Button onClick={handleEmailShare} disabled={isSendingEmail} size="sm" variant="outline" className="gap-2 text-blue-600 border-blue-200 hover:bg-blue-50 hidden sm:flex">
+          <Button onClick={handleEmailShare} disabled={isSendingEmail} size="sm" variant="outline" className="hidden gap-2 border-blue-200 text-blue-600 hover:bg-blue-50 sm:flex">
               {isSendingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
               {isSendingEmail ? "Sending..." : "Send Mail"}
             </Button>
-            <Button onClick={handleEmailShare} disabled={isSendingEmail} size="sm" variant="outline" className="gap-1 text-blue-600 border-blue-200 hover:bg-blue-50 sm:hidden px-2">
+          <Button onClick={handleEmailShare} disabled={isSendingEmail} size="icon-sm" variant="outline" aria-label="Send mail" title="Send mail" className="border-blue-200 text-blue-600 hover:bg-blue-50 sm:hidden">
               {isSendingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
             </Button>
           </>
         )}
         
-        <Button onClick={handleWhatsAppShare} size="sm" variant="outline" className="gap-2 text-green-600 border-green-200 hover:bg-green-50 hidden sm:flex">
+        <Button onClick={handleWhatsAppShare} size="sm" variant="outline" aria-label="Share on WhatsApp" className="hidden gap-2 border-green-200 text-green-600 hover:bg-green-50 sm:flex">
           <MessageCircle className="h-4 w-4" />
           WhatsApp
         </Button>
-        <Button onClick={handleWhatsAppShare} size="sm" variant="outline" className="gap-1 text-green-600 border-green-200 hover:bg-green-50 sm:hidden px-2">
+        <Button onClick={handleWhatsAppShare} size="icon-sm" variant="outline" aria-label="Share on WhatsApp" title="Share on WhatsApp" className="border-green-200 text-green-600 hover:bg-green-50 sm:hidden">
           <MessageCircle className="h-4 w-4" />
         </Button>
 
@@ -241,7 +269,7 @@ export function PreviewToolbar({ proposalId, proposalNumber, clientEmail, propos
           onClick={handleDownloadPdf}
           disabled={isDownloading}
           size="sm"
-          className="gap-2 bg-blue-600 hover:bg-blue-700 hidden sm:flex"
+          className="hidden gap-2 bg-blue-600 hover:bg-blue-700 sm:flex"
         >
           {isDownloading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -253,7 +281,9 @@ export function PreviewToolbar({ proposalId, proposalNumber, clientEmail, propos
         <Button
           onClick={handleDownloadPdf}
           disabled={isDownloading}
-          size="sm"
+          size="icon-sm"
+          aria-label="Download PDF"
+          title="Download PDF"
           className="gap-1 bg-blue-600 hover:bg-blue-700 sm:hidden px-2"
         >
           {isDownloading ? (
@@ -261,9 +291,76 @@ export function PreviewToolbar({ proposalId, proposalNumber, clientEmail, propos
           ) : (
             <FileDown className="h-4 w-4" />
           )}
-          <span>PDF</span>
         </Button>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="outline"
+          aria-label={isAfterSharingOpen ? "Hide next steps" : "Show next steps"}
+          aria-expanded={isAfterSharingOpen}
+          title="Next steps"
+          className="sm:hidden"
+          onClick={() => setIsAfterSharingOpen((open) => !open)}
+        >
+          <List className="h-4 w-4" />
+        </Button>
+        {!clientEmail && (
+          <span className="hidden text-xs text-muted-foreground sm:inline">
+            Add a customer email to send this proposal.
+          </span>
+        )}
+        </div>
       </div>
+
+      <section
+        aria-labelledby="proposal-next-steps-title"
+        className={`border-t bg-muted/20 px-3 py-3 sm:px-6 ${
+          isAfterSharingOpen ? "block" : "hidden sm:block"
+        }`}
+      >
+        <div className="mx-auto flex w-full max-w-[1760px] flex-col gap-3">
+          <div className="min-w-0">
+            <h2 id="proposal-next-steps-title" className="text-sm font-semibold">
+              After sharing
+            </h2>
+            <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground sm:text-sm">
+              {proposalStatus === "ACCEPTED"
+                ? "This proposal is accepted. Open Proposals to create an invoice or convert it to a project."
+                : proposalStatus === "SENT"
+                  ? "Your client can review and accept the proposal from the public link. After acceptance, create an invoice or project from Proposals."
+                  : "Share the public link with your client. They can review the proposal there; once it is sent and accepted, continue from Proposals."}
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="w-full gap-2"
+              onClick={handleCopyPublicLink}
+            >
+              {isLinkCopied ? (
+                <ClipboardCheck aria-hidden="true" className="size-4" />
+              ) : (
+                <Copy aria-hidden="true" className="size-4" />
+              )}
+              {isLinkCopied ? "Link copied" : "Copy public link"}
+            </Button>
+            <Button asChild size="sm" variant="outline" className="w-full gap-2">
+              <Link href={`/p/${proposalId}`} target="_blank" rel="noopener noreferrer">
+                Open public view
+                <ArrowUpRight aria-hidden="true" className="size-4" />
+              </Link>
+            </Button>
+            <Button asChild size="sm" variant="ghost" className="w-full gap-2">
+              <Link href="/dashboard/proposals">
+                <List aria-hidden="true" className="size-4" />
+                Back to proposals
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

@@ -6,7 +6,13 @@ import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { getErrorMessage } from "@/lib/schemas/prisma-utils";
 import { ServicePackageQuerySchema, servicePackageSchema, ServicePackageSchema } from "@/lib/schemas/service-package";
-import { ServiceQuerySchema, serviceSchema, ServiceSchema } from "@/lib/schemas/service-schema";
+import {
+    ServiceQuerySchema,
+    serviceProposalVisibilitySchema,
+    serviceSchema,
+    ServiceProposalVisibilitySchema,
+    ServiceSchema,
+} from "@/lib/schemas/service-schema";
 import { headers } from "next/headers";
 import slugify from "slugify";
 import { revalidatePath } from "next/cache";
@@ -165,6 +171,45 @@ export async function EditService(data: ServiceSchema) {
             "Failed to update service",
             getErrorMessage(error)
         );
+    }
+}
+
+export async function UpdateServiceProposalVisibility(data: ServiceProposalVisibilitySchema) {
+    try {
+        const hasPermission = await auth.api.userHasPermission({
+            headers: await headers(),
+            body: {
+                permissions: {
+                    services: ["update"],
+                },
+            },
+        });
+        if (!hasPermission.success) {
+            return errorResponse("You don't have permission to update a service");
+        }
+
+        const validatedData = serviceProposalVisibilitySchema.safeParse(data);
+        if (!validatedData.success) {
+            return errorResponse("Invalid service visibility settings", validatedData.error.issues);
+        }
+
+        const result = await prisma.service.updateMany({
+            where: { id: validatedData.data.id, deletedAt: null },
+            data: { showInProposal: validatedData.data.showInProposal },
+        });
+        if (result.count === 0) {
+            return errorResponse("Service not found");
+        }
+
+        revalidatePath("/dashboard/services", "layout");
+        return successResponse(
+            validatedData.data.showInProposal
+                ? "Service will appear in proposal Core Services"
+                : "Service hidden from proposal Core Services",
+        );
+    } catch (error) {
+        console.error("Failed to update proposal visibility:", error);
+        return errorResponse("Failed to update service visibility", getErrorMessage(error));
     }
 }
 

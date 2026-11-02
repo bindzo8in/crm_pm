@@ -19,6 +19,10 @@ import { HorizontalRule } from "@/components/tiptap-node/horizontal-rule-node/ho
 import { PageBreak } from "@/components/tiptap-node/page-break-node/page-break-node-extension";
 import { PageHeader } from "./templates/PageHeader";
 import { PageFooter } from "./templates/PageFooter";
+import {
+  getProposalFeaturePageTitle,
+  getProposalFeatureServiceLabel,
+} from "./feature-service-label";
 
 import "./proposal-renderer.css";
 
@@ -83,7 +87,7 @@ export function RichTextRenderer({
   company,
   proposal,
 }: RichTextRendererProps) {
-  const [pages, setPages] = useState<string[]>([]);
+  const [pages, setPages] = useState<Array<{ html: string; title: string | null }>>([]);
   const [mounted, setMounted] = useState(false);
 
   const isFeaturesBlock = blockType === "FEATURES";
@@ -101,24 +105,21 @@ export function RichTextRenderer({
       const topNodes = Array.isArray(doc.content) ? doc.content : [];
 
       const hasPageBreaks = topNodes.some((n) => n.type === "pageBreak");
+      const pageSections = hasPageBreaks
+        ? splitAtPageBreaks(topNodes)
+        : [topNodes];
 
-      if (hasPageBreaks) {
-        const pageSections = splitAtPageBreaks(topNodes);
-        const htmlPages = pageSections
-          .filter((section) => section.length > 0)
-          .map((section) => {
-            const subDoc: JSONContent = { type: "doc", content: section };
-            return generateHTML(subDoc, TIPTAP_EXTENSIONS);
-          })
-          .filter((html) => html.replace(/<[^>]*>/g, "").trim().length > 0);
-        setPages(htmlPages);
-      } else {
-        const html = generateHTML(doc, TIPTAP_EXTENSIONS);
-        setPages([html]);
-      }
+      const renderedPages = pageSections
+        .filter((section) => section.length > 0)
+        .map((section) => ({
+          html: generateHTML({ type: "doc", content: section }, TIPTAP_EXTENSIONS),
+          title: getProposalFeaturePageTitle(section),
+        }))
+        .filter(({ html }) => html.replace(/<[^>]*>/g, "").trim().length > 0);
+      setPages(renderedPages);
     } catch (error) {
       console.error("Failed to generate HTML from TipTap JSON:", error);
-      setPages(["<p>Error rendering content.</p>"]);
+      setPages([{ html: "<p>Error rendering content.</p>", title: null }]);
     }
   }, [block.content]);
 
@@ -128,14 +129,9 @@ export function RichTextRenderer({
 
   return (
     <>
-      {pages.map((html, i) => {
-        const currentService = services?.[i] ?? services?.[0];
+      {pages.map(({ html, title }, i) => {
         const serviceName = isFeaturesBlock
-          ? (currentService?.packageName
-              ? (currentService.packageName.trim().toLowerCase() === currentService.serviceName.trim().toLowerCase()
-                  ? currentService.serviceName
-                  : `${currentService.serviceName} (${currentService.packageName})`)
-              : currentService?.serviceName)
+          ? getProposalFeatureServiceLabel(title, services)
           : null;
 
         return (

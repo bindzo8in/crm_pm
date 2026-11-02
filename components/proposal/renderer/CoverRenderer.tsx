@@ -22,17 +22,38 @@ interface CoverRendererProps {
   company?: any;
 }
 
+function formatCoverDate(value: string) {
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const date = dateOnlyMatch
+    ? new Date(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3]))
+    : new Date(value);
+
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-IN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
 export function CoverRenderer({ block, proposal, company }: CoverRendererProps) {
   const content = (block.content as CoverBlockContent) || {};
   const {
     subtitle = "Smart Solutions. Strategic Thinking. Measurable Results.",
     preparedFor = proposal.customerCompanyName || proposal.customerDisplayName || "Client",
     preparedBy = proposal.preparedByName || "Sales Executive",
-    date = new Date(proposal.createdAt || Date.now()).toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "2-digit" }),
+    date = proposal.createdAt
+      ? new Date(proposal.createdAt).toLocaleDateString("en-IN", {
+          year: "numeric",
+          month: "short",
+          day: "2-digit",
+        })
+      : "",
     layoutStyle = "MODERN",
     showProposalTitle = true,
     showNotes = true,
   } = content;
+  const formattedDate = formatCoverDate(date);
 
   const validUntilDate = proposal.validUntil ? new Date(proposal.validUntil).toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "2-digit" }) : null;
 
@@ -64,7 +85,7 @@ export function CoverRenderer({ block, proposal, company }: CoverRendererProps) 
         </div>
         
         <div className="mt-auto pt-16 pb-8 flex flex-col items-center gap-1">
-          <p className="text-sm font-semibold text-black">{date}</p>
+          <p className="text-sm font-semibold text-black">{formattedDate}</p>
           {proposal.validUntil && (
             <p className="text-xs font-medium text-black">Valid Until: {new Date(proposal.validUntil).toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" })}</p>
           )}
@@ -96,7 +117,7 @@ export function CoverRenderer({ block, proposal, company }: CoverRendererProps) 
         </div>
         
         <div className="mt-auto pt-16 flex flex-col gap-1">
-          <p className="text-base font-semibold text-black">Date of Submission: {date}</p>
+          <p className="text-base font-semibold text-black">Date of Submission: {formattedDate}</p>
           {proposal.validUntil && (
             <p className="text-sm font-medium text-black">Valid Until: {new Date(proposal.validUntil).toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" })}</p>
           )}
@@ -235,7 +256,7 @@ export function CoverRenderer({ block, proposal, company }: CoverRendererProps) 
                </div>
                <div className="flex flex-col">
                  <span className="text-[9px] font-bold text-black uppercase tracking-wider">Date</span>
-                 <span className="text-xs font-black text-black">{date}</span>
+                 <span className="text-xs font-black text-black">{formattedDate}</span>
                </div>
              </div>
              

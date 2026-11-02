@@ -42,6 +42,12 @@ const userListSchema = z.object({
   page: z.number().int().min(0),
   pageSize: z.number().int().min(1).max(100),
   search: z.string().trim().max(120).optional(),
+  role: z.enum(UserRole).optional(),
+  department: z.enum(Department).or(z.literal("UNASSIGNED")).optional(),
+  employmentStatus: z.enum(EmploymentStatus).optional(),
+  workMode: z.enum(WorkMode).optional(),
+  includeInAttendanceReports: z.boolean().optional(),
+  emailVerified: z.boolean().optional(),
 });
 
 const createStaffSchema = z.object({
@@ -109,12 +115,34 @@ export async function getUsers({
   page,
   pageSize,
   search,
+  role,
+  department,
+  employmentStatus,
+  workMode,
+  includeInAttendanceReports,
+  emailVerified,
 }: {
   page: number;
   pageSize: number;
   search?: string;
+  role?: UserRole;
+  department?: Department | "UNASSIGNED";
+  employmentStatus?: EmploymentStatus;
+  workMode?: WorkMode;
+  includeInAttendanceReports?: boolean;
+  emailVerified?: boolean;
 }) {
-  const input = userListSchema.safeParse({ page, pageSize, search });
+  const input = userListSchema.safeParse({
+    page,
+    pageSize,
+    search,
+    role,
+    department,
+    employmentStatus,
+    workMode,
+    includeInAttendanceReports,
+    emailVerified,
+  });
   if (!input.success) {
     throw new Error("Invalid user list filters.");
   }
@@ -123,14 +151,35 @@ export async function getUsers({
     throw new Error("Unauthorized");
   }
 
-  const where = input.data.search
-    ? {
-        OR: [
-          { name: { contains: input.data.search, mode: "insensitive" as const } },
-          { email: { contains: input.data.search, mode: "insensitive" as const } },
-        ],
-      }
-    : {};
+  const where = {
+    ...(input.data.search
+      ? {
+          OR: [
+            { name: { contains: input.data.search, mode: "insensitive" as const } },
+            { email: { contains: input.data.search, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+    ...(input.data.role ? { role: input.data.role } : {}),
+    ...(input.data.department
+      ? {
+          department:
+            input.data.department === "UNASSIGNED"
+              ? null
+              : input.data.department,
+        }
+      : {}),
+    ...(input.data.employmentStatus
+      ? { employmentStatus: input.data.employmentStatus }
+      : {}),
+    ...(input.data.workMode ? { workMode: input.data.workMode } : {}),
+    ...(input.data.includeInAttendanceReports !== undefined
+      ? { includeInAttendanceReports: input.data.includeInAttendanceReports }
+      : {}),
+    ...(input.data.emailVerified !== undefined
+      ? { emailVerified: input.data.emailVerified }
+      : {}),
+  };
   const [users, total, activeTotal, verifiedTotal, departmentRows] = await Promise.all([
     prisma.user.findMany({
       where,

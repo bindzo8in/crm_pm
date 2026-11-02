@@ -19,6 +19,7 @@ import { headers } from "next/headers";
 import { Prisma } from "@/app/generated/prisma/client";
 import { syncProposalComposerTermsAndFeatures } from "@/actions/proposal-composer";
 import { hasBusinessWorkspaceAccess } from "@/lib/workspace-access";
+import { getProposalDraftError } from "@/lib/proposal-draft";
 
 async function checkPermission(permission: "read" | "create" | "update" | "delete") {
   const session = await auth.api.getSession({
@@ -258,6 +259,8 @@ export async function importServicePackageToProposal(data: ImportServicePackageS
     }
 
     const { proposalId, serviceId, packageId, customName } = validated.data;
+    const draftError = await getProposalDraftError(proposalId);
+    if (draftError) return errorResponse(draftError);
 
     const service = await prisma.service.findUnique({
       where: { id: serviceId },
@@ -374,6 +377,8 @@ export async function updateProposalLineItem(data: ProposalLineItemEditSchema) {
       taxRate,
       sacCode,
     } = validated.data;
+    const draftError = await getProposalDraftError(proposalId);
+    if (draftError) return errorResponse(draftError);
 
     const proposal = await prisma.proposal.findUnique({
       where: { id: proposalId },
@@ -436,6 +441,8 @@ export async function addCustomLineItem(data: CustomLineItemCreateSchema) {
       taxRate,
       sacCode,
     } = validated.data;
+    const draftError = await getProposalDraftError(proposalId);
+    if (draftError) return errorResponse(draftError);
 
     const proposal = await prisma.proposal.findUnique({
       where: { id: proposalId },
@@ -445,16 +452,61 @@ export async function addCustomLineItem(data: CustomLineItemCreateSchema) {
 
     const fin = calculateItemFinancials(quantity, unitPrice, discountType, discountValue, effectiveTaxRate);
 
-    const maxOrder = await prisma.proposalLineItem.aggregate({
-      where: { proposalServiceId },
-      _max: { sortOrder: true },
-    });
-    const nextOrder = (maxOrder._max.sortOrder ?? -1) + 1;
-
     const newItem = await prisma.$transaction(async (tx) => {
+      let targetServiceId: string;
+      if (proposalServiceId) {
+        const service = await tx.proposalService.findFirst({
+          where: { id: proposalServiceId, proposalId },
+          select: { id: true },
+        });
+        if (!service) throw new Error("The selected proposal section was not found");
+        targetServiceId = service.id;
+      } else {
+        const customSection = await tx.proposalService.findFirst({
+          where: {
+            proposalId,
+            serviceId: null,
+            packageId: null,
+            serviceName: { in: ["", "Custom items"] },
+          },
+          select: { id: true, serviceName: true, description: true },
+        });
+        if (customSection) {
+          targetServiceId = customSection.id;
+          if (customSection.serviceName === "Custom items" || customSection.description === "Items added directly to this proposal.") {
+            await tx.proposalService.update({
+              where: { id: customSection.id },
+              data: {
+                ...(customSection.serviceName === "Custom items" ? { serviceName: "" } : {}),
+                ...(customSection.description === "Items added directly to this proposal." ? { description: null } : {}),
+              },
+            });
+          }
+        } else {
+          const maxServiceOrder = await tx.proposalService.aggregate({
+            where: { proposalId },
+            _max: { sortOrder: true },
+          });
+          const customSection = await tx.proposalService.create({
+            data: {
+              proposalId,
+              serviceName: "",
+              sortOrder: (maxServiceOrder._max.sortOrder ?? -1) + 1,
+            },
+            select: { id: true },
+          });
+          targetServiceId = customSection.id;
+        }
+      }
+
+      const maxOrder = await tx.proposalLineItem.aggregate({
+        where: { proposalServiceId: targetServiceId },
+        _max: { sortOrder: true },
+      });
+
       const created = await tx.proposalLineItem.create({
         data: {
-          proposalServiceId,
+          proposalServiceId: targetServiceId,
           packageItemId: null,
           name,
           description: description || null,
@@ -463,7 +515,7 @@ export async function addCustomLineItem(data: CustomLineItemCreateSchema) {
           unitPrice: new Prisma.Decimal(unitPrice),
           total: new Prisma.Decimal(fin.total),
           billingCycle,
-          sortOrder: nextOrder,
+          sortOrder: (maxOrder._max.sortOrder ?? -1) + 1,
           isCustom: true,
           discountType: discountType || null,
           discountValue: discountValue !== undefined && discountValue !== null ? new Prisma.Decimal(discountValue) : null,
@@ -488,6 +540,9 @@ export async function deleteProposalLineItem(itemId: string, proposalId: string)
     const perm = await checkPermission("update");
     if (!perm.success) return errorResponse(perm.error!);
 
+    const draftError = await getProposalDraftError(proposalId);
+    if (draftError) return errorResponse(draftError);
+
     await prisma.$transaction(async (tx) => {
       await tx.proposalLineItem.delete({
         where: { id: itemId },
@@ -507,6 +562,9 @@ export async function deleteProposalService(serviceId: string, proposalId: strin
   try {
     const perm = await checkPermission("update");
     if (!perm.success) return errorResponse(perm.error!);
+
+    const draftError = await getProposalDraftError(proposalId);
+    if (draftError) return errorResponse(draftError);
 
     await prisma.$transaction(async (tx) => {
       await tx.proposalService.delete({
@@ -546,6 +604,8 @@ export async function updateProposalService(
     if (!validated.success) {
       return errorResponse("Invalid section data", validated.error.issues);
     }
+    const draftError = await getProposalDraftError(validated.data.proposalId);
+    if (draftError) return errorResponse(draftError);
 
     await prisma.proposalService.update({
       where: { id: serviceId },
@@ -576,6 +636,9 @@ export async function reorderProposalLineItems(
     const perm = await checkPermission("update");
     if (!perm.success) return errorResponse(perm.error!);
 
+    const draftError = await getProposalDraftError(proposalId);
+    if (draftError) return errorResponse(draftError);
+
     await prisma.$transaction(async (tx) => {
       for (const item of items) {
         await tx.proposalLineItem.update({
@@ -599,6 +662,9 @@ export async function reorderProposalServices(
   try {
     const perm = await checkPermission("update");
     if (!perm.success) return errorResponse(perm.error!);
+
+    const draftError = await getProposalDraftError(proposalId);
+    if (draftError) return errorResponse(draftError);
 
     await prisma.$transaction(async (tx) => {
       for (const svc of services) {
@@ -633,6 +699,8 @@ export async function updateProposalTotals(data: ProposalTotalsUpdateSchema) {
     }
 
     const { proposalId, discount, tax } = validated.data;
+    const draftError = await getProposalDraftError(proposalId);
+    if (draftError) return errorResponse(draftError);
 
     await prisma.$transaction(async (tx) => {
       await tx.proposal.update({

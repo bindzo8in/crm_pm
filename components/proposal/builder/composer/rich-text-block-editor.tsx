@@ -68,13 +68,13 @@ export function RichTextBlockEditor({ block, onSave }: RichTextBlockEditorProps)
   return (
     <div className="space-y-4">
       {/* Editor Top Bar with Status indicator */}
-      <div className="flex items-center justify-between bg-muted/20 px-3 py-2 rounded-lg border text-xs">
+      <div className="flex flex-col gap-3 border-b pb-3 text-xs sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2 text-muted-foreground">
           <Sparkles className="h-3.5 w-3.5 text-blue-500" />
           <span>TipTap Rich Text (Supports tables, images, headings & lists)</span>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
           {isDirty && (
             <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
               <AlertCircle className="h-3.5 w-3.5" />
@@ -86,7 +86,7 @@ export function RichTextBlockEditor({ block, onSave }: RichTextBlockEditorProps)
             size="sm"
             onClick={handleSave}
             disabled={!isDirty || isSaving}
-            className="h-7 px-3 text-xs gap-1.5 shadow-xs"
+            className="h-8 w-full gap-1.5 px-3 text-xs sm:w-auto"
           >
             {justSaved ? (
               <>

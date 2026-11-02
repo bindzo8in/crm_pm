@@ -2,75 +2,49 @@
 
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, ReceiptText, Loader2 } from "lucide-react";
-import { updateProposalStatus } from "@/actions/proposal";
-import { createInvoiceFromProposal } from "@/actions/invoice";
+import { CheckCircle2 } from "lucide-react";
 import { publicAcceptProposal } from "@/actions/public-proposal";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ImageUpload } from "@/components/ui/image-upload";
+import {
+  ClientSignatureInput,
+  type ClientSignatureData,
+} from "./client-signature-input";
 
 interface AcceptProposalButtonProps {
   proposalId: string;
   currentStatus: string;
-  isPublic?: boolean;
 }
 
-export function AcceptProposalButton({ proposalId, currentStatus, isPublic = false }: AcceptProposalButtonProps) {
+export function AcceptProposalButton({ proposalId, currentStatus }: AcceptProposalButtonProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
-  const [signatureData, setSignatureData] = useState<{ url: string; publicId: string } | null>(null);
-  
+  const [signatureData, setSignatureData] = useState<ClientSignatureData | null>(null);
   const router = useRouter();
 
   const handleAccept = async () => {
     if (!termsAccepted || !signatureData) return;
 
     setIsUpdating(true);
-    let result;
-    if (isPublic) {
-      result = await publicAcceptProposal(proposalId, signatureData);
-    } else {
-      result = await updateProposalStatus(proposalId, "ACCEPTED");
-    }
-    
-    if (result.success) {
-      toast.success("Proposal marked as Accepted!");
-      setIsDialogOpen(false);
-      router.refresh();
-    } else {
-      if ('error' in result && typeof result.error === 'string') {
-        toast.error(result.error);
-      } else if ('message' in result && typeof result.message === 'string') {
-        toast.error(result.message);
-      } else {
-        toast.error("Failed to update proposal status");
-      }
-    }
-    
-    setIsUpdating(false);
-  };
-
-  const [isGenerating, setIsGenerating] = useState(false);
-
-  const handleGenerateInvoice = async () => {
     try {
-      setIsGenerating(true);
-      const res = await createInvoiceFromProposal(proposalId);
-      if (res.success && res.data) {
-        toast.success(res.message || "Invoice ready!");
-        router.push(`/dashboard/invoices/${res.data.id}`);
+      const result = await publicAcceptProposal(proposalId, signatureData, termsAccepted);
+      if (result.success) {
+        toast.success("Proposal accepted");
+        setIsDialogOpen(false);
+        setTermsAccepted(false);
+        setSignatureData(null);
+        router.refresh();
       } else {
-        toast.error(res.message || "Failed to generate invoice");
+        toast.error(result.message || "Failed to accept proposal");
       }
     } catch (error) {
-      console.error(error);
-      toast.error("Failed to generate invoice");
+      console.error("Failed to accept public proposal:", error);
+      toast.error("Failed to accept proposal");
     } finally {
-      setIsGenerating(false);
+      setIsUpdating(false);
     }
   };
 
@@ -81,17 +55,6 @@ export function AcceptProposalButton({ proposalId, currentStatus, isPublic = fal
           <CheckCircle2 className="h-6 w-6" />
           <span className="font-medium text-lg">This proposal has been accepted!</span>
         </div>
-        {!isPublic && (
-          <Button
-            onClick={handleGenerateInvoice}
-            disabled={isGenerating}
-            size="lg"
-            className="gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow px-8"
-          >
-            {isGenerating ? <Loader2 className="h-5 w-5 animate-spin" /> : <ReceiptText className="h-5 w-5" />}
-            {isGenerating ? "Generating Invoice..." : "Generate Invoice"}
-          </Button>
-        )}
       </div>
     );
   }
@@ -116,18 +79,14 @@ export function AcceptProposalButton({ proposalId, currentStatus, isPublic = fal
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-6 py-4">
+          <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                Client Signature
-              </label>
-              <ImageUpload
+              <p className="text-sm font-medium">Choose how to sign</p>
+              <ClientSignatureInput
+                proposalId={proposalId}
                 value={signatureData}
-                onChange={(data) => setSignatureData(data)}
-                scope={isPublic ? "proposal-signature" : "proposal"}
-                ownerId={isPublic ? proposalId : undefined}
+                onChange={setSignatureData}
               />
-              <p className="text-xs text-muted-foreground">Upload an image of your signature or stamp.</p>
             </div>
 
             <div className="flex items-center space-x-2">
@@ -140,7 +99,7 @@ export function AcceptProposalButton({ proposalId, currentStatus, isPublic = fal
                 htmlFor="terms"
                 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
               >
-                I have read all documents and agree to the terms and conditions.
+                I have authority to sign and agree to this proposal. My signature records this acceptance.
               </label>
             </div>
           </div>

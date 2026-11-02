@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { LineItemsTable, LineItem } from "./line-items-table";
 import { deleteProposalService, updateProposalService } from "@/actions/proposal-pricing";
 import { toast } from "sonner";
-import { Trash2, Layers, Package, Loader2, ChevronDown, ChevronUp, Edit2, Check, X, GripVertical, ArrowUp, ArrowDown } from "lucide-react";
+import { Trash2, Package, Loader2, ChevronDown, ChevronUp, Edit2, Check, X, GripVertical, ArrowUp, ArrowDown } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
@@ -26,6 +26,7 @@ export interface ProposalServiceSection {
 interface ServiceSectionCardProps {
   service: ProposalServiceSection;
   proposalId: string;
+  currency: string;
   onRefresh: () => void;
   dragHandleProps?: Record<string, unknown>;
   idx?: number;
@@ -36,23 +37,29 @@ interface ServiceSectionCardProps {
 export function ServiceSectionCard({
   service,
   proposalId,
+  currency,
   onRefresh,
   dragHandleProps,
   idx,
   totalCount,
   onReorderArrow,
 }: ServiceSectionCardProps) {
+  const serviceName = service.serviceName.trim() === "Custom items" ? "" : service.serviceName;
+  const description =
+    service.description === "Items added directly to this proposal." ? "" : service.description || "";
+  const accessibleName = serviceName || "pricing section";
   const [deleting, setDeleting] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [editName, setEditName] = useState(service.serviceName);
-  const [editDesc, setEditDesc] = useState(service.description || "");
+  const [editName, setEditName] = useState(serviceName);
+  const [editDesc, setEditDesc] = useState(description);
   const [saving, setSaving] = useState(false);
 
   const sectionTotal = service.items.reduce((sum, item) => sum + Number(item.total), 0);
+  const currencySymbol = currency === "USD" ? "$" : "₹";
+  const currencyLocale = currency === "USD" ? "en-US" : "en-IN";
 
   const handleSaveEdit = async () => {
-    if (!editName.trim()) return;
     setSaving(true);
     try {
       const res = await updateProposalService(service.id, proposalId, {
@@ -78,7 +85,7 @@ export function ServiceSectionCard({
     try {
       const res = await deleteProposalService(service.id, proposalId);
       if (res.success) {
-        toast.success(`Removed section "${service.serviceName}"`);
+        toast.success(serviceName ? `Removed section "${serviceName}"` : "Removed pricing section");
         onRefresh();
       } else {
         toast.error(res.message || "Failed to remove section");
@@ -91,9 +98,8 @@ export function ServiceSectionCard({
   };
 
   return (
-    <div className="rounded-2xl border border-border/80 bg-card/60 backdrop-blur-sm shadow-md transition-all duration-200 hover:shadow-lg overflow-hidden">
-      {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 bg-gradient-to-r from-muted/50 to-muted/20 border-b border-border/60">
+    <div className="overflow-hidden rounded-xl border bg-card">
+      <div className="flex flex-col gap-4 border-b bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           {dragHandleProps && (
             <div className="flex flex-col items-center justify-center gap-0.5 text-muted-foreground/50 hover:text-foreground">
@@ -102,24 +108,29 @@ export function ServiceSectionCard({
                 {...dragHandleProps}
                 className="cursor-grab active:cursor-grabbing p-1"
                 title="Drag to reorder section"
+                aria-label={`Drag to reorder ${accessibleName}`}
               >
                 <GripVertical className="size-5" />
               </button>
               {idx !== undefined && totalCount !== undefined && onReorderArrow && (
                 <div className="flex items-center gap-0.5 text-[10px] font-mono">
                   <button
+                    type="button"
                     onClick={() => onReorderArrow(idx, "up")}
                     disabled={idx === 0}
                     className="hover:text-primary disabled:opacity-20"
                     title="Move section up"
+                    aria-label={`Move ${accessibleName} up`}
                   >
                     <ArrowUp className="size-3" />
                   </button>
                   <button
+                    type="button"
                     onClick={() => onReorderArrow(idx, "down")}
                     disabled={idx === totalCount - 1}
                     className="hover:text-primary disabled:opacity-20"
                     title="Move section down"
+                    aria-label={`Move ${accessibleName} down`}
                   >
                     <ArrowDown className="size-3" />
                   </button>
@@ -127,16 +138,13 @@ export function ServiceSectionCard({
               )}
             </div>
           )}
-          <div className="flex items-center justify-center size-10 rounded-xl bg-primary/10 text-primary shadow-inner">
-            <Layers className="size-5" />
-          </div>
           <div className="space-y-1 flex-1 min-w-0">
             {isEditing ? (
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 max-w-lg">
                 <Input
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  placeholder="Section Name"
+                  placeholder="Section title (optional)"
                   className="h-8 text-sm font-bold bg-background"
                   disabled={saving}
                 />
@@ -152,7 +160,7 @@ export function ServiceSectionCard({
                     size="icon"
                     variant="ghost"
                     onClick={handleSaveEdit}
-                    disabled={saving || !editName.trim()}
+                    disabled={saving}
                     className="size-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
                     title="Save changes"
                   >
@@ -163,8 +171,8 @@ export function ServiceSectionCard({
                     variant="ghost"
                     onClick={() => {
                       setIsEditing(false);
-                      setEditName(service.serviceName);
-                      setEditDesc(service.description || "");
+                      setEditName(serviceName);
+                      setEditDesc(description);
                     }}
                     disabled={saving}
                     className="size-8 text-muted-foreground hover:bg-muted"
@@ -177,19 +185,22 @@ export function ServiceSectionCard({
             ) : (
               <>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-lg font-bold text-foreground tracking-tight">
-                    {service.serviceName}
-                  </h3>
+                  {serviceName && (
+                    <h3 className="text-base font-semibold text-foreground">
+                      {serviceName}
+                    </h3>
+                  )}
                   <Button
                     size="icon"
                     variant="ghost"
                     onClick={() => {
-                      setEditName(service.serviceName);
-                      setEditDesc(service.description || "");
+                      setEditName(serviceName);
+                      setEditDesc(description);
                       setIsEditing(true);
                     }}
-                    className="size-6 text-muted-foreground hover:text-primary transition-colors ml-1"
-                    title="Edit Section Name & Description"
+                    className="size-7 text-muted-foreground hover:text-primary"
+                    title={serviceName ? "Edit section" : "Add a section title"}
+                    aria-label={serviceName ? `Edit ${serviceName}` : "Add a section title"}
                   >
                     <Edit2 className="size-3.5" />
                   </Button>
@@ -204,9 +215,9 @@ export function ServiceSectionCard({
                     </Badge>
                   )}
                 </div>
-                {service.description && (
+                {description && (
                   <p className="text-xs text-muted-foreground line-clamp-1">
-                    {service.description}
+                    {description}
                   </p>
                 )}
               </>
@@ -214,26 +225,28 @@ export function ServiceSectionCard({
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-4 w-full sm:w-auto">
-          <div className="text-right">
-            <div className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground flex items-center justify-end gap-1.5">
-              <span>Section Total</span>
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-mono">
+        <div className="flex w-full items-center justify-end gap-3 sm:w-auto">
+          <div className="flex items-center gap-3 sm:gap-5">
+            <div className="text-right">
+              <div className="text-xs text-muted-foreground">
                 {service.items.length} {service.items.length === 1 ? "item" : "items"}
-              </Badge>
-            </div>
-            <div className="text-base font-extrabold text-foreground font-mono">
-              ₹{sectionTotal.toLocaleString("en-IN", { minimumFractionDigits: sectionTotal % 1 !== 0 ? 2 : 0, maximumFractionDigits: 2 })}
+              </div>
+              <div className="font-semibold tabular-nums">
+                {currencySymbol}{sectionTotal.toLocaleString(currencyLocale, { minimumFractionDigits: sectionTotal % 1 !== 0 ? 2 : 0, maximumFractionDigits: 2 })}
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-1 pl-2 border-l border-border/60">
+          <div className="flex items-center gap-1 border-l pl-2">
             <Button
               size="icon"
               variant="ghost"
               onClick={() => setCollapsed(!collapsed)}
               className="size-8 text-muted-foreground hover:text-foreground"
               title={collapsed ? "Expand section" : "Collapse section"}
+              aria-label={`${collapsed ? "Expand" : "Collapse"} ${accessibleName}`}
+              aria-expanded={!collapsed}
+              type="button"
             >
               {collapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
             </Button>
@@ -245,12 +258,16 @@ export function ServiceSectionCard({
                   disabled={deleting}
                   className="size-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                   title="Delete entire section"
+                  aria-label={`Delete ${accessibleName} and its items`}
+                  type="button"
                 >
                   {deleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
                 </Button>
               }
-              title="Remove service section?"
-              description={`Remove "${service.serviceName}" and all of its line items?`}
+              title="Remove pricing section?"
+              description={serviceName
+                ? `Remove "${serviceName}" and all of its line items?`
+                : "Remove this section and all of its line items?"}
               confirmLabel="Remove section"
               disabled={deleting}
               onConfirm={() => void handleDeleteService()}
@@ -259,14 +276,14 @@ export function ServiceSectionCard({
         </div>
       </div>
 
-      {/* Body: Line Items Table */}
       {!collapsed && (
-        <div className="p-5 bg-card/30">
+        <div className="p-4">
           <LineItemsTable
             proposalId={proposalId}
             proposalServiceId={service.id}
             items={service.items}
             onRefresh={onRefresh}
+            currency={currency}
           />
         </div>
       )}

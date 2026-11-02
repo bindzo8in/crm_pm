@@ -17,6 +17,25 @@ interface SignatureRendererProps {
   company?: any;
 }
 
+interface ClientSignature {
+  method?: string;
+  url?: string;
+  name?: string;
+}
+
+function getClientSignature(value: unknown): ClientSignature | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+
+  const signature = value as Record<string, unknown>;
+  return {
+    method: typeof signature.method === "string" ? signature.method : undefined,
+    url: typeof signature.url === "string" ? signature.url : undefined,
+    name: typeof signature.name === "string" ? signature.name : undefined,
+  };
+}
+
 export function SignatureRenderer({ block, proposal, company }: SignatureRendererProps) {
   const content = (block.content as SignatureContent) || {};
   const {
@@ -26,8 +45,11 @@ export function SignatureRenderer({ block, proposal, company }: SignatureRendere
     companyDesignation = "Company Representative",
   } = content;
 
-  // Extract signature images if they exist
-  const clientSignatureUrl = proposal?.clientSignature?.url || null;
+  const clientSignature = getClientSignature(proposal?.clientSignature);
+  const clientSignatureUrl = clientSignature?.url ?? null;
+  const typedClientName = clientSignature?.method === "TYPED"
+    ? clientSignature.name
+    : undefined;
   
   // Need to parse company logo/signatures safely just in case they are strings
   let companySignatureUrl = null;
@@ -89,19 +111,26 @@ export function SignatureRenderer({ block, proposal, company }: SignatureRendere
         {/* Client Signature */}
         <div className="space-y-6">
           <div className="border-b border-black pb-2 flex items-end h-24 relative">
-            {clientSignatureUrl ? (
+            {typedClientName ? (
+              <span
+                aria-label={`Electronic signature by ${typedClientName}`}
+                className="absolute bottom-2 left-0 font-serif text-2xl italic text-black"
+              >
+                {typedClientName}
+              </span>
+            ) : clientSignatureUrl ? (
               <img src={clientSignatureUrl} alt="Client Signature" className="max-h-20 max-w-[200px] object-contain absolute bottom-2 left-0" />
             ) : (
               <span className="text-xs text-black/60 font-medium italic">Signature & Stamp</span>
             )}
           </div>
           <div>
-            <p className="text-lg font-bold text-black">{clientSignatory}</p>
+            <p className="text-lg font-bold text-black">{typedClientName || clientSignatory}</p>
             <p className="text-sm font-semibold text-black">{clientDesignation}</p>
             <p className="text-xs font-bold text-black uppercase tracking-wider mt-4 border-t border-black/20 pt-2 w-max">For Client</p>
           </div>
           <div className="mt-6 pt-4 border-t border-dashed border-gray-300 grid grid-cols-1 gap-2 text-[10px] text-black font-semibold font-mono">
-            <div className="flex justify-between"><span>Date Signed:</span> <span>{clientSignatureUrl ? (proposal?.updatedAt ? new Date(proposal.updatedAt).toLocaleDateString() : 'Recorded') : 'Pending'}</span></div>
+            <div className="flex justify-between"><span>Date Signed:</span> <span>{proposal?.acceptedAt ? new Date(proposal.acceptedAt).toLocaleDateString() : 'Pending'}</span></div>
             <div className="flex justify-between">
               <span>{proposal?.customer?.email ? 'Signee Email:' : (proposal?.customer?.phone ? 'Signee Phone:' : 'Signee Email:')}</span> 
               <span>{proposal?.customer?.email || proposal?.customer?.phone || 'Pending'}</span>

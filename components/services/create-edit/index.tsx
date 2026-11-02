@@ -195,9 +195,9 @@ export function ServiceForm({ service }: { service?: Extract<Awaited<ReturnType<
                 <Field data-invalid={fieldState.invalid} className="min-w-0">
                   <FieldContent className="flex min-w-0 flex-row items-center justify-between gap-4 py-3.5">
                     <div className="min-w-0 space-y-1">
-                      <FieldLabel htmlFor="showInProposal">Show in proposals</FieldLabel>
+                      <FieldLabel htmlFor="showInProposal">Show in proposal Core Services</FieldLabel>
                       <p className="text-xs leading-5 text-muted-foreground sm:text-sm">
-                        Let the team add this service to proposals.
+                        Include this service in the cover’s Core Services list. The service remains available for pricing when hidden.
                       </p>
                       {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                     </div>

@@ -80,6 +80,7 @@ interface LineItemsTableProps {
   proposalServiceId: string;
   items: LineItem[];
   onRefresh: () => void;
+  currency?: string;
 }
 
 const billingCycleLabels: Record<string, string> = {
@@ -94,6 +95,8 @@ const taxOptions = [0, 18, 28];
 
 interface SortableRowProps {
   item: LineItem;
+  currencySymbol: string;
+  currencyLocale: string;
   idx: number;
   totalItems: number;
   isEditing: boolean;
@@ -109,6 +112,8 @@ interface SortableRowProps {
 
 function SortableRow({
   item,
+  currencySymbol,
+  currencyLocale,
   idx,
   totalItems,
   isEditing,
@@ -136,270 +141,306 @@ function SortableRow({
     opacity: isDragging ? 0.4 : 1,
   };
 
-  if (isEditing) {
-    return (
-      <tr ref={setNodeRef} style={style} className="bg-primary/5 transition-colors">
-        <td className="py-3 px-2 text-center text-muted-foreground font-mono text-xs">
-          {idx + 1}
-        </td>
-        <td className="py-3 px-2 space-y-2">
-          <Input
-            value={editForm.name || ""}
-            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-            placeholder="Item Name"
-            className="h-8 font-medium text-xs"
-          />
-          <Textarea
-            value={editForm.description || ""}
-            onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-            placeholder="Description (optional)"
-            className="h-16 text-[11px] text-muted-foreground"
-          />
-        </td>
-        <td className="py-3 px-2 text-center">
-          <Select
-            value={editForm.billingCycle || "ONE_TIME"}
-            onValueChange={(val) => setEditForm({ ...editForm, billingCycle: val as LineItem["billingCycle"] })}
-          >
-            <SelectTrigger className="h-8 text-[11px] w-24">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(billingCycleLabels).map(([key, label]) => (
-                <SelectItem key={key} value={key} className="text-xs">
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </td>
-        <td className="py-3 px-2 text-right">
-          <div className="flex items-center justify-end gap-1">
-            <Input
-              type="number"
-              min={1}
-              value={editForm.quantity ?? 1}
-              onChange={(e) => setEditForm({ ...editForm, quantity: Number(e.target.value) })}
-              className="h-8 w-14 text-right text-xs"
-              title="Quantity"
-            />
-            <Input
-              value={editForm.unit || ""}
-              onChange={(e) => setEditForm({ ...editForm, unit: e.target.value })}
-              placeholder="Unit"
-              className="h-8 w-14 text-xs"
-              title="Unit (e.g. Hrs, Days, Unit)"
-            />
-          </div>
-        </td>
-        <td className="py-3 px-2 text-right">
-          <Input
-            type="number"
-            min={0}
-            step="0.01"
-            value={editForm.unitPrice ?? 0}
-            onChange={(e) => setEditForm({ ...editForm, unitPrice: Number(e.target.value) })}
-            className="h-8 w-24 text-right ml-auto text-xs font-mono"
-          />
-        </td>
-        <td className="py-3 px-2 text-center space-y-1">
-          <Select
-            value={editForm.discountType || "NONE"}
-            onValueChange={(val) => setEditForm({ ...editForm, discountType: val })}
-          >
-            <SelectTrigger className="h-7 text-[11px]">
-              <SelectValue placeholder="Discount" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="NONE" className="text-xs">No Disc.</SelectItem>
-              <SelectItem value="PERCENTAGE" className="text-xs">% Off</SelectItem>
-              <SelectItem value="FIXED" className="text-xs">₹ Off</SelectItem>
-            </SelectContent>
-          </Select>
-          {editForm.discountType && editForm.discountType !== "NONE" && (
-            <Input
-              type="number"
-              min={0}
-              step="0.01"
-              value={editForm.discountValue ?? 0}
-              onChange={(e) => setEditForm({ ...editForm, discountValue: Number(e.target.value) })}
-              placeholder="Value"
-              className="h-7 w-20 mx-auto text-center text-xs font-mono"
-            />
-          )}
-        </td>
-        <td className="py-3 px-2 text-center">
-          <div className="flex flex-wrap gap-1 justify-center max-w-[120px] mx-auto">
-            {taxOptions.map((rate) => (
-              <button
-                key={rate}
-                type="button"
-                onClick={() => setEditForm({ ...editForm, taxRate: rate })}
-                className={`px-1.5 py-0.5 rounded text-[10px] font-bold border transition-colors ${
-                  (editForm.taxRate ?? 0) === rate
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-background text-muted-foreground border-border hover:border-primary/50"
-                }`}
-              >
-                {rate}%
-              </button>
-            ))}
-          </div>
-        </td>
-        <td className="py-3 px-2 text-right font-semibold text-primary text-xs font-mono">
-          {(() => {
-            const qty = Number(editForm.quantity) || 0;
-            const price = Number(editForm.unitPrice) || 0;
-            const base = qty * price;
-            let disc = 0;
-            if (editForm.discountType === "PERCENTAGE") disc = base * ((Number(editForm.discountValue) || 0) / 100);
-            else if (editForm.discountType === "FIXED") disc = Number(editForm.discountValue) || 0;
-            const taxable = Math.max(0, base - disc);
-            const tax = taxable * ((Number(editForm.taxRate) || 0) / 100);
-            return `₹${Math.round(taxable + tax).toLocaleString()}`;
-          })()}
-        </td>
-        <td className="py-3 px-2 text-right">
-          <div className="flex items-center justify-end gap-1">
-            <Button
-              size="icon"
-              variant="ghost"
-              className="size-7 text-green-600 hover:text-green-700 hover:bg-green-500/10"
-              onClick={() => onSave(item.id)}
-              disabled={isLoading}
-              title="Save changes"
-            >
-              {isLoading ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="size-7 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-              onClick={onCancel}
-              disabled={isLoading}
-              title="Cancel"
-            >
-              <X className="size-3.5" />
-            </Button>
-          </div>
-        </td>
-      </tr>
-    );
-  }
+  const quantity = Number(editForm.quantity) || 0;
+  const price = Number(editForm.unitPrice) || 0;
+  const base = quantity * price;
+  const discount = editForm.discountType === "PERCENTAGE"
+    ? base * ((Number(editForm.discountValue) || 0) / 100)
+    : editForm.discountType === "FIXED"
+      ? Number(editForm.discountValue) || 0
+      : 0;
+  const taxable = Math.max(0, base - discount);
+  const tax = taxable * ((Number(editForm.taxRate) || 0) / 100);
+  const previewTotal = `${currencySymbol}${Math.round(taxable + tax).toLocaleString(currencyLocale)}`;
 
   return (
-    <tr ref={setNodeRef} style={style} className="hover:bg-muted/30 transition-colors group">
-      <td className="py-3 px-3 text-center text-muted-foreground font-mono text-xs">
-        <div className="flex items-center justify-center gap-1">
+    <article
+      ref={setNodeRef}
+      style={style}
+      className={`min-w-0 rounded-lg border bg-background ${isEditing ? "border-primary/40 bg-primary/[0.03]" : ""}`}
+    >
+      <header className="flex min-w-0 items-start gap-2.5 px-3 py-3 sm:gap-3 sm:px-4">
+        <div className="flex shrink-0 items-center gap-1 pt-0.5">
           <button
             type="button"
             {...attributes}
             {...listeners}
-            className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-foreground p-0.5"
+            className="touch-none cursor-grab rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
             title="Drag to reorder"
-            disabled={isLoading}
+            aria-label={`Drag to reorder ${item.name}`}
+            disabled={isLoading || isEditing}
           >
-            <GripVertical className="size-4" />
+            <GripVertical className="size-4" aria-hidden="true" />
           </button>
-          <div className="flex flex-col items-center gap-0.5">
-            <button
-              onClick={() => onReorderArrow(idx, "up")}
-              disabled={idx === 0 || isLoading}
-              className="text-muted-foreground/40 hover:text-foreground disabled:opacity-20"
-              title="Move up"
-            >
-              <ArrowUp className="size-3" />
-            </button>
-            <span>{idx + 1}</span>
-            <button
-              onClick={() => onReorderArrow(idx, "down")}
-              disabled={idx === totalItems - 1 || isLoading}
-              className="text-muted-foreground/40 hover:text-foreground disabled:opacity-20"
-              title="Move down"
-            >
-              <ArrowDown className="size-3" />
-            </button>
+          <span className="w-5 text-center text-xs tabular-nums text-muted-foreground">
+            {idx + 1}
+          </span>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          {isEditing ? (
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <label htmlFor={`line-item-name-${item.id}`} className="text-xs font-medium text-muted-foreground">Item name</label>
+                <Input
+                  id={`line-item-name-${item.id}`}
+                  value={editForm.name || ""}
+                  onChange={(event) => setEditForm({ ...editForm, name: event.target.value })}
+                  placeholder="Item name"
+                  className="h-9"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor={`line-item-description-${item.id}`} className="text-xs font-medium text-muted-foreground">Description</label>
+                <Textarea
+                  id={`line-item-description-${item.id}`}
+                  value={editForm.description || ""}
+                  onChange={(event) => setEditForm({ ...editForm, description: event.target.value })}
+                  placeholder="Add a short description (optional)"
+                  className="min-h-16"
+                />
+              </div>
+
+              <div className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-3">
+                <div className="min-w-0 space-y-1.5">
+                  <label htmlFor={`line-item-quantity-${item.id}`} className="text-xs font-medium text-muted-foreground">Quantity</label>
+                  <Input
+                    id={`line-item-quantity-${item.id}`}
+                    type="number"
+                    min={1}
+                    value={editForm.quantity ?? 1}
+                    onChange={(event) => setEditForm({ ...editForm, quantity: Number(event.target.value) })}
+                  />
+                </div>
+                <div className="min-w-0 space-y-1.5">
+                  <label htmlFor={`line-item-unit-${item.id}`} className="text-xs font-medium text-muted-foreground">Unit</label>
+                  <Input
+                    id={`line-item-unit-${item.id}`}
+                    value={editForm.unit || ""}
+                    onChange={(event) => setEditForm({ ...editForm, unit: event.target.value })}
+                    placeholder="Unit"
+                  />
+                </div>
+                <div className="col-span-2 min-w-0 space-y-1.5 sm:col-span-1">
+                  <label htmlFor={`line-item-price-${item.id}`} className="text-xs font-medium text-muted-foreground">Unit price ({currencySymbol})</label>
+                  <Input
+                    id={`line-item-price-${item.id}`}
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={editForm.unitPrice ?? 0}
+                    onChange={(event) => setEditForm({ ...editForm, unitPrice: Number(event.target.value) })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="min-w-0 space-y-1.5">
+                  <label htmlFor={`line-item-cycle-${item.id}`} className="text-xs font-medium text-muted-foreground">Billing cycle</label>
+                  <Select
+                    value={editForm.billingCycle || "ONE_TIME"}
+                    onValueChange={(value) => setEditForm({ ...editForm, billingCycle: value as LineItem["billingCycle"] })}
+                  >
+                    <SelectTrigger id={`line-item-cycle-${item.id}`} className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(billingCycleLabels).map(([key, label]) => (
+                        <SelectItem key={key} value={key}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="min-w-0 space-y-1.5">
+                  <label htmlFor={`line-item-discount-${item.id}`} className="text-xs font-medium text-muted-foreground">Discount</label>
+                  <Select
+                    value={editForm.discountType || "NONE"}
+                    onValueChange={(value) => setEditForm({ ...editForm, discountType: value })}
+                  >
+                    <SelectTrigger id={`line-item-discount-${item.id}`} className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NONE">No discount</SelectItem>
+                      <SelectItem value="PERCENTAGE">Percentage off</SelectItem>
+                      <SelectItem value="FIXED">{currencySymbol} amount off</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {editForm.discountType && editForm.discountType !== "NONE" && (
+                <div className="max-w-full space-y-1.5 sm:max-w-[calc(50%-0.375rem)]">
+                  <label htmlFor={`line-item-discount-value-${item.id}`} className="text-xs font-medium text-muted-foreground">
+                    {editForm.discountType === "PERCENTAGE" ? "Discount (%)" : `Discount (${currencySymbol})`}
+                  </label>
+                  <Input
+                    id={`line-item-discount-value-${item.id}`}
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={editForm.discountValue ?? 0}
+                    onChange={(event) => setEditForm({ ...editForm, discountValue: Number(event.target.value) })}
+                  />
+                </div>
+              )}
+
+              <fieldset className="space-y-2">
+                <legend className="text-xs font-medium text-muted-foreground">Tax rate</legend>
+                <div className="flex flex-wrap gap-2">
+                  {taxOptions.map((rate) => {
+                    const selected = (editForm.taxRate ?? 0) === rate;
+                    return (
+                      <button
+                        key={rate}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => setEditForm({ ...editForm, taxRate: rate })}
+                        className={`min-h-9 min-w-14 rounded-md border px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                          selected
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "bg-background text-muted-foreground hover:border-primary/50"
+                        }`}
+                      >
+                        {rate}%
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+
+              <div className="flex min-w-0 flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Item total <span className="ml-1 font-semibold tabular-nums text-foreground">{previewTotal}</span>
+                </p>
+                <div className="flex w-full items-center gap-2 sm:w-auto">
+                  <Button variant="outline" size="sm" onClick={onCancel} disabled={isLoading}>
+                    <X className="size-4" />
+                    Cancel
+                  </Button>
+                  <Button className="min-w-0 flex-1 sm:flex-none" size="sm" onClick={() => onSave(item.id)} disabled={isLoading || !editForm.name?.trim()}>
+                    {isLoading ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+                    <span className="sm:hidden">Save</span>
+                    <span className="hidden sm:inline">Save changes</span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <h4 className="min-w-0 break-words font-medium text-foreground">{item.name}</h4>
+                <Badge
+                  variant={item.isCustom ? "outline" : "secondary"}
+                  className={`shrink-0 text-[10px] font-medium ${
+                    item.isCustom
+                      ? "border-violet-500/30 bg-violet-500/5 text-violet-600 dark:text-violet-400"
+                      : "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                  }`}
+                >
+                  {item.isCustom ? "Custom" : "From package"}
+                </Badge>
+              </div>
+              {item.description && (
+                <p className="mt-1 break-words text-sm text-muted-foreground">{item.description}</p>
+              )}
+              <p className="mt-1 text-xs text-muted-foreground">
+                {item.quantity} {item.unit || "unit"} · {billingCycleLabels[item.billingCycle] || item.billingCycle}
+              </p>
+            </>
+          )}
+        </div>
+
+        <div className="flex shrink-0 items-start gap-0.5">
+          {!isEditing && (
+            <>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-8 text-muted-foreground hover:text-foreground"
+                onClick={() => onStartEdit(item)}
+                disabled={isLoading}
+                title="Edit item"
+                aria-label={`Edit ${item.name}`}
+              >
+                <Edit2 className="size-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => onDelete(item)}
+                disabled={isLoading}
+                title="Delete item"
+                aria-label={`Delete ${item.name}`}
+              >
+                {isLoading ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+              </Button>
+            </>
+          )}
+        </div>
+      </header>
+
+      {!isEditing && (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-3 border-t bg-muted/15 px-3 py-3 sm:grid-cols-4 sm:px-4 lg:grid-cols-4">
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">Unit price</p>
+            <p className="mt-0.5 break-words text-sm tabular-nums">
+              {currencySymbol}{item.unitPrice.toLocaleString(currencyLocale, { minimumFractionDigits: item.unitPrice % 1 !== 0 ? 2 : 0, maximumFractionDigits: 2 })}
+            </p>
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">Discount</p>
+            <p className="mt-0.5 text-sm">
+              {item.discountValue && item.discountValue > 0
+                ? item.discountType === "PERCENTAGE"
+                  ? `${item.discountValue}% off`
+                  : `${currencySymbol}${item.discountValue} off`
+                : "—"}
+            </p>
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">Tax</p>
+            <p className="mt-0.5 text-sm">{item.taxRate ?? 0}% GST</p>
+          </div>
+          <div className="min-w-0 text-right">
+            <p className="text-xs text-muted-foreground">Item total</p>
+            <p className="mt-0.5 break-words text-sm font-semibold tabular-nums text-foreground">
+              {currencySymbol}{item.total.toLocaleString(currencyLocale, { minimumFractionDigits: item.total % 1 !== 0 ? 2 : 0, maximumFractionDigits: 2 })}
+            </p>
           </div>
         </div>
-      </td>
-      <td className="py-3 px-3">
-        <div className="font-medium text-foreground">{item.name}</div>
-        {item.description && (
-          <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
-            {item.description}
-          </div>
-        )}
-      </td>
-      <td className="py-3 px-3 text-center">
-        <Badge
-          variant={item.isCustom ? "outline" : "secondary"}
-          className={`text-[10px] font-semibold px-2 py-0.5 ${
-            item.isCustom
-              ? "border-violet-500/30 text-violet-600 dark:text-violet-400 bg-violet-500/5"
-              : "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-          }`}
-        >
-          {item.isCustom ? "Custom Item" : "Snapshot"}
-        </Badge>
-      </td>
-      <td className="py-3 px-3 text-right">
-        <div className="font-medium">{item.quantity} {item.unit || ""}</div>
-        <div className="text-[10px] text-muted-foreground">
-          {billingCycleLabels[item.billingCycle] || item.billingCycle}
-        </div>
-      </td>
-      <td className="py-3 px-3 text-right text-muted-foreground font-mono text-xs">
-        ₹{item.unitPrice.toLocaleString("en-IN", { minimumFractionDigits: item.unitPrice % 1 !== 0 ? 2 : 0, maximumFractionDigits: 2 })}
-      </td>
-      <td className="py-3 px-3 text-center">
-        {item.discountValue && item.discountValue > 0 ? (
-          <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 font-mono">
-            {item.discountType === "PERCENTAGE" ? `-${item.discountValue}%` : `-₹${item.discountValue}`}
-          </Badge>
-        ) : (
-          <span className="text-muted-foreground/50 text-xs">-</span>
-        )}
-      </td>
-      <td className="py-3 px-3 text-center">
-        <Badge
-          variant="secondary"
-          className={`text-[10px] font-mono px-2 py-0.5 ${
-            (item.taxRate ?? 0) > 0
-              ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-              : "bg-muted text-muted-foreground"
-          }`}
-        >
-          {item.taxRate ?? 0}% GST
-        </Badge>
-      </td>
-      <td className="py-3 px-3 text-right font-bold text-foreground font-mono">
-        ₹{item.total.toLocaleString("en-IN", { minimumFractionDigits: item.total % 1 !== 0 ? 2 : 0, maximumFractionDigits: 2 })}
-      </td>
-      <td className="py-3 px-3 text-right">
-        <div className="flex items-center justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+      )}
+
+      {!isEditing && totalItems > 1 && (
+        <footer className="flex items-center justify-end gap-1 border-t px-3 py-1.5 sm:px-4">
+          <span className="mr-auto text-xs text-muted-foreground">Reorder item</span>
           <Button
+            type="button"
             size="icon"
             variant="ghost"
-            className="size-8 text-muted-foreground hover:text-foreground"
-            onClick={() => onStartEdit(item)}
-            disabled={isLoading}
-            title="Edit Line Item (Tax, Discount & Pricing)"
+            className="size-8"
+            onClick={() => onReorderArrow(idx, "up")}
+            disabled={idx === 0 || isLoading}
+            title="Move up"
+            aria-label={`Move ${item.name} up`}
           >
-            <Edit2 className="size-3.5" />
+            <ArrowUp className="size-4" />
           </Button>
           <Button
+            type="button"
             size="icon"
             variant="ghost"
-            className="size-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-            onClick={() => onDelete(item)}
-            disabled={isLoading}
-            title="Delete Line Item (Never modifies package)"
+            className="size-8"
+            onClick={() => onReorderArrow(idx, "down")}
+            disabled={idx === totalItems - 1 || isLoading}
+            title="Move down"
+            aria-label={`Move ${item.name} down`}
           >
-            {isLoading ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+            <ArrowDown className="size-4" />
           </Button>
-        </div>
-      </td>
-    </tr>
+        </footer>
+      )}
+    </article>
   );
 }
 
@@ -408,7 +449,10 @@ export function LineItemsTable({
   proposalServiceId,
   items,
   onRefresh,
+  currency = "INR",
 }: LineItemsTableProps) {
+  const currencySymbol = currency === "USD" ? "$" : "₹";
+  const currencyLocale = currency === "USD" ? "en-US" : "en-IN";
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<LineItem>>({});
   const [loadingActionId, setLoadingActionId] = useState<string | null>(null);
@@ -605,55 +649,41 @@ export function LineItemsTable({
   const presetSuggestions = ["Training", "Migration", "API Integration", "24/7 Support", "SEO Setup"];
 
   return (
-    <div className="space-y-4">
-      <div className="overflow-x-auto rounded-xl border border-border/60 bg-background/50 shadow-sm">
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <table className="w-full text-left text-sm border-collapse">
-            <thead>
-              <tr className="border-b bg-muted/40 text-muted-foreground font-semibold text-xs uppercase tracking-wider">
-                <th className="py-3 px-3 w-16 text-center">#</th>
-                <th className="py-3 px-3 min-w-[200px]">Item Details</th>
-                <th className="py-3 px-3 w-24 text-center">Type</th>
-                <th className="py-3 px-3 w-32 text-right">Qty & Unit</th>
-                <th className="py-3 px-3 w-28 text-right">Unit Price</th>
-                <th className="py-3 px-3 w-28 text-center">Discount</th>
-                <th className="py-3 px-3 w-32 text-center">Tax / GST</th>
-                <th className="py-3 px-3 w-32 text-right">Total (₹)</th>
-                <th className="py-3 px-3 w-24 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/40">
-              {items.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="py-8 text-center text-muted-foreground italic text-sm">
-                    No line items in this section. Add a custom item or import a package.
-                  </td>
-                </tr>
-              ) : (
-                <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-                  {items.map((item, idx) => (
-                    <SortableRow
-                      key={item.id}
-                      item={item}
-                      idx={idx}
-                      totalItems={items.length}
-                      isEditing={editingItemId === item.id}
-                      isLoading={loadingActionId === item.id}
-                      editForm={editForm}
-                      setEditForm={setEditForm}
-                      onSave={handleSaveEdit}
-                      onCancel={handleCancelEdit}
-                      onStartEdit={handleStartEdit}
-                      onDelete={handleDeleteItem}
-                      onReorderArrow={handleReorderArrow}
-                    />
-                  ))}
-                </SortableContext>
-              )}
-            </tbody>
-          </table>
-        </DndContext>
-      </div>
+    <div className="min-w-0 space-y-4">
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        {items.length === 0 ? (
+          <div className="rounded-lg border border-dashed px-4 py-6 text-center">
+            <p className="text-sm font-medium">No items in this section yet</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Add a custom item or import a package to get started.
+            </p>
+          </div>
+        ) : (
+          <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
+            <div className="min-w-0 space-y-3">
+              {items.map((item, idx) => (
+                <SortableRow
+                  key={item.id}
+                  item={item}
+                  currencySymbol={currencySymbol}
+                  currencyLocale={currencyLocale}
+                  idx={idx}
+                  totalItems={items.length}
+                  isEditing={editingItemId === item.id}
+                  isLoading={loadingActionId === item.id}
+                  editForm={editForm}
+                  setEditForm={setEditForm}
+                  onSave={handleSaveEdit}
+                  onCancel={handleCancelEdit}
+                  onStartEdit={handleStartEdit}
+                  onDelete={handleDeleteItem}
+                  onReorderArrow={handleReorderArrow}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        )}
+      </DndContext>
 
       {/* Add Custom Item Modal / Trigger */}
       <div className="flex justify-start">
@@ -733,7 +763,7 @@ export function LineItemsTable({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium">Unit Price (₹) *</label>
+                  <label className="text-xs font-medium">Unit Price ({currencySymbol}) *</label>
                   <Input
                     type="number"
                     min={0}
@@ -755,14 +785,14 @@ export function LineItemsTable({
                     <SelectContent>
                       <SelectItem value="NONE">No Discount</SelectItem>
                       <SelectItem value="PERCENTAGE">Percentage (%) Off</SelectItem>
-                      <SelectItem value="FIXED">Amount (₹) Off</SelectItem>
+                      <SelectItem value="FIXED">Amount ({currencySymbol}) Off</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 {customDiscountType !== "NONE" && (
                   <div className="space-y-1">
                     <label className="text-xs font-medium">
-                      {customDiscountType === "PERCENTAGE" ? "Discount (%)" : "Discount (₹)"}
+                      {customDiscountType === "PERCENTAGE" ? "Discount (%)" : `Discount (${currencySymbol})`}
                     </label>
                     <Input
                       type="number"

@@ -13,7 +13,7 @@ export type ImportServicePackageSchema = z.infer<typeof importServicePackageSche
 export const proposalServiceEditSchema = z.object({
   proposalServiceId: z.string().nonempty("Proposal Service ID is required"),
   proposalId: z.string().nonempty("Proposal ID is required"),
-  serviceName: z.string().min(1, "Section display name is required"),
+  serviceName: z.string().max(120, "Section display name is too long"),
   description: z.string().optional().nullable(),
 });
 
@@ -38,7 +38,7 @@ export const proposalLineItemEditSchema = z.object({
 export type ProposalLineItemEditSchema = z.infer<typeof proposalLineItemEditSchema>;
 
 export const customLineItemCreateSchema = z.object({
-  proposalServiceId: z.string().nonempty("Proposal Service ID is required"),
+  proposalServiceId: z.string().optional().nullable(),
   proposalId: z.string().nonempty("Proposal ID is required"),
   name: z.string().min(1, "Item name is required"),
   description: z.string().optional().nullable(),

@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { proposalSchema, type ProposalSchema } from "@/lib/schemas/proposal-schema";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useWatch } from "react-hook-form";
 import { getLiveExchangeRate } from "@/actions/exchange-rate";
-import { RefreshCwIcon, Loader2Icon, PlusIcon, XIcon } from "lucide-react";
+import { RefreshCwIcon, Loader2Icon, XIcon } from "lucide-react";
 import {
     Field,
     FieldGroup,
@@ -13,7 +13,6 @@ import {
     FieldLabel,
     FieldDescription,
     FieldError,
-    FieldSeparator,
 } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,10 +35,18 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import { ProposalWorkflowNav } from "@/components/proposal/proposal-workflow-nav";
+import { ProposalWorkflowActionBar } from "@/components/proposal/proposal-workflow-action-bar";
+
+interface ProposalFormInitialData extends Partial<Omit<ProposalSchema, "customerDisplayName" | "customerCompanyName">> {
+    id: string;
+    customerId: string;
+    customerDisplayName?: string | null;
+    customerCompanyName?: string | null;
+}
 
 interface ProposalCreateEditFormProps {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    initialData?: any;
+    initialData?: ProposalFormInitialData;
 }
 
 export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormProps) {
@@ -66,9 +73,9 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
             customerCompanyName: initialData.customerCompanyName || "",
             customerDisplayName: initialData.customerDisplayName || "",
             notes: initialData.notes || "",
-            validUntil: initialData.validUntil as "07_Days" | "15_Days" | "30_Days",
-            currency: (initialData.currency as "INR" | "USD") || "INR",
-            exchangeRate: initialData.exchangeRate || 83.50,
+            validUntil: initialData.validUntil || "07_Days",
+            currency: initialData.currency || "INR",
+            exchangeRate: initialData.exchangeRate ?? 83.50,
             placeOfSupply: initialData.placeOfSupply || "",
         } : {
             customerId: "",
@@ -83,17 +90,22 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
         }
     });
 
-    const watchedCurrency = form.watch("currency");
+    const watchedCurrency = useWatch({ control: form.control, name: "currency" });
 
     const handleFetchRate = async () => {
         setFetchingRate(true);
-        const res = await getLiveExchangeRate("USD", "INR");
-        setFetchingRate(false);
-        if (res.success && res.data) {
-            form.setValue("exchangeRate", res.data.rate, { shouldValidate: true });
-            toast.success(`Exchange rate updated: ₹${res.data.rate} / USD (${res.data.source})`);
-        } else {
-            toast.error("Failed to fetch exchange rate");
+        try {
+            const res = await getLiveExchangeRate("USD", "INR");
+            if (res.success && res.data) {
+                form.setValue("exchangeRate", res.data.rate, { shouldValidate: true });
+                toast.success(`Exchange rate updated: ₹${res.data.rate} / USD (${res.data.source})`);
+            } else {
+                toast.error(res.message || "Failed to fetch exchange rate");
+            }
+        } catch {
+            toast.error("Failed to fetch the latest exchange rate. Try again.");
+        } finally {
+            setFetchingRate(false);
         }
     };
     const {
@@ -133,26 +145,41 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
     });
 
     return (
-        <>
-        <form
-            onSubmit={handleSubmit}
-            className="p-2 sm:p-5 md:p-8 w-full rounded-md gap-2 border max-w-3xl mx-auto"
-        >
-            <FieldGroup className="grid md:grid-cols-6 gap-4 mb-6">
+        <div className="w-full space-y-6 pb-24">
+            <ProposalWorkflowNav
+                proposalId={initialData?.id}
+                activeStep={1}
+                title={initialData?.title}
+                customerName={initialData?.customerDisplayName}
+                status={initialData ? "DRAFT" : null}
+                maxAvailableStep={1}
+            />
+            <form id="proposal-details-form" onSubmit={handleSubmit} className="w-full space-y-8">
+                <section aria-labelledby="proposal-details-heading" className="space-y-5">
+                    <div className="max-w-3xl">
+                        <h2 id="proposal-details-heading" className="text-base font-semibold">Proposal details</h2>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            Choose who this proposal is for. Adding a title is optional.
+                        </p>
+                    </div>
+                    <FieldGroup className="grid gap-5 md:grid-cols-2">
                 <Controller
                     name="customerId"
                     control={form.control}
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="min-w-0 gap-2"
                         >
-                            <FieldLabel htmlFor="customerId">Customer</FieldLabel>
+                            <FieldLabel htmlFor="customerId">Customer <span className="text-destructive">*</span></FieldLabel>
                             <div className="flex min-w-0 gap-2">
                                 <div className="min-w-0 flex-1">
                                     <CustomerCombobox
+                                        id="customerId"
+                                        aria-invalid={fieldState.invalid}
                                         value={field.value}
                                         selectedCustomer={selectedCustomer}
+                                        onCreateCustomer={() => setCreateCustomerOpen(true)}
                                         onValueChange={(customer) => {
                                             setSelectedCustomer(customer);
                                             field.onChange(customer.id);
@@ -185,17 +212,8 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
                                         <XIcon />
                                     </Button>
                                 )}
-                                <Button
-                                    type="button"
-                                    variant="default"
-                                    size="icon"
-                                    aria-label="Create customer"
-                                    onClick={() => setCreateCustomerOpen(true)}
-                                >
-                                    <PlusIcon />
-                                </Button>
                             </div>
-
+                            <FieldDescription>Search for an existing customer or add a new one.</FieldDescription>
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                         </Field>
                     )}
@@ -207,38 +225,45 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-2"
                         >
-                            <FieldLabel htmlFor="title">Proposal Title </FieldLabel>
+                            <FieldLabel htmlFor="title">Proposal title <span className="text-muted-foreground font-normal">(optional)</span></FieldLabel>
                             <Input
                                 {...field}
                                 id="title"
                                 type="text"
-                                onChange={(e) => {
-                                    field.onChange(e.target.value);
-                                }}
                                 aria-invalid={fieldState.invalid}
-                                placeholder="Enter title of the proposal"
+                                placeholder="e.g. Website redesign proposal"
                             />
-
+                            <FieldDescription>Add a title to identify this proposal. Leave it blank to use the document&apos;s default heading.</FieldDescription>
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                         </Field>
                     )}
                 />
+                    </FieldGroup>
+                </section>
 
+                <section aria-labelledby="commercial-terms-heading" className="space-y-5 border-t pt-6">
+                    <div className="max-w-3xl">
+                        <h2 id="commercial-terms-heading" className="text-base font-semibold">Commercial terms</h2>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            Set how long the offer is valid and which currency to use for pricing.
+                        </p>
+                    </div>
+                    <FieldGroup className="grid gap-5 md:grid-cols-2">
                 <Controller
                     control={form.control}
                     name="validUntil"
                     render={({ field, fieldState }) => (
-                        <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full">
-                            <FieldLabel>Valid Until</FieldLabel>
+                        <Field data-invalid={fieldState.invalid} className="gap-2">
+                            <FieldLabel htmlFor="validUntil">Proposal validity</FieldLabel>
 
                             <FieldContent>
                                 <Select
                                     value={field.value}
                                     onValueChange={field.onChange}
                                 >
-                                    <SelectTrigger className="w-full">
+                                    <SelectTrigger id="validUntil" className="w-full">
                                         <SelectValue placeholder="Select validity" />
                                     </SelectTrigger>
 
@@ -258,7 +283,7 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
                                 </Select>
 
                                 <FieldDescription>
-                                    How long this proposal remains valid.
+                                    The offer expires after this many days.
                                 </FieldDescription>
 
                                 {fieldState.error && (
@@ -275,7 +300,7 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
                     control={form.control}
                     name="currency"
                     render={({ field, fieldState }) => (
-                        <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full">
+                        <Field data-invalid={fieldState.invalid} className="gap-2">
                             <FieldLabel>Currency</FieldLabel>
 
                             <FieldContent>
@@ -304,7 +329,7 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
                                 </Select>
 
                                 <FieldDescription>
-                                    Select the currency for this proposal.
+                                    Pricing and totals will use this currency.
                                 </FieldDescription>
 
                                 {fieldState.error && (
@@ -323,16 +348,16 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
                             name="exchangeRate"
                             control={form.control}
                             render={({ field, fieldState }) => (
-                                <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full md:col-span-3">
+                                <Field data-invalid={fieldState.invalid} className="gap-2">
                                     <div className="flex items-center justify-between">
-                                        <FieldLabel htmlFor="exchangeRate">RBI Exchange Rate (₹/USD)</FieldLabel>
+                                        <FieldLabel htmlFor="exchangeRate">INR to USD exchange rate</FieldLabel>
                                         <Button
                                             type="button"
                                             variant="ghost"
                                             size="sm"
                                             onClick={handleFetchRate}
                                             disabled={fetchingRate}
-                                            className="h-6 text-xs text-blue-600 gap-1 px-1.5"
+                                            className="h-7 gap-1 px-2 text-xs"
                                         >
                                             {fetchingRate ? <Loader2Icon className="h-3 w-3 animate-spin" /> : <RefreshCwIcon className="h-3 w-3" />}
                                             Fetch Today&apos;s Rate
@@ -345,8 +370,9 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
                                         min="0.0001"
                                         value={field.value ?? 83.50}
                                         onChange={(e) => field.onChange(Number(e.target.value))}
-                                        placeholder="83.50"
+                                        aria-invalid={fieldState.invalid}
                                     />
+                                    <FieldDescription>Rupees per US dollar. You can adjust the fetched rate.</FieldDescription>
                                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                                 </Field>
                             )}
@@ -356,12 +382,13 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
                             name="placeOfSupply"
                             control={form.control}
                             render={({ field, fieldState }) => (
-                                <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full md:col-span-3">
+                                <Field data-invalid={fieldState.invalid} className="gap-2">
                                     <FieldLabel htmlFor="placeOfSupply">Place of Supply (Country)</FieldLabel>
                                     <Input
                                         id="placeOfSupply"
                                         value={field.value || ""}
                                         onChange={(e) => field.onChange(e.target.value)}
+                                        aria-invalid={fieldState.invalid}
                                         placeholder="e.g. United States"
                                     />
                                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
@@ -370,45 +397,54 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
                         />
                     </>
                 )}
+                    </FieldGroup>
+                </section>
 
+                <section aria-labelledby="notes-heading" className="space-y-5 border-t pt-6">
+                    <div className="max-w-3xl">
+                        <h2 id="notes-heading" className="text-base font-semibold">Cover page message</h2>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                        This message appears on the proposal cover, so write it for your customer.
+                        </p>
+                    </div>
+                    <FieldGroup className="grid gap-5 md:grid-cols-2">
                 <Controller
                     name="notes"
                     control={form.control}
                     render={({ field, fieldState }) => (
                         <Field
                             data-invalid={fieldState.invalid}
-                            className="gap-1 col-span-full"
+                            className="gap-2 md:col-span-2"
                         >
-                            <FieldLabel htmlFor="notes">Notes</FieldLabel>
+                            <FieldLabel htmlFor="notes">Introduction</FieldLabel>
                             <Textarea
                                 {...field}
                                 id="notes"
-                                onChange={(e) => {
-                                    field.onChange(e.target.value);
-                                }}
+                                maxLength={200}
                                 aria-invalid={fieldState.invalid}
-                                placeholder="Enter notes for this proposal"
+                                placeholder="Briefly introduce the proposal and what it offers."
+                                rows={3}
                             />
-
+                            <FieldDescription className="text-right">{(field.value || "").length}/200</FieldDescription>
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                         </Field>
                     )}
                 />
+                    </FieldGroup>
+                </section>
 
-            </FieldGroup>
-
-            <FieldSeparator />
-
-            <FieldGroup className="grid md:grid-cols-6 gap-4 mb-6">
-            </FieldGroup>
-
-            <div className="flex justify-end items-center w-full">
-                <Button disabled={isSubmitting}>
-                    {isSubmitting ? (initialData ? "Updating..." : "Submitting...") : (initialData ? "Update" : "Submit")}
+            </form>
+            <ProposalWorkflowActionBar>
+                <Button type="submit" form="proposal-details-form" disabled={isSubmitting} className="w-full sm:w-auto">
+                    {isSubmitting ? (
+                        <>
+                            <Loader2Icon className="mr-2 size-4 animate-spin" />
+                            Saving draft…
+                        </>
+                    ) : initialData ? "Save details and continue" : "Save draft and continue"}
                 </Button>
-            </div>
-        </form>
-        <Dialog open={createCustomerOpen} onOpenChange={setCreateCustomerOpen}>
+            </ProposalWorkflowActionBar>
+            <Dialog open={createCustomerOpen} onOpenChange={setCreateCustomerOpen}>
             <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[530px] flex-col gap-0 overflow-hidden rounded-xl p-0 sm:max-h-[94dvh]">
                 <DialogHeader className="shrink-0 border-b bg-background px-4 py-3 sm:px-5 sm:py-4">
                     <DialogTitle>New Customer</DialogTitle>
@@ -425,7 +461,7 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
                     onCancel={() => setCreateCustomerOpen(false)}
                 />
             </DialogContent>
-        </Dialog>
-        </>
+            </Dialog>
+        </div>
     );
 }

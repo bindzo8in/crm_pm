@@ -69,13 +69,13 @@ export function SignatureBlockEditor({ block, onSave }: SignatureBlockEditorProp
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between bg-muted/20 px-4 py-3 rounded-lg border text-xs">
+      <div className="flex flex-col gap-3 border-b pb-3 text-xs sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2 text-muted-foreground">
           <PenTool className="h-4 w-4 text-rose-500" />
           <span>Acceptance & Sign-off Card (Will display signature lines and date lines in print/PDF)</span>
         </div>
 
-        <Button onClick={handleSave} disabled={isSaving || (!isDirty && !justSaved)} size="sm" className="h-7 px-3 text-xs gap-1.5">
+        <Button onClick={handleSave} disabled={isSaving || (!isDirty && !justSaved)} size="sm" className="h-8 w-full gap-1.5 px-3 text-xs sm:w-auto">
           {justSaved ? (
             <>
               <Check className="h-3.5 w-3.5 text-emerald-500" />

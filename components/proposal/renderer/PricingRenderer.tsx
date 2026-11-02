@@ -89,22 +89,27 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
               <tbody>
                 {services.map((service) => (
                   <React.Fragment key={service.id}>
-                    {/* Service Items */}
                     {service.items.map((item) => (
                       <tr key={item.id} className="break-inside-avoid">
                         <td className="align-top">
-                          <div className="font-bold text-black text-sm">
-                            {service.packageName
-                              ? (service.packageName.trim().toLowerCase() === service.serviceName.trim().toLowerCase()
-                                  ? service.serviceName
-                                  : `${service.serviceName} (${service.packageName})`)
-                              : service.serviceName}
-                          </div>
-                          {item.name &&
-                            item.name.trim().toLowerCase() !== service.serviceName.trim().toLowerCase() &&
-                            (!service.packageName || item.name.trim().toLowerCase() !== service.packageName.trim().toLowerCase()) && (
-                              <div className="font-medium text-black text-xs mt-1">{item.name}</div>
-                            )}
+                          {service.serviceName.trim() && service.serviceName.trim() !== "Custom items" ? (
+                            <>
+                              <div className="font-bold text-black text-sm">
+                                {service.packageName
+                                  ? (service.packageName.trim().toLowerCase() === service.serviceName.trim().toLowerCase()
+                                      ? service.serviceName
+                                      : `${service.serviceName} (${service.packageName})`)
+                                  : service.serviceName}
+                              </div>
+                              {item.name &&
+                                item.name.trim().toLowerCase() !== service.serviceName.trim().toLowerCase() &&
+                                (!service.packageName || item.name.trim().toLowerCase() !== service.packageName.trim().toLowerCase()) && (
+                                  <div className="font-medium text-black text-xs mt-1">{item.name}</div>
+                                )}
+                            </>
+                          ) : (
+                            <div className="font-bold text-black text-sm">{item.name}</div>
+                          )}
                           {item.description && (
                             <div className="text-xs text-black font-medium mt-1 whitespace-pre-wrap leading-relaxed">{item.description}</div>
                           )}

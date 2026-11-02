@@ -5,6 +5,24 @@ import { AcceptProposalButton } from "@/components/proposal/preview/AcceptPropos
 import { PublicPreviewToolbar } from "@/components/proposal/preview/PublicPreviewToolbar";
 import prisma from "@/lib/prisma";
 import { Metadata } from "next";
+import Image from "next/image";
+
+function getCompanyLogoUrl(logo: unknown): string | undefined {
+  let value = logo;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (typeof value !== "object" || value === null || Array.isArray(value) || !("url" in value)) {
+    return undefined;
+  }
+
+  return typeof value.url === "string" ? value.url : undefined;
+}
 
 export async function generateMetadata(props: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const params = await props.params;
@@ -53,10 +71,9 @@ export default async function PublicProposalPage({ params, searchParams }: Publi
   const company = await prisma.company.findFirst();
   let bankAccount = null;
 
-  const propAny = proposal as any;
-  if (propAny.bankAccountId) {
+  if ("bankAccountId" in proposal && typeof proposal.bankAccountId === "string") {
     bankAccount = await prisma.companyBankAccount.findUnique({
-      where: { id: propAny.bankAccountId },
+      where: { id: proposal.bankAccountId },
     });
   } else if (company) {
     // Fallback to default if no specific account selected
@@ -74,6 +91,7 @@ export default async function PublicProposalPage({ params, searchParams }: Publi
       console.error("Failed to parse company logo", e);
     }
   }
+  const companyLogoUrl = getCompanyLogoUrl(safeCompany?.logo);
 
   // PDF mode: render the bare document using the dedicated PDF renderer.
   // ProposalPdfRenderer uses strict A4 pixel dimensions (794×1123px) to guarantee
@@ -103,17 +121,25 @@ export default async function PublicProposalPage({ params, searchParams }: Publi
             bankAccount={bankAccount}
           />
           
-          <AcceptProposalButton 
-            proposalId={proposal.id} 
-            currentStatus={proposal.status} 
-            isPublic={true}
-          />
+          {(proposal.status === "SENT" || proposal.status === "ACCEPTED") && (
+            <AcceptProposalButton
+              proposalId={proposal.id}
+              currentStatus={proposal.status}
+            />
+          )}
         </div>
       </main>
 
       <footer className="fixed bottom-0 w-full bg-white/90 backdrop-blur-sm border-t p-3 shadow-[0_-4px_15px_-5px_rgba(0,0,0,0.1)] z-40 flex items-center justify-center gap-3 print:hidden">
-        {(safeCompany?.logo as any)?.url && (
-          <img src={(safeCompany?.logo as any).url} alt="Company Logo" className="h-8 object-contain" />
+        {companyLogoUrl && (
+          <Image
+            src={companyLogoUrl}
+            alt="Company logo"
+            width={120}
+            height={32}
+            unoptimized
+            className="h-8 w-auto object-contain"
+          />
         )}
         <span className="font-semibold text-slate-700 text-sm">{safeCompany?.displayName || safeCompany?.legalName || 'Company Name'}</span>
         {safeCompany?.website && (

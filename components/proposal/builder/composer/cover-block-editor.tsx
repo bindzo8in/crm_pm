@@ -38,6 +38,26 @@ interface CoverBlockEditorProps {
   onSave: (id: string, content: Record<string, unknown>) => Promise<void>;
 }
 
+function toDateInputValue(value?: string) {
+  if (!value) {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (dateOnlyMatch) return value;
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function CoverBlockEditor({ block, proposal, onSave }: CoverBlockEditorProps) {
   const blockContent = (block.content as CoverBlockContent) || {};
   const initialForm = {
@@ -48,9 +68,7 @@ export function CoverBlockEditor({ block, proposal, onSave }: CoverBlockEditorPr
       proposal.customer?.displayName ??
       "Client",
     preparedBy: blockContent.preparedBy ?? "Sales Executive",
-    date:
-      blockContent.date ??
-      new Date().toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" }),
+    date: toDateInputValue(blockContent.date),
     layoutStyle: blockContent.layoutStyle ?? "MODERN",
     showProposalTitle: blockContent.showProposalTitle ?? true,
     showNotes: blockContent.showNotes ?? true,
@@ -92,32 +110,36 @@ export function CoverBlockEditor({ block, proposal, onSave }: CoverBlockEditorPr
   }, [handleSave, isDirty, isSaving]);
 
   return (
-    <div className="space-y-6 rounded-xl border bg-card p-4 sm:p-6">
+    <div className="space-y-6">
       {/* Read-only Proposal Title Display */}
-      <div className="border-b pb-4">
-        <Label className="text-xs font-medium text-muted-foreground">
-          Proposal title (read-only)
-        </Label>
-        <div className="mt-1 text-xl font-bold text-foreground flex items-center gap-2">
-          <FileText className="h-5 w-5 text-blue-500" />
-          <span>{proposal.title}</span>
+      {proposal.title.trim() && (
+        <div className="border-b pb-4">
+          <Label className="text-xs font-medium text-muted-foreground">
+            Proposal title (read-only)
+          </Label>
+          <div className="mt-1 flex items-center gap-2 text-xl font-bold text-foreground">
+            <FileText className="h-5 w-5 text-blue-500" />
+            <span>{proposal.title}</span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Editable Fields Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="cover-subtitle" className="text-xs font-medium">
-            Subtitle / Document Type
-          </Label>
-          <Input
-            id="cover-subtitle"
-            value={form.subtitle}
-            onChange={(e) => setForm({ ...form, subtitle: e.target.value })}
-            placeholder="e.g., Commercial & Technical Proposal"
-            className="bg-background"
-          />
-        </div>
+        {form.showNotes && (
+          <div className="space-y-2">
+            <Label htmlFor="cover-subtitle" className="text-xs font-medium">
+              Subtitle / Document Type
+            </Label>
+            <Input
+              id="cover-subtitle"
+              value={form.subtitle}
+              onChange={(e) => setForm({ ...form, subtitle: e.target.value })}
+              placeholder="e.g., Commercial & Technical Proposal"
+              className="bg-background"
+            />
+          </div>
+        )}
 
         <div className="space-y-2">
           <Label htmlFor="cover-style" className="text-xs font-medium">
@@ -173,15 +195,15 @@ export function CoverBlockEditor({ block, proposal, onSave }: CoverBlockEditorPr
           </Label>
           <Input
             id="cover-date"
+            type="date"
             value={form.date}
             onChange={(e) => setForm({ ...form, date: e.target.value })}
-            placeholder="e.g., 01 July 2026"
             className="bg-background max-w-sm"
           />
         </div>
       </div>
 
-      <div className="flex gap-8 py-4 border-t border-b border-border my-6">
+      <div className="flex flex-wrap gap-x-8 gap-y-4 border-y border-border py-4">
         <div className="flex items-center space-x-2">
           <Switch 
             id="show-proposal-title" 
@@ -201,7 +223,7 @@ export function CoverBlockEditor({ block, proposal, onSave }: CoverBlockEditorPr
       </div>
 
       <div className="flex justify-end pt-2">
-        <Button onClick={handleSave} disabled={isSaving || (!isDirty && !justSaved)} className="gap-2">
+        <Button onClick={handleSave} disabled={isSaving || (!isDirty && !justSaved)} className="w-full gap-2 sm:w-auto">
           {justSaved ? (
             <>
               <Check className="h-4 w-4 text-emerald-500" />

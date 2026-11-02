@@ -1,11 +1,12 @@
 import { getProposalComposerData } from "@/actions/proposal-composer";
 import { ProposalRenderer } from "@/components/proposal/renderer/ProposalRenderer";
 import { PreviewToolbar } from "@/components/proposal/preview/PreviewToolbar";
-import { AcceptProposalButton } from "@/components/proposal/preview/AcceptProposalButton";
 import prisma from "@/lib/prisma";
 import { requirePageAccess } from "@/lib/auth-guard";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { getProposalWorkflowValidation } from "@/lib/proposal-workflow-validation";
+import { ProposalStepGate } from "@/components/proposal/proposal-step-gate";
 
 export const metadata = {
   title: "Proposal Preview",
@@ -34,6 +35,56 @@ interface ProposalPreviewPageProps {
 export default async function ProposalPreviewPage({ params }: ProposalPreviewPageProps) {
   await requirePageAccess("/dashboard/proposals");
   const { id } = await params;
+
+  const validation = await getProposalWorkflowValidation(id);
+  if (!validation) {
+    return (
+      <main className="min-h-svh bg-muted/20 p-6">
+        <ProposalStepGate
+          title="Proposal not found"
+          description="This proposal may have been removed."
+          href="/dashboard/proposals"
+          action="Back to proposals"
+        />
+      </main>
+    );
+  }
+  if (validation.status === "DRAFT" && !validation.detailsValid) {
+    return (
+      <main className="min-h-svh bg-muted/20 p-6">
+        <ProposalStepGate
+          title="Complete proposal details first"
+          description="Add a customer and proposal title before reviewing the proposal."
+          href={`/dashboard/proposals/${id}/edit`}
+          action="Complete details"
+        />
+      </main>
+    );
+  }
+  if (validation.status === "DRAFT" && !validation.pricingValid) {
+    return (
+      <main className="min-h-svh bg-muted/20 p-6">
+        <ProposalStepGate
+          title="Complete pricing before Step 4"
+          description={validation.pricingMessage ?? "Add at least one priced line item before reviewing the proposal."}
+          href={`/dashboard/proposals/${id}/builder`}
+          action="Add proposal pricing"
+        />
+      </main>
+    );
+  }
+  if (validation.status === "DRAFT" && !validation.documentValid) {
+    return (
+      <main className="min-h-svh bg-muted/20 p-6">
+        <ProposalStepGate
+          title="Complete the proposal document"
+          description={validation.documentMessage ?? "Show at least one document section before previewing."}
+          href={`/dashboard/proposals/${id}/composer`}
+          action="Review document"
+        />
+      </main>
+    );
+  }
 
   const res = await getProposalComposerData(id);
 
@@ -92,6 +143,7 @@ export default async function ProposalPreviewPage({ params }: ProposalPreviewPag
       <PreviewToolbar
         proposalId={proposal.id}
         proposalNumber={proposal.proposalNumber}
+        proposalStatus={proposal.status}
         clientEmail={proposalDetails.customer?.primaryContactEmail}
         proposalDetails={{
           title: proposal.title,
@@ -135,10 +187,6 @@ export default async function ProposalPreviewPage({ params }: ProposalPreviewPag
             bankAccount={bankAccount}
           />
 
-          <AcceptProposalButton
-            proposalId={proposal.id}
-            currentStatus={proposal.status}
-          />
         </div>
       </main>
 

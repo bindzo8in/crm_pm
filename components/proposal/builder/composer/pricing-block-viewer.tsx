@@ -2,7 +2,6 @@
 import React from "react";
 
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -71,24 +70,18 @@ export function PricingBlockViewer({ proposal }: PricingBlockViewerProps) {
   };
 
   return (
-    <div className="space-y-6 border rounded-xl p-6 bg-card/50">
-      {/* Banner Notice */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-600 dark:text-emerald-300 shrink-0">
-            <DollarSign className="h-5 w-5" />
-          </div>
-          <div className="space-y-0.5">
-            <h4 className="text-sm font-semibold">Pricing Engine Source of Truth</h4>
-            <p className="text-xs text-emerald-700 dark:text-emerald-300">
-              This table renders live financial data directly from your Pricing Engine. Pricing cannot be modified inside the composer.
-            </p>
-          </div>
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <DollarSign className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          <p className="text-sm text-muted-foreground">
+            Prices are managed in the pricing step. Changes here update automatically.
+          </p>
         </div>
 
-        <Button asChild size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shrink-0 shadow-xs">
+        <Button asChild size="sm" variant="outline" className="w-full shrink-0 gap-2 sm:w-auto">
           <Link href={`/dashboard/proposals/${proposal.id}/builder`}>
-            <span>Edit in Pricing Engine</span>
+            <span>Edit pricing</span>
             <ExternalLink className="h-3.5 w-3.5" />
           </Link>
         </Button>
@@ -96,19 +89,78 @@ export function PricingBlockViewer({ proposal }: PricingBlockViewerProps) {
 
       {/* Services and Items Tables */}
       {services.length === 0 ? (
-        <div className="text-center py-10 border border-dashed rounded-lg bg-muted/20">
+        <div className="py-8 text-center">
           <PackageOpen className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
-          <p className="text-sm font-medium text-foreground">No services or packages imported yet.</p>
+          <p className="text-sm font-medium text-foreground">No pricing items yet</p>
           <p className="text-xs text-muted-foreground mt-1 mb-4">
-            Import service packages in the Pricing Engine to populate this section.
+            Add services or packages in the pricing step to populate this section.
           </p>
           <Button asChild variant="outline" size="sm">
-            <Link href={`/dashboard/proposals/${proposal.id}/builder`}>Open Pricing Builder</Link>
+            <Link href={`/dashboard/proposals/${proposal.id}/builder`}>Go to pricing</Link>
           </Button>
         </div>
       ) : (
-        <div className="border rounded-lg overflow-hidden bg-background">
-          <div className="overflow-x-auto">
+        <>
+          <div className="divide-y lg:hidden">
+            {services.flatMap((service) =>
+              service.items.map((item) => {
+                const serviceTitle = service.serviceName.trim() === "Custom items"
+                  ? ""
+                  : service.serviceName.trim();
+                const title = serviceTitle
+                  ? service.packageName &&
+                    service.packageName.trim().toLowerCase() !== serviceTitle.toLowerCase()
+                    ? `${serviceTitle} (${service.packageName})`
+                    : serviceTitle
+                  : item.name;
+                const showItemName =
+                  serviceTitle &&
+                  item.name &&
+                  item.name.trim().toLowerCase() !== serviceTitle.toLowerCase() &&
+                  (!service.packageName || item.name.trim().toLowerCase() !== service.packageName.trim().toLowerCase());
+
+                return (
+                  <article key={item.id} className="space-y-3 py-4 first:pt-0 last:pb-0">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <h3 className="break-words text-sm font-semibold text-foreground">{title}</h3>
+                        {showItemName && (
+                          <p className="mt-0.5 break-words text-xs text-muted-foreground">{item.name}</p>
+                        )}
+                        {item.description && (
+                          <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
+                            {item.description}
+                          </p>
+                        )}
+                      </div>
+                      <p className="shrink-0 text-right text-sm font-semibold tabular-nums text-foreground">
+                        {formatCurrency(item.total)}
+                      </p>
+                    </div>
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-3">
+                      <div>
+                        <dt className="text-muted-foreground">Quantity</dt>
+                        <dd className="mt-0.5 font-medium text-foreground">{item.quantity} {item.unit || "Unit"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">Rate</dt>
+                        <dd className="mt-0.5 font-medium text-foreground">
+                          {formatCurrency(item.unitPrice)}
+                          {formatCycle(item.billingCycle) && ` ${formatCycle(item.billingCycle)}`}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">Tax</dt>
+                        <dd className="mt-0.5 font-medium text-foreground">{item.taxRate ? `${item.taxRate}%` : "—"}</dd>
+                      </div>
+                    </dl>
+                  </article>
+                );
+              })
+            )}
+          </div>
+
+          <div className="hidden overflow-x-auto lg:block">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/10 text-[11px] uppercase tracking-wider">
@@ -120,27 +172,32 @@ export function PricingBlockViewer({ proposal }: PricingBlockViewerProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {services.map((service, idx) => (
+                {services.map((service) => (
                   <React.Fragment key={service.id}>
-                    {/* Line Items */}
                     {service.items.map((item) => (
                       <TableRow key={item.id} className="text-xs">
                         <TableCell className="align-top py-3">
                           <div className="space-y-0.5">
-                            <span className="font-bold text-foreground text-sm">
-                              {service.packageName
-                                ? (service.packageName.trim().toLowerCase() === service.serviceName.trim().toLowerCase()
-                                    ? service.serviceName
-                                    : `${service.serviceName} (${service.packageName})`)
-                                : service.serviceName}
-                            </span>
-                            {item.name &&
-                              item.name.trim().toLowerCase() !== service.serviceName.trim().toLowerCase() &&
-                              (!service.packageName || item.name.trim().toLowerCase() !== service.packageName.trim().toLowerCase()) && (
-                                <p className="text-xs font-medium text-foreground pt-0.5">
-                                  {item.name}
-                                </p>
-                              )}
+                            {service.serviceName.trim() && service.serviceName.trim() !== "Custom items" ? (
+                              <>
+                                <span className="font-bold text-foreground text-sm">
+                                  {service.packageName
+                                    ? (service.packageName.trim().toLowerCase() === service.serviceName.trim().toLowerCase()
+                                        ? service.serviceName
+                                        : `${service.serviceName} (${service.packageName})`)
+                                    : service.serviceName}
+                                </span>
+                                {item.name &&
+                                  item.name.trim().toLowerCase() !== service.serviceName.trim().toLowerCase() &&
+                                  (!service.packageName || item.name.trim().toLowerCase() !== service.packageName.trim().toLowerCase()) && (
+                                    <p className="text-xs font-medium text-foreground pt-0.5">
+                                      {item.name}
+                                    </p>
+                                  )}
+                              </>
+                            ) : (
+                              <span className="font-bold text-foreground text-sm">{item.name}</span>
+                            )}
                             {item.description && (
                               <p className="text-[11px] text-foreground font-medium whitespace-pre-wrap leading-relaxed pt-0.5">
                                 {item.description}
@@ -171,50 +228,51 @@ export function PricingBlockViewer({ proposal }: PricingBlockViewerProps) {
               </TableBody>
             </Table>
           </div>
-        </div>
+        </>
       )}
 
-      {/* Financial Summary Box */}
-      <div className="flex justify-end pt-2">
-        <div className="w-full sm:w-80 rounded-xl border bg-muted/20 p-4 space-y-2.5 text-xs">
-          <div className="flex justify-between text-muted-foreground">
-            <span>Subtotal</span>
-            <span className="font-mono font-medium text-foreground">
-              {formatCurrency(proposal.subtotal)}
-            </span>
-          </div>
-
-          {proposal.discount > 0 && (
-            <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-medium">
-              <span>Total Discount</span>
-              <span className="font-mono">- {formatCurrency(proposal.discount)}</span>
-            </div>
-          )}
-
-          {proposal.tax > 0 && (
+      {services.length > 0 && (
+        <div className="flex justify-end border-t pt-4">
+          <div className="w-full max-w-sm space-y-2.5 text-sm">
             <div className="flex justify-between text-muted-foreground">
-              <span>Estimated Tax (GST)</span>
+              <span>Subtotal</span>
               <span className="font-mono font-medium text-foreground">
-                + {formatCurrency(proposal.tax)}
+                {formatCurrency(proposal.subtotal)}
               </span>
             </div>
-          )}
 
-          {proposal.roundOff !== 0 && (
-            <div className="flex justify-between text-muted-foreground">
-              <span>Round Off</span>
-              <span className="font-mono">{formatCurrency(proposal.roundOff)}</span>
+            {proposal.discount > 0 && (
+              <div className="flex justify-between font-medium text-emerald-600 dark:text-emerald-400">
+                <span>Total Discount</span>
+                <span className="font-mono">- {formatCurrency(proposal.discount)}</span>
+              </div>
+            )}
+
+            {proposal.tax > 0 && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>Estimated Tax (GST)</span>
+                <span className="font-mono font-medium text-foreground">
+                  + {formatCurrency(proposal.tax)}
+                </span>
+              </div>
+            )}
+
+            {proposal.roundOff !== 0 && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>Round Off</span>
+                <span className="font-mono">{formatCurrency(proposal.roundOff)}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between border-t pt-3 font-bold text-foreground">
+              <span>Grand Total</span>
+              <span className="font-mono text-lg text-primary">
+                {formatCurrency(proposal.grandTotal)}
+              </span>
             </div>
-          )}
-
-          <div className="border-t pt-2.5 flex justify-between items-center text-sm font-bold text-foreground">
-            <span>Grand Total</span>
-            <span className="font-mono text-base text-primary">
-              {formatCurrency(proposal.grandTotal)}
-            </span>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

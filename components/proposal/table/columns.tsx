@@ -2,6 +2,7 @@ import { getProposals } from "@/actions/proposal";
 import { ColumnDef } from "@tanstack/react-table";
 import { ProposalActions } from "./actions";
 import { Badge } from "@/components/ui/badge";
+import { Mail, Phone } from "lucide-react";
 
 type GetProposalsResponse = Awaited<ReturnType<typeof getProposals>>;
 
@@ -28,6 +29,36 @@ export function getProposalColumns(canConvertToProject: boolean): ColumnDef<Prop
         ? `${row.customerDisplayName} (${row.customerCompanyName})`
         : row.customerDisplayName,
     header: "Customer",
+    cell: ({ row }) => {
+      const proposal = row.original;
+      const customerName = proposal.customerCompanyName
+        ? `${proposal.customerDisplayName} (${proposal.customerCompanyName})`
+        : proposal.customerDisplayName;
+
+      return (
+        <div className="min-w-0 space-y-1 whitespace-normal">
+          <div className="break-words font-medium text-foreground">{customerName}</div>
+          {proposal.customerEmail && (
+            <a
+              href={`mailto:${proposal.customerEmail}`}
+              className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground hover:text-primary hover:underline"
+            >
+              <Mail aria-hidden="true" className="size-3 shrink-0" />
+              <span className="break-all">{proposal.customerEmail}</span>
+            </a>
+          )}
+          {proposal.customerPhone && (
+            <a
+              href={`tel:${proposal.customerPhone}`}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary hover:underline"
+            >
+              <Phone aria-hidden="true" className="size-3 shrink-0" />
+              <span>{proposal.customerPhone}</span>
+            </a>
+          )}
+        </div>
+      );
+    },
   },
   {
     accessorKey: "validUntil",

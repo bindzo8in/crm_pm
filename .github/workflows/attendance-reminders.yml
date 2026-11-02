@@ -18,7 +18,7 @@ jobs:
           - environment: crm-designhub
           - environment: b8-aerooceanx-crm
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: ${{ matrix.environment }}
     steps:
       - name: Send attendance reminders
