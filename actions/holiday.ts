@@ -6,7 +6,7 @@ import {
   requireHolidayUser,
 } from "@/lib/leave-access";
 import { formatInIST } from "@/lib/date";
-import { parseDateOnly, toDateKey } from "@/lib/leave-policy";
+import { parseDateOnly } from "@/lib/leave-policy";
 import {
   addHoliday,
   editHoliday,
@@ -140,10 +140,6 @@ export async function getUpcomingHolidaysAction() {
 export async function createHolidayAction(input: unknown) {
   await requireHolidayManager("create");
   const parsed = holidaySchema.parse(input);
-  const currentMonthStart = `${formatInIST(new Date(), "yyyy-MM")}-01`;
-  if (toDateKey(parsed.startDate) < currentMonthStart) {
-    throw new Error("Choose a start date in the current month or later.");
-  }
   const result = await addHoliday({
     name: parsed.name,
     startDate: parsed.startDate,

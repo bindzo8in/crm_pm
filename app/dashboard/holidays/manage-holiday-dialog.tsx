@@ -121,7 +121,6 @@ export function ManageHolidayDialog({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const today = formatInIST(new Date(), "yyyy-MM-dd");
-  const minimumDate = `${today.slice(0, 7)}-01`;
   const sortedDates = holiday?.dates
     .map((date) => date.toISOString().slice(0, 10))
     .sort();
@@ -198,13 +197,6 @@ export function ManageHolidayDialog({
   });
 
   const onSubmit = form.handleSubmit((values) => {
-    if (!holiday && values.startDate < minimumDate) {
-      form.setError("startDate", {
-        type: "validate",
-        message: "Choose a start date in the current month or later.",
-      });
-      return;
-    }
     setError(null);
     saveMutation.mutate(values);
   });
@@ -242,7 +234,7 @@ export function ManageHolidayDialog({
         <DialogHeader>
           <DialogTitle>{holiday ? "Edit holiday" : "Add a holiday"}</DialogTitle>
           <DialogDescription>
-            Choose the dates and teams this holiday applies to. Every date in the range is excluded from applicable leave calculations.
+            Add or update holidays for past or future dates. Every date in the range is excluded from applicable leave calculations.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-5">
@@ -265,7 +257,6 @@ export function ManageHolidayDialog({
               Start date
               <Input
                 type="date"
-                min={holiday ? undefined : minimumDate}
                 {...form.register("startDate", {
                   onChange: (event) => {
                     if (form.getValues("endDate") < event.target.value) {
@@ -289,7 +280,7 @@ export function ManageHolidayDialog({
               End date
               <Input
                 type="date"
-                min={holiday ? undefined : startDate || minimumDate}
+                min={startDate || undefined}
                 {...form.register("endDate")}
                 aria-invalid={Boolean(form.formState.errors.endDate)}
               />
