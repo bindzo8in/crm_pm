@@ -6,6 +6,7 @@ import {
   getAnnualLeaveMonthOverLimit,
   toDateKey,
 } from "@/lib/leave-policy";
+import { DEFAULT_WEEKEND_DAYS } from "@/lib/weekend-policy";
 import {
   approveOrRejectPendingRequest,
   cancelOwnPendingRequest,
@@ -72,10 +73,14 @@ export async function createLeaveRequest(input: {
         input.startDate,
         input.endDate,
       );
+      const attendanceSettings = await transaction.attendanceSettings.findFirst({
+        select: { weekendDays: true },
+      });
       const breakdown = calculateLeaveDayBreakdown(
         input.startDate,
         input.endDate,
         new Set(holidayDates.map(toDateKey)),
+        new Set(attendanceSettings?.weekendDays ?? DEFAULT_WEEKEND_DAYS),
       );
       const { monthlyBreakdown, ...savedBreakdown } = breakdown;
 

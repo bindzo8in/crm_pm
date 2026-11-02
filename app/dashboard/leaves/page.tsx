@@ -72,19 +72,19 @@ function buildStatusHref(query: URLSearchParams, status?: LeaveStatus): string {
 function LeaveDays({
   totalDays,
   netLeaveDays,
-  sundayCount,
+  weekendCount,
   holidayCount,
 }: {
   totalDays: number;
   netLeaveDays: number;
-  sundayCount: number;
+  weekendCount: number;
   holidayCount: number;
 }) {
   return (
     <div className="min-w-36 space-y-1 text-xs">
       <p><span className="font-medium">{netLeaveDays}</span> chargeable</p>
       <p className="text-muted-foreground">
-        {sundayCount} Sundays · {holidayCount} holidays
+        {weekendCount} weekend days · {holidayCount} holidays
       </p>
       <p className="text-muted-foreground">{totalDays} calendar days</p>
     </div>
@@ -123,7 +123,7 @@ function LeaveTableRow({
         <LeaveDays
           totalDays={leave.totalDays}
           netLeaveDays={leave.netLeaveDays}
-          sundayCount={leave.sundayCount}
+          weekendCount={leave.weekendCount}
           holidayCount={leave.holidayCount}
         />
       </TableCell>
@@ -189,7 +189,7 @@ function LeaveRequestCard({
       <LeaveDays
         totalDays={leave.totalDays}
         netLeaveDays={leave.netLeaveDays}
-        sundayCount={leave.sundayCount}
+        weekendCount={leave.weekendCount}
         holidayCount={leave.holidayCount}
       />
       <p className="break-words text-sm">{leave.reason}</p>
@@ -612,7 +612,7 @@ export default async function LeavesPage({
             <div className="min-w-0">
               <p className="text-sm font-semibold">Leave policy safeguards</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Sundays and configured holidays are excluded from chargeable leave days. Annual Leave availability is checked for each month when a request is approved.
+                Configured weekend days and holidays are excluded from chargeable leave days. Annual Leave availability is checked for each month when a request is approved.
               </p>
             </div>
           </aside>

@@ -13,6 +13,7 @@ export type LeaveRequestCreateData = {
   totalDays: number;
   netLeaveDays: number;
   sundayCount: number;
+  weekendCount: number;
   holidayCount: number;
   monthlyDayBreakdown: Prisma.InputJsonValue;
 };

@@ -1304,6 +1304,7 @@ model LeaveRequest {
   totalDays           Int  @default(0) // Total calendar block size
   netLeaveDays        Int  @default(0) // Actual chargeable work days
   sundayCount         Int  @default(0) // Total Sundays skipped
+  weekendCount        Int  @default(0) // Total configured weekend days skipped
   holidayCount        Int  @default(0) // Total Public Holidays skipped
   monthlyDayBreakdown Json @default("{}")
 
@@ -1359,7 +1360,8 @@ model AttendanceSettings {
   officeLongitude         Float?
   officeRadiusMeters      Int      @default(500)
   enforceOfficeGeofence   Boolean  @default(true)
-  updatedAt               DateTime @updatedAt
+  weekendDays              Int[]    @default([0]) @map("weekend_days")
+  updatedAt                DateTime @updatedAt
 
   @@map("attendance_settings")
 }

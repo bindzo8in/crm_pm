@@ -108,7 +108,7 @@ export function LeaveReviewDialog({ leave }: { leave: ManagerLeaveRequestRow }) 
               </p>
               <p className="mt-2 text-2xl font-semibold tabular-nums">{leave.netLeaveDays}</p>
               <p className="text-xs text-muted-foreground">
-                {leave.sundayCount} Sundays and {leave.holidayCount} holidays excluded
+                {leave.weekendCount} weekend days and {leave.holidayCount} holidays excluded
               </p>
             </div>
           </section>

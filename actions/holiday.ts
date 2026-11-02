@@ -14,6 +14,10 @@ import {
   getUpcomingHolidays,
   removeHoliday,
 } from "@/services/holiday-service";
+import {
+  getWeekendDays,
+  updateWeekendDays,
+} from "@/services/attendance-settings-service";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -62,6 +66,12 @@ const holidayIdSchema = z.object({
   id: z.string().trim().min(1).max(100),
 });
 
+const weekendDaysSchema = z
+  .array(z.number().int().min(0).max(6))
+  .min(1, "Choose at least one weekend day.")
+  .max(6, "Keep at least one working day.")
+  .refine((days) => new Set(days).size === days.length, "Weekend days must be unique.");
+
 function validateHolidayRange(
   startDate: Date,
   endDate: Date,
@@ -103,8 +113,20 @@ export async function getHolidaysAction(input: unknown = {}) {
   return {
     success: true,
     holidays: await getHolidaysForYear(year, getHolidayDepartment(user)),
+    weekendDays: await getWeekendDays(),
     year,
   };
+}
+
+export async function updateWeekendDaysAction(input: unknown) {
+  await requireHolidayManager("update");
+  const parsed = weekendDaysSchema.parse(input);
+  const settings = await updateWeekendDays(parsed);
+
+  revalidatePath("/dashboard/holidays");
+  revalidatePath("/dashboard/leaves");
+  revalidatePath("/dashboard");
+  return { success: true, weekendDays: settings.weekendDays };
 }
 
 export async function getUpcomingHolidaysAction() {

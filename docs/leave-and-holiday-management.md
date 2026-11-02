@@ -17,8 +17,8 @@ Authorization is enforced in the server actions as well as the page and navigati
 - Only approved Annual Leave uses the monthly allowance. Pending requests do not reserve it; approval checks all affected calendar months and rejects requests that exceed an allowance.
 - Sick, Casual, and Unpaid leave are unpaid and do not use the Annual Leave allowance.
 - A request cannot overlap another pending or approved request from the same employee. Employees can cancel only their own pending requests.
-- Days are counted inclusively. Saturdays are working days. Sundays and company-wide holidays are excluded; a holiday on a Sunday is counted once as a Sunday.
-- Requests store their day totals and month allocation when submitted. Editing or deleting a holiday does not recalculate existing requests.
+- Days are counted inclusively. The weekly schedule in Holiday Management defines non-working days; it defaults to Sunday only, so Saturday is a working day unless the schedule is changed. Configured weekend days and applicable holidays are excluded, and a holiday on a weekend is counted once.
+- Requests store their day totals and month allocation when submitted. Changing the weekly schedule or editing/deleting a holiday does not recalculate existing requests.
 
 ## Holiday calendar
 

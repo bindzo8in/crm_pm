@@ -486,7 +486,7 @@ export async function getFinanceReport(input: unknown = {}) {
         'INCOME'::text AS "type",
         p."paymentDate" AS "date",
         ('INV-' || i."invoiceNumber"::text) AS "reference",
-        COALESCE(NULLIF(i."title", ''), 'Invoice payment') AS "description",
+        'Invoice payment'::text AS "description",
         'Invoice payment'::text AS "category",
         'INVOICE_PAYMENT'::text AS "category_id",
         i."customerDisplayName" AS "party",

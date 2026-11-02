@@ -28,6 +28,7 @@ import {
   formatHolidayDepartmentScope,
   HOLIDAY_CATEGORY_LABELS,
 } from "@/lib/holiday-format";
+import { WeeklyScheduleSettings } from "./weekly-schedule-settings";
 
 type HolidayRecord = Pick<
   Holiday,
@@ -120,11 +121,13 @@ export function HolidayCalendar({
   today,
   isManager,
   holidays,
+  weekendDays,
 }: {
   year: number;
   today: string;
   isManager: boolean;
   holidays: HolidayRecord[];
+  weekendDays: number[];
 }) {
   const [month, setMonth] = useState(() => {
     const currentMonth = Number(today.slice(5, 7)) - 1;
@@ -198,7 +201,7 @@ export function HolidayCalendar({
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             {isManager
               ? "Plan company-wide holidays and help everyone see what’s coming."
-              : "See company-wide holidays. Saturdays remain working days unless listed."}
+              : "See company holidays and your team’s weekly work schedule."}
           </p>
         </div>
 
@@ -238,6 +241,8 @@ export function HolidayCalendar({
           )}
         </div>
       </header>
+
+      <WeeklyScheduleSettings isManager={isManager} weekendDays={weekendDays} />
 
       <section aria-label="Holiday summary" className="-mx-3 flex gap-3 overflow-x-auto px-3 pb-1 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 xl:grid-cols-3">
         <Card className="min-w-[220px] flex-1 shadow-none sm:min-w-0">
@@ -283,7 +288,7 @@ export function HolidayCalendar({
             <div>
               <p className="text-sm font-semibold">Leave day policy</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                Sundays and listed holidays are excluded from chargeable leave days.
+                Configured weekend days and listed holidays are excluded from chargeable leave days.
               </p>
             </div>
           </CardContent>
@@ -295,7 +300,7 @@ export function HolidayCalendar({
           <Info aria-hidden="true" className="size-4" />
         </span>
         <p className="text-sm leading-6 text-muted-foreground">
-          Sundays and listed holidays are excluded from chargeable leave days.
+          Configured weekend days and listed holidays are excluded from chargeable leave days.
         </p>
       </div>
 

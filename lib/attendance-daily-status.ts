@@ -1,3 +1,5 @@
+import { DEFAULT_WEEKEND_DAYS, isWeekendDate } from "@/lib/weekend-policy";
+
 export type DailyAttendanceStatus =
   | "PRESENT"
   | "LATE"
@@ -77,11 +79,6 @@ function iterDays(start: Date, end: Date) {
   return dates;
 }
 
-function isWeekend(date: Date) {
-  const day = date.getUTCDay();
-  return day === 0 || day === 6;
-}
-
 export function buildResolvedAttendanceTimeline<TUser extends {
   id: string;
   name: string | null;
@@ -102,6 +99,7 @@ export function buildResolvedAttendanceTimeline<TUser extends {
   startDate: Date,
   endDate: Date,
   today = new Date(),
+  weekendDays: readonly number[] = DEFAULT_WEEKEND_DAYS,
 ) {
   const cutoff = dayStartUtc(today) < dayStartUtc(endDate)
     ? dayStartUtc(today)
@@ -194,7 +192,7 @@ export function buildResolvedAttendanceTimeline<TUser extends {
         continue;
       }
 
-      if (leave && !isWeekend(date)) {
+      if (leave && !isWeekendDate(date, weekendDays)) {
         timeline.push({
           ...(actual ?? {}),
           id: actual?.id ?? `leave:${key}`,
@@ -214,7 +212,7 @@ export function buildResolvedAttendanceTimeline<TUser extends {
         continue;
       }
 
-      if (pendingLeave && !isWeekend(date)) {
+      if (pendingLeave && !isWeekendDate(date, weekendDays)) {
         timeline.push({
           ...(actual ?? {}),
           id: actual?.id ?? `pending-leave:${key}`,
@@ -254,7 +252,7 @@ export function buildResolvedAttendanceTimeline<TUser extends {
         continue;
       }
 
-      if (isWeekend(date)) {
+      if (isWeekendDate(date, weekendDays)) {
         timeline.push({
           id: `weekend:${key}`,
           userId: user.id,

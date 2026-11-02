@@ -1,3 +1,5 @@
+import { DEFAULT_WEEKEND_DAYS } from "@/lib/weekend-policy";
+
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const MONTH_KEY_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 const MILLISECONDS_PER_DAY = 86_400_000;
@@ -8,6 +10,7 @@ export type LeaveDayBreakdown = {
   totalDays: number;
   netLeaveDays: number;
   sundayCount: number;
+  weekendCount: number;
   holidayCount: number;
   monthlyBreakdown: MonthlyLeaveBreakdown;
 };
@@ -38,6 +41,7 @@ export function calculateLeaveDayBreakdown(
   startDate: Date,
   endDate: Date,
   holidayDateKeys: ReadonlySet<string>,
+  weekendDays: ReadonlySet<number> = new Set(DEFAULT_WEEKEND_DAYS),
 ): LeaveDayBreakdown {
   const start = Date.UTC(
     startDate.getUTCFullYear(),
@@ -54,13 +58,15 @@ export function calculateLeaveDayBreakdown(
   }
 
   const totalDays = Math.floor((end - start) / MILLISECONDS_PER_DAY) + 1;
-  const sundayCount = countSundays(start, end);
+  const sundayCount = weekendDays.has(0) ? countSundays(start, end) : 0;
+  const weekendCount = countWeekendDays(start, end, weekendDays);
   const holidayCountsByMonth = new Map<string, number>();
 
   for (const dateKey of holidayDateKeys) {
     const holiday = parseDateOnly(dateKey);
     const timestamp = holiday.getTime();
-    if (timestamp < start || timestamp > end || holiday.getUTCDay() === 0) {
+    const weekday = holiday.getUTCDay();
+    if (timestamp < start || timestamp > end || weekendDays.has(weekday)) {
       continue;
     }
     const monthKey = dateKey.slice(0, 7);
@@ -76,8 +82,9 @@ export function calculateLeaveDayBreakdown(
   );
   const breakdown: LeaveDayBreakdown = {
     totalDays,
-    netLeaveDays: totalDays - sundayCount - holidayCount,
+    netLeaveDays: totalDays - weekendCount - holidayCount,
     sundayCount,
+    weekendCount,
     holidayCount,
     monthlyBreakdown: {},
   };
@@ -100,7 +107,7 @@ export function calculateLeaveDayBreakdown(
     const monthKey = toDateKey(new Date(monthTimestamp)).slice(0, 7);
     const chargeableDays =
       daysInSegment -
-      countSundays(monthStart, monthSegmentEnd) -
+      countWeekendDays(monthStart, monthSegmentEnd, weekendDays) -
       (holidayCountsByMonth.get(monthKey) ?? 0);
 
     if (chargeableDays > 0) {
@@ -117,19 +124,34 @@ export function calculateLeaveDayBreakdown(
 }
 
 function countSundays(start: number, end: number): number {
+  return countWeekdays(start, end, 0);
+}
+
+function countWeekendDays(
+  start: number,
+  end: number,
+  weekendDays: ReadonlySet<number>,
+): number {
+  return [...weekendDays].reduce(
+    (total, weekday) => total + countWeekdays(start, end, weekday),
+    0,
+  );
+}
+
+function countWeekdays(start: number, end: number, weekday: number): number {
   const dayCount = Math.floor((end - start) / MILLISECONDS_PER_DAY) + 1;
   const completeWeeks = Math.floor(dayCount / 7);
   const remainingDays = dayCount % 7;
-  let sundays = completeWeeks;
+  let count = completeWeeks;
   const firstDay = new Date(start).getUTCDay();
 
   for (let offset = 0; offset < remainingDays; offset++) {
-    if ((firstDay + offset) % 7 === 0) {
-      sundays++;
+    if ((firstDay + offset) % 7 === weekday) {
+      count++;
     }
   }
 
-  return sundays;
+  return count;
 }
 
 export function parseMonthlyLeaveBreakdown(value: unknown): MonthlyLeaveBreakdown {

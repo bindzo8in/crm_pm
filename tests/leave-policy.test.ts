@@ -10,7 +10,7 @@ import {
   parseMonthlyLeaveBreakdown,
 } from "../lib/leave-policy";
 
-test("Saturdays count; Sundays and company holidays are excluded", () => {
+test("Sundays and company holidays are excluded; Saturdays remain working days", () => {
   const result = calculateLeaveDayBreakdown(
     parseDateOnly("2026-08-01"),
     parseDateOnly("2026-08-04"),
@@ -21,6 +21,7 @@ test("Saturdays count; Sundays and company holidays are excluded", () => {
     totalDays: 4,
     netLeaveDays: 2,
     sundayCount: 1,
+    weekendCount: 1,
     holidayCount: 1,
     monthlyBreakdown: { "2026-08": 2 },
   });
@@ -34,6 +35,34 @@ test("A holiday that falls on Sunday is counted once as a Sunday", () => {
   );
 
   assert.equal(result.sundayCount, 1);
+  assert.equal(result.weekendCount, 1);
+  assert.equal(result.holidayCount, 0);
+  assert.equal(result.netLeaveDays, 0);
+});
+
+test("A Saturday holiday is excluded as a holiday while Saturdays are working days", () => {
+  const result = calculateLeaveDayBreakdown(
+    parseDateOnly("2026-08-01"),
+    parseDateOnly("2026-08-01"),
+    new Set(["2026-08-01"]),
+  );
+
+  assert.equal(result.sundayCount, 0);
+  assert.equal(result.weekendCount, 0);
+  assert.equal(result.holidayCount, 1);
+  assert.equal(result.netLeaveDays, 0);
+});
+
+test("Configured Saturdays are excluded from chargeable leave days", () => {
+  const result = calculateLeaveDayBreakdown(
+    parseDateOnly("2026-08-01"),
+    parseDateOnly("2026-08-01"),
+    new Set(),
+    new Set([0, 6]),
+  );
+
+  assert.equal(result.sundayCount, 0);
+  assert.equal(result.weekendCount, 1);
   assert.equal(result.holidayCount, 0);
   assert.equal(result.netLeaveDays, 0);
 });

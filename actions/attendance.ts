@@ -34,6 +34,8 @@ import { headers } from "next/headers";
 import { getNowInIST, convertToIST, formatInIST } from "@/lib/date";
 import ExcelJS from "exceljs";
 import { buildResolvedAttendanceTimeline } from "@/lib/attendance-daily-status";
+import { getWeekendDays } from "@/services/attendance-settings-service";
+import { DEFAULT_WEEKEND_DAYS } from "@/lib/weekend-policy";
 
 function isAttendanceManager(user: { role?: UserRole | string | null; department?: Department | string | null }): boolean {
   if (!user) return false;
@@ -168,6 +170,7 @@ export async function getAttendanceSettings() {
           officeLongitude: null,
           officeRadiusMeters: 500,
           enforceOfficeGeofence: true,
+          weekendDays: [...DEFAULT_WEEKEND_DAYS],
         },
       });
     }
@@ -186,6 +189,7 @@ export async function getAttendanceSettings() {
       officeLongitude: null,
       officeRadiusMeters: 500,
       enforceOfficeGeofence: true,
+      weekendDays: [...DEFAULT_WEEKEND_DAYS],
     };
   }
 }
@@ -1399,7 +1403,7 @@ async function getResolvedAttendanceTimeline(
   if (users.length === 0) return [];
 
   const userIds = users.map((user) => user.id);
-  const [attendanceRecords, leaveRequests, holidays] = await Promise.all([
+  const [attendanceRecords, leaveRequests, holidays, weekendDays] = await Promise.all([
     prisma.attendanceRecord.findMany({
       where: {
         userId: { in: userIds },
@@ -1443,6 +1447,7 @@ async function getResolvedAttendanceTimeline(
       where: { date: { gte: start, lte: endOfRange } },
       select: { date: true, name: true, departments: true },
     }),
+    getWeekendDays(),
   ]);
 
   const normalizedLeaves = leaveRequests.map((leave) => ({
@@ -1461,6 +1466,7 @@ async function getResolvedAttendanceTimeline(
     start,
     end,
     getTodayDateOnly(),
+    weekendDays,
   );
 
   const filteredTimeline = timeline.filter((record) => {

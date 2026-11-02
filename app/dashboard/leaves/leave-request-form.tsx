@@ -50,6 +50,7 @@ export function LeaveRequestForm({
 }) {
   const router = useRouter();
   const [holidaysByYear, setHolidaysByYear] = useState<Record<number, string[]>>({});
+  const [weekendDays, setWeekendDays] = useState<number[]>([0]);
   const [holidayError, setHolidayError] = useState<string | null>(null);
   const form = useForm<LeaveFormValues>({
     resolver: zodResolver(requestSchema),
@@ -99,13 +100,19 @@ export function LeaveRequestForm({
               ? holiday.date.slice(0, 10)
               : toDateKey(holiday.date),
           ),
+          result.weekendDays,
         ] as const;
       }),
     )
       .then((entries) => {
         if (active) {
           setHolidayError(null);
-          setHolidaysByYear((current) => ({ ...current, ...Object.fromEntries(entries) }));
+          setHolidaysByYear((current) => ({
+            ...current,
+            ...Object.fromEntries(entries.map(([year, dates]) => [year, dates])),
+          }));
+          const currentWeekendDays = entries[0]?.[2];
+          if (currentWeekendDays) setWeekendDays(currentWeekendDays);
         }
       })
       .catch((error: unknown) => {
@@ -125,11 +132,12 @@ export function LeaveRequestForm({
         parseDateOnly(startDate),
         parseDateOnly(endDate),
         new Set(yearsToLoad.flatMap((year) => holidaysByYear[year] ?? [])),
+        new Set(weekendDays),
       );
     } catch {
       return null;
     }
-  }, [endDate, holidaysByYear, startDate, yearsToLoad]);
+  }, [endDate, holidaysByYear, startDate, weekendDays, yearsToLoad]);
 
   return (
     <form
@@ -234,7 +242,7 @@ export function LeaveRequestForm({
               <p className="text-sm text-muted-foreground">chargeable day(s)</p>
               <div className="mt-4 space-y-2 border-t pt-3 text-sm">
                 <div className="flex justify-between gap-3"><span>Calendar days</span><span className="tabular-nums">{dayBreakdown.totalDays}</span></div>
-                <div className="flex justify-between gap-3"><span>Sundays excluded</span><span className="tabular-nums">{dayBreakdown.sundayCount}</span></div>
+                <div className="flex justify-between gap-3"><span>Weekend days excluded</span><span className="tabular-nums">{dayBreakdown.weekendCount}</span></div>
                 <div className="flex justify-between gap-3"><span>Holidays excluded</span><span className="tabular-nums">{dayBreakdown.holidayCount}</span></div>
               </div>
             </>
@@ -247,7 +255,7 @@ export function LeaveRequestForm({
             <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
             {selectedType === LeaveType.ANNUAL
               ? "Annual Leave is paid. Monthly allowance is checked when your request is approved."
-              : "Sick, Casual, and Unpaid leave are unpaid. Sundays and configured holidays are excluded."}
+              : "Sick, Casual, and Unpaid leave are unpaid. Configured weekend days and holidays are excluded."}
           </p>
           {yearsToLoad.length > 0 && !dayBreakdown && !holidayError && (
             <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">

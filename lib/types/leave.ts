@@ -14,6 +14,7 @@ export type LeaveRequestRow = Pick<
   | "totalDays"
   | "netLeaveDays"
   | "sundayCount"
+  | "weekendCount"
   | "holidayCount"
   | "monthlyDayBreakdown"
   | "createdAt"

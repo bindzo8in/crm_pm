@@ -115,6 +115,49 @@ test("actual attendance and holidays take precedence, weekends are not absences,
   assert.equal(statusByDate.has("2026-10-12"), false);
 });
 
+test("Saturday is a working day unless the weekly schedule marks it as a weekend", () => {
+  const sundayOnly = buildResolvedAttendanceTimeline(
+    [employee],
+    [],
+    [],
+    [],
+    date(10),
+    date(11),
+    date(12),
+  );
+  const saturdayAndSunday = buildResolvedAttendanceTimeline(
+    [employee],
+    [],
+    [],
+    [],
+    date(10),
+    date(11),
+    date(12),
+    [0, 6],
+  );
+
+  assert.deepEqual(
+    sundayOnly.map(({ date: recordDate, status }) => [
+      recordDate.getUTCDate(),
+      status,
+    ]),
+    [
+      [11, "WEEKEND"],
+      [10, "ABSENT"],
+    ],
+  );
+  assert.deepEqual(
+    saturdayAndSunday.map(({ date: recordDate, status }) => [
+      recordDate.getUTCDate(),
+      status,
+    ]),
+    [
+      [11, "WEEKEND"],
+      [10, "WEEKEND"],
+    ],
+  );
+});
+
 test("holiday dates are scoped to matching departments", () => {
   const timeline = buildResolvedAttendanceTimeline(
     [employee],
