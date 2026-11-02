@@ -12,6 +12,7 @@ import { AttendanceStatus, Department } from "@/app/generated/prisma/enums";
 import { getAttendanceLogsAction, exportAttendanceToExcelAction } from "@/actions/attendance";
 import { RegularizationModal } from "./regularization-modal";
 import { AttendanceAuditViewer } from "./attendance-audit-viewer";
+import { ManualAttendanceEntryDialog } from "./manual-attendance-entry-dialog";
 import { formatTimeInIST, formatDateTimeInIST } from "@/lib/date";
 import {
   LaptopIcon,
@@ -247,6 +248,10 @@ export function AttendanceTable({ userRole, userDepartment }: AttendanceTablePro
               className="w-full sm:w-36 rounded-xl text-xs"
               placeholder="To Date"
             />
+
+            {isAdmin && (
+              <ManualAttendanceEntryDialog onSuccess={fetchLogs} />
+            )}
 
             {isAdmin && (
               <Button

@@ -77,6 +77,20 @@ export const editAttendanceSchema = z.object({
 
 export type EditAttendanceInput = z.infer<typeof editAttendanceSchema>;
 
+export const createManualAttendanceSchema = z.object({
+  userId: z.string().min(1, "Select an employee."),
+  clockIn: z.iso.datetime(),
+  clockOut: z.iso.datetime().nullable().optional(),
+  status: z.enum(["PRESENT", "LATE", "HALF_DAY"]),
+  workMode: z.enum(WorkMode),
+  reason: z.string().trim().min(5, "Please provide a valid reason (min 5 characters)").max(500),
+}).refine(
+  ({ clockIn, clockOut }) => !clockOut || new Date(clockOut) > new Date(clockIn),
+  { path: ["clockOut"], message: "Clock out must be later than clock in." },
+);
+
+export type CreateManualAttendanceInput = z.infer<typeof createManualAttendanceSchema>;
+
 export const advancedAttendanceReportSchema = z.object({
   startDate: z.string().optional(),
   endDate: z.string().optional(),

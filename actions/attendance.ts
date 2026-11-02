@@ -27,6 +27,8 @@ import {
   UpdateAttendanceSettingsInput,
   editAttendanceSchema,
   EditAttendanceInput,
+  createManualAttendanceSchema,
+  CreateManualAttendanceInput,
   advancedAttendanceReportSchema,
   AdvancedAttendanceReportInput,
 } from "@/lib/schemas/attendance-schema";
@@ -38,6 +40,7 @@ import { getWeekendDays } from "@/services/attendance-settings-service";
 import { getCompanyEmployeeIdPrefix } from "@/services/company-service";
 import { formatEmployeeId } from "@/lib/employee-id";
 import { DEFAULT_WEEKEND_DAYS } from "@/lib/weekend-policy";
+import { parseDateOnly } from "@/lib/leave-policy";
 
 function isAttendanceManager(user: { role?: UserRole | string | null; department?: Department | string | null }): boolean {
   if (!user) return false;
@@ -1225,6 +1228,161 @@ export async function editAttendanceAction(input: EditAttendanceInput) {
   } catch (error: any) {
     console.error("Error in editAttendanceAction:", error);
     return { success: false, error: error.message || "Failed to edit attendance" };
+  }
+}
+
+export async function getAttendanceEntryEmployeesAction() {
+  try {
+    const { session } = await getAuthenticatedUser("manage");
+    if (!isAttendanceManager(session.user)) {
+      return { success: false, employees: [], error: "Only admins or HR staff can create attendance entries." };
+    }
+
+    const employees = await prisma.user.findMany({
+      where: {
+        employmentStatus: "ACTIVE",
+        banned: false,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        employeeId: true,
+        department: true,
+        workMode: true,
+      },
+      orderBy: { name: "asc" },
+    });
+
+    return { success: true, employees };
+  } catch (error: unknown) {
+    console.error("Error fetching employees for manual attendance:", error);
+    return {
+      success: false,
+      employees: [],
+      error: error instanceof Error ? error.message : "Failed to fetch employees.",
+    };
+  }
+}
+
+export async function createManualAttendanceAction(input: CreateManualAttendanceInput) {
+  try {
+    const { session } = await getAuthenticatedUser("manage");
+    if (!isAttendanceManager(session.user)) {
+      return { success: false, error: "Only admins or HR staff can create attendance entries." };
+    }
+
+    const validated = createManualAttendanceSchema.parse(input);
+    const clockIn = new Date(validated.clockIn);
+    const clockOut = validated.clockOut ? new Date(validated.clockOut) : null;
+    const now = new Date();
+
+    if (clockIn > now || (clockOut && clockOut > now)) {
+      return { success: false, error: "Attendance entries cannot use future times." };
+    }
+
+    const date = parseDateOnly(formatInIST(clockIn, "yyyy-MM-dd"));
+    const [existingRecord, employee, settings] = await Promise.all([
+      prisma.attendanceRecord.findUnique({
+        where: { userId_date: { userId: validated.userId, date } },
+        select: { id: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: validated.userId },
+        select: {
+          id: true,
+          name: true,
+          employmentStatus: true,
+          banned: true,
+          department: true,
+        },
+      }),
+      prisma.attendanceSettings.findFirst({
+        select: { maxShiftHoursCap: true, expectedClockIn: true },
+      }),
+    ]);
+
+    if (existingRecord) {
+      return { success: false, error: "An attendance record already exists for this employee and date. Edit that record instead." };
+    }
+    if (!employee || employee.employmentStatus !== "ACTIVE" || employee.banned) {
+      return { success: false, error: "Select an active employee." };
+    }
+
+    const workMinutes = clockOut
+      ? Math.round((clockOut.getTime() - clockIn.getTime()) / 60_000)
+      : 0;
+    const maxShiftMinutes = (settings?.maxShiftHoursCap ?? 16) * 60;
+    if (workMinutes > maxShiftMinutes) {
+      return {
+        success: false,
+        error: `Clock-in and clock-out cannot be more than ${settings?.maxShiftHoursCap ?? 16} hours apart.`,
+      };
+    }
+
+    const expectedClockIn = settings?.expectedClockIn ?? "09:00";
+    const [expectedHour, expectedMinute] = expectedClockIn.split(":").map(Number);
+    const [clockInHour, clockInMinute] = formatInIST(clockIn, "HH:mm").split(":").map(Number);
+    const lateMinutes = validated.status === "PRESENT"
+      ? 0
+      : Math.max(0, clockInHour * 60 + clockInMinute - (expectedHour * 60 + expectedMinute));
+
+    const record = await prisma.$transaction(async (tx) => {
+      const createdRecord = await tx.attendanceRecord.create({
+        data: {
+          userId: employee.id,
+          date,
+          clockIn,
+          clockOut,
+          status: validated.status,
+          workMode: validated.workMode,
+          department: employee.department,
+          workMinutes,
+          lateMinutes,
+          isManuallyEdited: true,
+          regularizationReason: validated.reason,
+          notes: `Manual attendance entry: ${validated.reason}`,
+        },
+      });
+
+      await tx.attendanceAuditLog.create({
+        data: {
+          attendanceRecordId: createdRecord.id,
+          userId: employee.id,
+          editorId: session.user.id,
+          editorRole: session.user.role,
+          action: "CREATE",
+          newValues: JSON.stringify({
+            date,
+            clockIn,
+            clockOut,
+            status: validated.status,
+            workMode: validated.workMode,
+            workMinutes,
+            lateMinutes,
+          }),
+          reason: validated.reason,
+        },
+      });
+
+      return createdRecord;
+    });
+
+    return { success: true, recordId: record.id };
+  } catch (error: unknown) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "P2002"
+    ) {
+      return { success: false, error: "An attendance record already exists for this employee and date. Edit that record instead." };
+    }
+    console.error("Error creating manual attendance entry:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to create attendance entry.",
+    };
   }
 }
 
