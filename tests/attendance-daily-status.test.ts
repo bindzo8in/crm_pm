@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildResolvedAttendanceTimeline } from "../lib/attendance-daily-status";
+import {
+  buildResolvedAttendanceTimeline,
+  isScheduledAttendanceShift,
+} from "../lib/attendance-daily-status";
 
 const employee = {
   id: "staff-1",
@@ -11,6 +14,41 @@ const employee = {
 };
 
 const date = (day: number) => new Date(Date.UTC(2026, 9, day));
+
+test("scheduled shift counts exclude weekends and holidays but include weekdays on leave or absent", () => {
+  assert.equal(
+    isScheduledAttendanceShift({ date: date(11), status: "ABSENT" }),
+    false,
+  );
+  assert.equal(
+    isScheduledAttendanceShift(
+      { date: date(10), status: "PRESENT" },
+      [0],
+      true,
+    ),
+    false,
+  );
+  assert.equal(
+    isScheduledAttendanceShift({
+      date: date(10),
+      status: "PRESENT",
+      holidayName: "Company holiday",
+    }),
+    false,
+  );
+  assert.equal(
+    isScheduledAttendanceShift({ date: date(10), status: "PRESENT" }, [0]),
+    true,
+  );
+  assert.equal(
+    isScheduledAttendanceShift({ date: date(7), status: "ON_LEAVE" }, [0]),
+    true,
+  );
+  assert.equal(
+    isScheduledAttendanceShift({ date: date(8), status: "ABSENT" }, [0]),
+    true,
+  );
+});
 
 test("daily timeline resolves actual shifts, approved leave, holidays, and absences", () => {
   const timeline = buildResolvedAttendanceTimeline(

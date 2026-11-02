@@ -62,6 +62,26 @@ function dateKey(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+export function isScheduledAttendanceShift(
+  record: { date: Date; status: string; holidayName?: string },
+  weekendDays: readonly number[] = DEFAULT_WEEKEND_DAYS,
+  isHoliday = false,
+) {
+  if (
+    isHoliday ||
+    record.holidayName ||
+    record.status === "HOLIDAY" ||
+    record.status === "WEEKEND" ||
+    isWeekendDate(record.date, weekendDays)
+  ) {
+    return false;
+  }
+
+  return ["PRESENT", "LATE", "HALF_DAY", "ABSENT", "ON_LEAVE"].includes(
+    record.status,
+  );
+}
+
 function dayStartUtc(date: Date) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }

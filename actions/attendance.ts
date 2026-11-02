@@ -35,7 +35,10 @@ import {
 import { headers } from "next/headers";
 import { getNowInIST, convertToIST, formatInIST } from "@/lib/date";
 import ExcelJS from "exceljs";
-import { buildResolvedAttendanceTimeline } from "@/lib/attendance-daily-status";
+import {
+  buildResolvedAttendanceTimeline,
+  isScheduledAttendanceShift,
+} from "@/lib/attendance-daily-status";
 import { getWeekendDays } from "@/services/attendance-settings-service";
 import { getCompanyEmployeeIdPrefix } from "@/services/company-service";
 import { formatEmployeeId } from "@/lib/employee-id";
@@ -167,6 +170,7 @@ export async function getAttendanceSettings() {
         data: {
           expectedClockIn: "09:00",
           expectedClockOut: "18:00",
+          attendanceReminderTime: "08:30",
           gracePeriodMinutes: 15,
           halfDayThresholdMinutes: 240,
           maxShiftHoursCap: 16,
@@ -176,6 +180,7 @@ export async function getAttendanceSettings() {
           officeRadiusMeters: 500,
           enforceOfficeGeofence: true,
           weekendDays: [...DEFAULT_WEEKEND_DAYS],
+          isConfigured: false,
         },
       });
     }
@@ -186,6 +191,7 @@ export async function getAttendanceSettings() {
       id: "default",
       expectedClockIn: "09:00",
       expectedClockOut: "18:00",
+      attendanceReminderTime: "08:30",
       gracePeriodMinutes: 15,
       halfDayThresholdMinutes: 240,
       maxShiftHoursCap: 16,
@@ -195,6 +201,7 @@ export async function getAttendanceSettings() {
       officeRadiusMeters: 500,
       enforceOfficeGeofence: true,
       weekendDays: [...DEFAULT_WEEKEND_DAYS],
+      isConfigured: false,
     };
   }
 }
@@ -1142,8 +1149,14 @@ export async function updateAttendanceSettingsAction(input: UpdateAttendanceSett
   try {
     const { session } = await getAuthenticatedUser("manage");
 
-    if (session.user.role !== UserRole.SUPER_ADMIN && session.user.role !== UserRole.ADMIN) {
-      return { success: false, error: "Only admins can update attendance settings." };
+    if (!isAttendanceManager(session.user)) {
+      return { success: false, error: "Only admins or HR staff can update attendance settings." };
+    }
+    const isAdmin =
+      session.user.role === UserRole.SUPER_ADMIN ||
+      session.user.role === UserRole.ADMIN;
+    if (!isAdmin && input.attendanceReminderTime !== undefined) {
+      return { success: false, error: "Only admins can change the attendance reminder time." };
     }
 
     const validated = updateAttendanceSettingsSchema.parse(input);
@@ -1153,11 +1166,11 @@ export async function updateAttendanceSettingsAction(input: UpdateAttendanceSett
     if (existing) {
       settings = await prisma.attendanceSettings.update({
         where: { id: existing.id },
-        data: validated,
+        data: { ...validated, isConfigured: true },
       });
     } else {
       settings = await prisma.attendanceSettings.create({
-        data: validated,
+        data: { ...validated, isConfigured: true },
       });
     }
 
@@ -1762,7 +1775,10 @@ export async function getDetailedAttendanceReportAction(input: Partial<AdvancedA
     }
 
     const parsed = advancedAttendanceReportSchema.parse(input);
-    const resolvedRecords = await getResolvedAttendanceTimeline(parsed);
+    const [resolvedRecords, weekendDays] = await Promise.all([
+      getResolvedAttendanceTimeline(parsed),
+      getWeekendDays(),
+    ]);
     const skip = (parsed.page - 1) * parsed.limit;
     const records = resolvedRecords.slice(skip, skip + parsed.limit);
     const totalCount = resolvedRecords.length;
@@ -1832,9 +1848,12 @@ export async function getDetailedAttendanceReportAction(input: Partial<AdvancedA
         .map((record) => new Date(record.date).toISOString().slice(0, 10)),
     ).size;
     const scheduledDays = allMatchingRecords.filter((record) =>
-      ["PRESENT", "LATE", "HALF_DAY", "ABSENT", "ON_LEAVE"].includes(
-        record.status,
-      ),
+      isScheduledAttendanceShift({
+        date: new Date(record.date),
+        status: record.status,
+        holidayName:
+          "holidayName" in record ? record.holidayName : undefined,
+      }, weekendDays),
     ).length;
     const workedDays = allMatchingRecords.filter((record) =>
       ["PRESENT", "LATE", "HALF_DAY"].includes(record.status),
@@ -1932,6 +1951,35 @@ export async function exportAttendanceToExcelAction(input: Partial<AdvancedAtten
     if (!records || records.length === 0) {
       return { success: false, error: "No attendance records found matching the specified filters." };
     }
+
+    const recordDates = records.map((record) => {
+      const date = new Date(record.date);
+      return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    });
+    const firstRecordDate = recordDates.reduce((earliest, date) =>
+      date < earliest ? date : earliest,
+    );
+    const lastRecordDate = recordDates.reduce((latest, date) =>
+      date > latest ? date : latest,
+    );
+    const [weekendDays, holidays] = await Promise.all([
+      getWeekendDays(),
+      prisma.holiday.findMany({
+        where: {
+          date: {
+            gte: firstRecordDate,
+            lte: lastRecordDate,
+          },
+        },
+        select: { date: true, departments: true },
+      }),
+    ]);
+    const holidayByDate = new Map(
+      holidays.map((holiday) => [
+        holiday.date.toISOString().slice(0, 10),
+        holiday.departments,
+      ]),
+    );
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "DH CRM Attendance Engine";
@@ -2241,7 +2289,26 @@ export async function exportAttendanceToExcelAction(input: Partial<AdvancedAtten
       }
 
       const emp = employeeMap.get(uId)!;
-      emp.totalShifts += 1;
+      const recordDate = new Date(rec.date);
+      const dateKey = recordDate.toISOString().slice(0, 10);
+      const holidayDepartments = holidayByDate.get(dateKey);
+      const department = rec.department || rec.user?.department || "";
+      const isHoliday =
+        holidayDepartments !== undefined &&
+        (holidayDepartments.length === 0 ||
+          holidayDepartments.some((holidayDepartment) =>
+            String(holidayDepartment) === department,
+          ));
+      emp.totalShifts += isScheduledAttendanceShift(
+        {
+          date: recordDate,
+          status: String(rec.status),
+          holidayName:
+            "holidayName" in rec ? rec.holidayName : undefined,
+        },
+        weekendDays,
+        isHoliday,
+      ) ? 1 : 0;
       if (rec.status === "PRESENT") emp.presentCount += 1;
       if (rec.status === "LATE" || (rec.lateMinutes && rec.lateMinutes > 0)) emp.lateCount += 1;
       if (rec.status === "HALF_DAY") emp.halfDayCount += 1;

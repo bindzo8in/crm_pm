@@ -307,6 +307,8 @@ export const prismaModelPermissions = {
     State: "referenceData",
     AttendanceRecord: "attendance",
     AttendanceBreak: "attendance",
+    WebPushSubscription: "attendance",
+    AttendanceReminder: "attendance",
     LeaveRequest: "leave",
     Holiday: "holidays",
     Notification: "holidays",

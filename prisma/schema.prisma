@@ -94,6 +94,8 @@ model User {
   salarySlips           SalarySlip[]
   expenses              Expense[]
   notifications         Notification[]
+  webPushSubscriptions  WebPushSubscription[]
+  attendanceReminders   AttendanceReminder[]
   employmentHistory     EmployeeStatusHistory[] @relation("EmployeeStatusHistory")
   employmentChangesMade EmployeeStatusHistory[] @relation("EmployeeStatusChangedBy")
   employeesReassigned   EmployeeStatusHistory[] @relation("EmployeeStatusReassignedTo")
@@ -1350,6 +1352,32 @@ model Notification {
   @@map("notification")
 }
 
+model WebPushSubscription {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique @db.Text
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("web_push_subscription")
+}
+
+model AttendanceReminder {
+  id           String    @id @default(cuid())
+  userId       String    @map("user_id")
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date         DateTime  @db.Date
+  pushSentAt   DateTime? @map("push_sent_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@unique([userId, date])
+  @@map("attendance_reminder")
+}
+
 model AttendanceSettings {
   id                      String   @id @default(cuid())
   expectedClockIn         String   @default("09:00") // 24hr format HH:mm
@@ -1363,6 +1391,8 @@ model AttendanceSettings {
   officeRadiusMeters      Int      @default(500)
   enforceOfficeGeofence   Boolean  @default(true)
   weekendDays              Int[]    @default([0]) @map("weekend_days")
+  isConfigured             Boolean  @default(false) @map("is_configured")
+  attendanceReminderTime   String   @default("08:30") @map("attendance_reminder_time")
   updatedAt                DateTime @updatedAt
 
   @@map("attendance_settings")

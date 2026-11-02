@@ -55,6 +55,7 @@ export type RegularizeAttendanceInput = z.infer<typeof regularizeAttendanceSchem
 export const updateAttendanceSettingsSchema = z.object({
   expectedClockIn: z.string().regex(/^\d{2}:\d{2}$/, "Format must be HH:mm"),
   expectedClockOut: z.string().regex(/^\d{2}:\d{2}$/, "Format must be HH:mm"),
+  attendanceReminderTime: z.string().regex(/^\d{2}:\d{2}$/, "Format must be HH:mm").optional(),
   gracePeriodMinutes: z.number().int().min(0).max(120),
   halfDayThresholdMinutes: z.number().int().min(30).max(720),
   maxShiftHoursCap: z.number().int().min(4).max(24),
@@ -63,7 +64,20 @@ export const updateAttendanceSettingsSchema = z.object({
   officeLongitude: z.number().nullable().optional(),
   officeRadiusMeters: z.number().int().min(10).max(100000).default(500),
   enforceOfficeGeofence: z.boolean().default(true),
-});
+}).refine(
+  (settings) => {
+    if (!settings.attendanceReminderTime) return true;
+    const toMinutes = (time: string) => {
+      const [hours, minutes] = time.split(":").map(Number);
+      return hours * 60 + minutes;
+    };
+    return toMinutes(settings.attendanceReminderTime) < toMinutes(settings.expectedClockIn);
+  },
+  {
+    path: ["attendanceReminderTime"],
+    message: "Reminder time must be earlier than the expected shift start.",
+  },
+);
 
 export type UpdateAttendanceSettingsInput = z.infer<typeof updateAttendanceSettingsSchema>;
 

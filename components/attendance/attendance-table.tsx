@@ -347,9 +347,13 @@ export function AttendanceTable({ userRole, userDepartment }: AttendanceTablePro
                       {record.workMode}
                     </Badge>
                     {record.workMode === "OFFICE" && record.distanceFromOffice != null && (
-                      <div className="text-[10px] text-muted-foreground mt-0.5 font-medium">
-                        <MapPin aria-hidden="true" className="mr-1 size-3.5" />
-                        {record.distanceFromOffice >= 1000 ? `${(record.distanceFromOffice / 1000).toFixed(2)} km` : `${record.distanceFromOffice}m`} away
+                      <div className="mt-0.5 inline-flex items-center gap-1 whitespace-nowrap text-[10px] font-medium text-muted-foreground">
+                        <MapPin aria-hidden="true" className="size-3.5 shrink-0" />
+                        <span>
+                          {record.distanceFromOffice >= 1000
+                            ? `${(record.distanceFromOffice / 1000).toFixed(2)} km`
+                            : `${record.distanceFromOffice}m`} away
+                        </span>
                       </div>
                     )}
                   </TableCell>

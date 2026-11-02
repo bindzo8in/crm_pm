@@ -13,12 +13,14 @@ interface AttendanceSettingsDialogProps {
   isOpen: boolean;
   onClose: () => void;
   settings: any;
+  canManageReminderTime: boolean;
   onSuccess: () => void;
 }
 
-export function AttendanceSettingsDialog({ isOpen, onClose, settings, onSuccess }: AttendanceSettingsDialogProps) {
+export function AttendanceSettingsDialog({ isOpen, onClose, settings, canManageReminderTime, onSuccess }: AttendanceSettingsDialogProps) {
   const [expectedClockIn, setExpectedClockIn] = useState(settings?.expectedClockIn || "09:00");
   const [expectedClockOut, setExpectedClockOut] = useState(settings?.expectedClockOut || "18:00");
+  const [attendanceReminderTime, setAttendanceReminderTime] = useState(settings?.attendanceReminderTime || "08:30");
   const [gracePeriodMinutes, setGracePeriodMinutes] = useState<number>(settings?.gracePeriodMinutes ?? 15);
   const [halfDayThresholdMinutes, setHalfDayThresholdMinutes] = useState<number>(settings?.halfDayThresholdMinutes ?? 240);
   const [maxShiftHoursCap, setMaxShiftHoursCap] = useState<number>(settings?.maxShiftHoursCap ?? 16);
@@ -66,6 +68,7 @@ export function AttendanceSettingsDialog({ isOpen, onClose, settings, onSuccess 
       const res = await updateAttendanceSettingsAction({
         expectedClockIn,
         expectedClockOut,
+        ...(canManageReminderTime ? { attendanceReminderTime } : {}),
         gracePeriodMinutes: Number(gracePeriodMinutes),
         halfDayThresholdMinutes: Number(halfDayThresholdMinutes),
         maxShiftHoursCap: Number(maxShiftHoursCap),
@@ -134,6 +137,25 @@ export function AttendanceSettingsDialog({ isOpen, onClose, settings, onSuccess 
                 />
               </div>
             </div>
+
+            {canManageReminderTime && (
+              <div className="space-y-1">
+                <Label htmlFor="attendance-reminder-time" className="text-[11px] font-semibold">
+                  Attendance reminder time (IST)
+                </Label>
+                <Input
+                  id="attendance-reminder-time"
+                  type="time"
+                  value={attendanceReminderTime}
+                  onChange={(event) => setAttendanceReminderTime(event.target.value)}
+                  className="h-9 rounded-xl text-xs"
+                  required
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Sent before the expected shift start. Weekends, holidays, approved leave, and employees already checked in are skipped.
+                </p>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">

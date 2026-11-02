@@ -7,8 +7,16 @@ import { AttendanceAnalytics } from "./attendance-analytics";
 import { AttendanceReportView } from "./attendance-report-view";
 import { MobileAttendanceNav, AttendanceTab } from "./mobile-attendance-nav";
 import { AttendanceSettingsDialog } from "./attendance-settings-dialog";
+import { AttendanceBrowserReminders } from "./attendance-browser-reminders";
 import { Button } from "@/components/ui/button";
-import { ClockIcon, HistoryIcon, BarChart3Icon, FileSpreadsheetIcon, Settings2Icon } from "lucide-react";
+import {
+  ClockIcon,
+  HistoryIcon,
+  BarChart3Icon,
+  FileSpreadsheetIcon,
+  Settings2Icon,
+  ShieldAlertIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { WorkMode } from "@/app/generated/prisma/enums";
 
@@ -26,7 +34,10 @@ export function AttendanceClientHub({ initialRecord, settings, userRole, userDep
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const isAdmin = userRole === "SUPER_ADMIN" || userRole === "ADMIN";
+  const isHrStaff = userRole === "STAFF" && userDepartment === "HR";
   const isManager = isAdmin || userDepartment === "HR";
+  const canManageShiftRules = isAdmin || isHrStaff;
+  const needsShiftSetup = !settings?.isConfigured;
 
   const handleRefresh = async () => {
     window.location.reload();
@@ -80,7 +91,7 @@ export function AttendanceClientHub({ initialRecord, settings, userRole, userDep
             Analytics Overview
           </button>
 
-          {isManager && (
+          {canManageShiftRules && (
             <button
               type="button"
               onClick={() => setActiveTab("reports")}
@@ -98,17 +109,45 @@ export function AttendanceClientHub({ initialRecord, settings, userRole, userDep
         </div>
 
         {/* Admin Shift Rules Settings Button */}
-        {isAdmin && (
+        {isManager && (
           <Button
             variant="outline"
             size="sm"
             onClick={() => setIsSettingsOpen(true)}
             className="rounded-2xl border-border/80 text-xs font-semibold shadow-sm"
           >
-            <Settings2Icon className="w-4 h-4 mr-1.5 text-primary" /> Shift Rules
+            <Settings2Icon className="w-4 h-4 mr-1.5 text-primary" />
+            {needsShiftSetup ? "Set up shift rules" : "Shift Rules"}
           </Button>
         )}
       </div>
+
+      {canManageShiftRules && needsShiftSetup && (
+        <section
+          role="status"
+          className="flex flex-col gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex items-start gap-3">
+            <ShieldAlertIcon className="mt-0.5 size-5 shrink-0 text-amber-700 dark:text-amber-300" />
+            <div className="space-y-1">
+              <h2 className="text-sm font-semibold text-foreground">Shift rules need to be set up</h2>
+              <p className="text-sm text-muted-foreground">
+                Add your organization’s expected shift times and attendance thresholds before relying on attendance calculations.
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => setIsSettingsOpen(true)}
+            className="shrink-0"
+          >
+            Fill shift rules
+          </Button>
+        </section>
+      )}
+
+      <AttendanceBrowserReminders />
 
       {/* Main Active Tab Content */}
       <div className="w-full">
@@ -138,11 +177,12 @@ export function AttendanceClientHub({ initialRecord, settings, userRole, userDep
       <MobileAttendanceNav activeTab={activeTab} onSelectTab={(tab) => setActiveTab(tab)} isManager={isManager} />
 
       {/* Admin Settings Dialog */}
-      {isAdmin && (
+      {canManageShiftRules && (
         <AttendanceSettingsDialog
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
           settings={settings}
+          canManageReminderTime={isAdmin}
           onSuccess={handleRefresh}
         />
       )}
