@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   getWebPushPublicKeyAction,
   removeWebPushSubscriptionAction,
@@ -18,8 +18,41 @@ function decodeApplicationServerKey(value: string) {
   return Uint8Array.from(window.atob(base64), (character) => character.charCodeAt(0));
 }
 
+async function waitForActiveServiceWorker(
+  registration: ServiceWorkerRegistration,
+): Promise<ServiceWorkerRegistration> {
+  if (registration.active) return registration;
+
+  const worker = registration.installing ?? registration.waiting;
+  if (!worker) {
+    throw new Error("The attendance service worker could not be started. Please try again.");
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const handleStateChange = () => {
+      if (worker.state === "activated") {
+        worker.removeEventListener("statechange", handleStateChange);
+        resolve();
+      } else if (worker.state === "redundant") {
+        worker.removeEventListener("statechange", handleStateChange);
+        reject(new Error("The attendance service worker failed to install. Please try again."));
+      }
+    };
+
+    worker.addEventListener("statechange", handleStateChange);
+    handleStateChange();
+  });
+
+  if (!registration.active) {
+    throw new Error("The attendance service worker is not active. Please try again.");
+  }
+
+  return registration;
+}
+
 export function AttendanceBrowserReminders() {
   const [state, setState] = useState<PushState>("checking");
+  const actionInProgress = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -52,6 +85,8 @@ export function AttendanceBrowserReminders() {
   }, []);
 
   const enableReminders = async () => {
+    if (actionInProgress.current) return;
+    actionInProgress.current = true;
     setState("working");
     try {
       const { publicKey } = await getWebPushPublicKeyAction();
@@ -61,13 +96,18 @@ export function AttendanceBrowserReminders() {
 
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
-        throw new Error("Allow browser notifications to receive attendance reminders.");
+        throw new Error(
+          permission === "denied"
+            ? "Browser notifications are blocked for this site. Allow them in your browser's site settings, then try again."
+            : "Notification permission was not granted. Allow browser notifications when prompted, then try again.",
+        );
       }
 
       const registration = await navigator.serviceWorker.register(
         "/attendance-service-worker.js",
       );
-      const subscription = await registration.pushManager.subscribe({
+      const activeRegistration = await waitForActiveServiceWorker(registration);
+      const subscription = await activeRegistration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: decodeApplicationServerKey(publicKey),
       });
@@ -77,11 +117,18 @@ export function AttendanceBrowserReminders() {
       toast.success("Browser attendance reminders enabled.");
     } catch (error: unknown) {
       setState("disabled");
-      toast.error(error instanceof Error ? error.message : "Could not enable browser reminders.");
+      toast.error(
+        error instanceof Error ? error.message : "Could not enable browser reminders.",
+        { id: "attendance-browser-reminder-enable" },
+      );
+    } finally {
+      actionInProgress.current = false;
     }
   };
 
   const disableReminders = async () => {
+    if (actionInProgress.current) return;
+    actionInProgress.current = true;
     setState("working");
     let browserSubscriptionRemoved = false;
     try {
@@ -97,6 +144,8 @@ export function AttendanceBrowserReminders() {
     } catch (error: unknown) {
       setState(browserSubscriptionRemoved ? "disabled" : "enabled");
       toast.error(error instanceof Error ? error.message : "Could not disable browser reminders.");
+    } finally {
+      actionInProgress.current = false;
     }
   };
 
