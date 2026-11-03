@@ -8,7 +8,7 @@ import {
   EmploymentStatusAction,
   PaymentMethod,
   ProjectStatus,
-  ProjectTaskStatus,
+  ProjectTaskStatusGroup,
   UserRole,
   WorkMode,
 } from "@/app/generated/prisma/enums";
@@ -86,8 +86,8 @@ const activeProjectWhere = {
 };
 
 const openTaskWhere = {
-  status: {
-    notIn: [ProjectTaskStatus.DONE, ProjectTaskStatus.CANCELLED],
+  statusGroup: {
+    notIn: [ProjectTaskStatusGroup.DONE, ProjectTaskStatusGroup.CLOSED],
   },
   project: {
     is: activeProjectWhere,
@@ -848,6 +848,7 @@ export async function deactivateEmployee(input: {
       data: {
         employmentStatus: EmploymentStatus.INACTIVE,
         employmentEndedAt: effectiveAt,
+        includeInPayroll: false,
       },
     });
     await tx.employeeStatusHistory.create({

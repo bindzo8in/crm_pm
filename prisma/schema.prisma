@@ -71,6 +71,7 @@ model User {
   department            Department?
   workMode              WorkMode                @default(OFFICE)
   includeInAttendanceReports Boolean             @default(true) @map("include_in_attendance_reports")
+  includeInPayroll      Boolean                  @default(false) @map("include_in_payroll")
   banned                Boolean?                @default(false)
   banReason             String?
   banExpires            DateTime?
@@ -86,12 +87,22 @@ model User {
   projectActivities     ProjectActivity[]
   assignedTasks         ProjectTask[]           @relation("ProjectTaskAssignee")
   createdTasks          ProjectTask[]           @relation("ProjectTaskCreator")
+  taskTemplates         ProjectTaskStatusTemplate[] @relation("TaskStatusTemplateCreator")
+  taskTimeEntries       ProjectTaskTimeEntry[]  @relation("TaskTimeEntryUser")
+  taskAttachments       ProjectTaskAttachment[] @relation("TaskAttachmentUploader")
+  taskComments          ProjectTaskComment[]   @relation("TaskCommentAuthor")
   createdInvoices       Invoice[]
   invoiceActivities     InvoiceActivity[]
   attendanceRecords     AttendanceRecord[]
   leaveRequests         LeaveRequest[]
   salaryStructure       SalaryStructure?
   salarySlips           SalarySlip[]
+  approvedSalarySlips   SalarySlip[]               @relation("SalarySlipApprover")
+  emailedSalarySlips    SalarySlip[]               @relation("SalarySlipEmailSender")
+  salarySlipAdjustments SalarySlipAdjustment[]     @relation("SalarySlipAdjustmentCreator")
+  removedSalarySlipAdjustments SalarySlipAdjustment[] @relation("SalarySlipAdjustmentRemover")
+  salaryPin             SalaryPin?
+  salaryPinResetTokens  SalaryPinResetToken[]
   expenses              Expense[]
   notifications         Notification[]
   webPushSubscriptions  WebPushSubscription[]
@@ -802,12 +813,16 @@ enum ProjectPriority {
   URGENT
 }
 
-enum ProjectTaskStatus {
-  TODO
-  IN_PROGRESS
-  BLOCKED
+enum ProjectTaskStatusGroup {
+  NOT_STARTED
+  ACTIVE
   DONE
-  CANCELLED
+  CLOSED
+}
+
+enum ProjectTaskRelationType {
+  BLOCKED_BY
+  RELATED_TO
 }
 
 enum ProjectActivityType {
@@ -834,9 +849,12 @@ model Project {
   customerId String?
   customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
-  proposalId       String?   @unique
-  proposal         Proposal? @relation(fields: [proposalId], references: [id], onDelete: Restrict)
-  proposalSnapshot Json?
+  proposalId         String?                    @unique
+  proposal           Proposal?                  @relation(fields: [proposalId], references: [id], onDelete: Restrict)
+  proposalSnapshot   Json?
+  taskStatuses       Json                       @default("[{\"id\":\"TODO\",\"name\":\"To do\",\"group\":\"NOT_STARTED\",\"color\":\"#64748b\"},{\"id\":\"IN_PROGRESS\",\"name\":\"In progress\",\"group\":\"ACTIVE\",\"color\":\"#2563eb\"},{\"id\":\"BLOCKED\",\"name\":\"Blocked\",\"group\":\"ACTIVE\",\"color\":\"#d97706\"},{\"id\":\"DONE\",\"name\":\"Done\",\"group\":\"DONE\",\"color\":\"#16a34a\"},{\"id\":\"CANCELLED\",\"name\":\"Cancelled\",\"group\":\"CLOSED\",\"color\":\"#71717a\"}]")
+  workflowTemplateId String?
+  workflowTemplate   ProjectTaskStatusTemplate? @relation(fields: [workflowTemplateId], references: [id], onDelete: SetNull)
 
   projectManagerId String?
   projectManager   User?   @relation("ProjectManager", fields: [projectManagerId], references: [id], onDelete: SetNull)
@@ -852,6 +870,7 @@ model Project {
   currency     String          @default("INR")
 
   members    ProjectMember[]
+  taskFolders ProjectTaskFolder[]
   tasks      ProjectTask[]
   activities ProjectActivity[]
 
@@ -863,6 +882,21 @@ model Project {
   @@index([projectManagerId, deletedAt])
   @@index([status, dueDate])
   @@index([deletedAt, updatedAt])
+  @@index([workflowTemplateId])
+}
+
+model ProjectTaskStatusTemplate {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  statuses    Json
+  isSystem    Boolean   @default(false)
+  createdById String?
+  createdBy   User?     @relation("TaskStatusTemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  projects    Project[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([isSystem, name])
 }
 
 model ProjectMember {
@@ -877,16 +911,38 @@ model ProjectMember {
   @@index([userId, projectId])
 }
 
+model ProjectTaskFolder {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String
+  parentId  String?
+  parent    ProjectTaskFolder?  @relation("ProjectTaskFolderTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children  ProjectTaskFolder[] @relation("ProjectTaskFolderTree")
+  tasks     ProjectTask[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId, parentId, name])
+}
+
 model ProjectTask {
   id        String  @id @default(cuid())
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  folderId  String
+  folder    ProjectTaskFolder @relation(fields: [folderId], references: [id], onDelete: Restrict)
 
   title       String
   description String?
-  status      ProjectTaskStatus @default(TODO)
-  priority    ProjectPriority   @default(MEDIUM)
+  status      String                 @default("TODO")
+  statusGroup ProjectTaskStatusGroup @default(NOT_STARTED)
+  priority    ProjectPriority        @default(MEDIUM)
+  startDate   DateTime?
   dueDate     DateTime?
+  timeEstimateMinutes Int?
+  sprintPoints Int?
+  timeTrackedSeconds Int               @default(0)
   completedAt DateTime?
 
   assigneeId  String?
@@ -894,11 +950,91 @@ model ProjectTask {
   createdById String?
   createdBy   User?   @relation("ProjectTaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
+  parentTaskId String?
+  parentTask   ProjectTask? @relation("TaskSubtasks", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  subtasks     ProjectTask[] @relation("TaskSubtasks")
+  dependencies ProjectTaskDependency[] @relation("TaskDependencies")
+  blockedTasks ProjectTaskDependency[] @relation("TaskBlockedBy")
+  checklist    ProjectTaskChecklistItem[]
+  attachments  ProjectTaskAttachment[]
+  comments     ProjectTaskComment[]
+  timeEntries  ProjectTaskTimeEntry[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([projectId, status, dueDate])
-  @@index([assigneeId, status])
+  @@index([projectId, statusGroup, dueDate])
+  @@index([folderId, statusGroup, dueDate])
+  @@index([assigneeId, statusGroup])
+  @@index([parentTaskId])
+}
+
+model ProjectTaskDependency {
+  id              String      @id @default(cuid())
+  taskId          String
+  task            ProjectTask @relation("TaskDependencies", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOnTaskId String
+  dependsOnTask   ProjectTask @relation("TaskBlockedBy", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+  relationType    ProjectTaskRelationType @default(BLOCKED_BY)
+  createdAt       DateTime    @default(now())
+
+  @@unique([taskId, dependsOnTaskId, relationType])
+  @@index([dependsOnTaskId])
+}
+
+model ProjectTaskChecklistItem {
+  id        String      @id @default(cuid())
+  taskId    String
+  task      ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  title     String
+  isComplete Boolean    @default(false)
+  sortOrder Int         @default(0)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([taskId, sortOrder])
+}
+
+model ProjectTaskAttachment {
+  id           String      @id @default(cuid())
+  taskId       String
+  task         ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  url          String
+  publicId     String      @unique
+  resourceType String
+  fileName     String
+  fileSize     Int
+  uploadedById String?
+  uploadedBy   User?       @relation("TaskAttachmentUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime    @default(now())
+
+  @@index([taskId, createdAt])
+}
+
+model ProjectTaskComment {
+  id        String      @id @default(cuid())
+  taskId    String
+  task      ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId  String?
+  author    User?       @relation("TaskCommentAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  content   String
+  createdAt DateTime    @default(now())
+
+  @@index([taskId, createdAt])
+}
+
+model ProjectTaskTimeEntry {
+  id        String      @id @default(cuid())
+  taskId    String
+  task      ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User        @relation("TaskTimeEntryUser", fields: [userId], references: [id], onDelete: Cascade)
+  startedAt DateTime    @default(now())
+  endedAt   DateTime?
+  durationSeconds Int?
+
+  @@index([taskId, startedAt])
+  @@index([userId, endedAt])
 }
 
 model ProjectActivity {
@@ -1441,10 +1577,43 @@ model SalaryStructure {
   @@map("salary_structure")
 }
 
+model SalaryPin {
+  userId               String   @id @map("user_id")
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pinHash              String   @map("pin_hash")
+  sessionVersion       Int      @default(0) @map("session_version")
+  failedAttempts       Int      @default(0) @map("failed_attempts")
+  lockedUntil          DateTime? @map("locked_until")
+  lastResetRequestedAt DateTime? @map("last_reset_requested_at")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@map("salary_pin")
+}
+
+model SalaryPinResetToken {
+  id        String   @id
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("salary_pin_reset_token")
+}
+
 enum SalarySlipStatus {
   DRAFT
   GENERATED
+  APPROVED
   PAID
+}
+
+enum SalarySlipAdjustmentType {
+  EARNING
+  DEDUCTION
 }
 
 model SalarySlip {
@@ -1456,6 +1625,14 @@ model SalarySlip {
   year  Int
 
   status SalarySlipStatus @default(DRAFT)
+  scheduledGeneration Boolean @default(false) @map("scheduled_generation")
+  approvedAt   DateTime?
+  approvedById String?
+  approvedBy   User?      @relation("SalarySlipApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  emailSentAt   DateTime?
+  emailSentById String?
+  emailSentBy   User?      @relation("SalarySlipEmailSender", fields: [emailSentById], references: [id], onDelete: SetNull)
+  adjustments   SalarySlipAdjustment[]
 
   totalDays   Int
   paidDays    Int
@@ -1501,4 +1678,22 @@ model SalarySlip {
   @@index([month, year])
   @@index([status])
   @@map("salary_slip")
+}
+
+model SalarySlipAdjustment {
+  id          String                   @id @default(cuid())
+  salarySlipId String                  @map("salary_slip_id")
+  salarySlip  SalarySlip               @relation(fields: [salarySlipId], references: [id], onDelete: Cascade)
+  createdById String                   @map("created_by_id")
+  createdBy   User                     @relation("SalarySlipAdjustmentCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  removedAt   DateTime?                 @map("removed_at")
+  removedById String?                   @map("removed_by_id")
+  removedBy   User?                     @relation("SalarySlipAdjustmentRemover", fields: [removedById], references: [id], onDelete: SetNull)
+  type        SalarySlipAdjustmentType
+  description String
+  amount      Decimal                  @db.Decimal(12, 2)
+  createdAt   DateTime                 @default(now()) @map("created_at")
+
+  @@index([salarySlipId])
+  @@map("salary_slip_adjustment")
 }

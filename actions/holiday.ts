@@ -125,6 +125,7 @@ export async function updateWeekendDaysAction(input: unknown) {
 
   revalidatePath("/dashboard/holidays");
   revalidatePath("/dashboard/leaves");
+  revalidatePath("/dashboard/attendance/schedule");
   revalidatePath("/dashboard");
   return { success: true, weekendDays: settings.weekendDays };
 }

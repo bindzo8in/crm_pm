@@ -28,7 +28,6 @@ import {
   formatHolidayDepartmentScope,
   HOLIDAY_CATEGORY_LABELS,
 } from "@/lib/holiday-format";
-import { WeeklyScheduleSettings } from "./weekly-schedule-settings";
 
 type HolidayRecord = Pick<
   Holiday,
@@ -121,13 +120,11 @@ export function HolidayCalendar({
   today,
   isManager,
   holidays,
-  weekendDays,
 }: {
   year: number;
   today: string;
   isManager: boolean;
   holidays: HolidayRecord[];
-  weekendDays: number[];
 }) {
   const [month, setMonth] = useState(() => {
     const currentMonth = Number(today.slice(5, 7)) - 1;
@@ -166,11 +163,27 @@ export function HolidayCalendar({
     ? dayDiff(today, dateKey(nextHolidayDate))
     : null;
   const calendarDays = useMemo(() => buildCalendarDays(month), [month]);
+  const activeMonthStart = Date.UTC(month.getUTCFullYear(), month.getUTCMonth(), 1);
+  const activeMonthEnd = Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 0);
+  const monthEvents = events.filter((holiday) =>
+    holiday.dates.some((date) => {
+      const timestamp = date.getTime();
+      return timestamp >= activeMonthStart && timestamp <= activeMonthEnd;
+    }),
+  );
+  const monthUpcomingEvents = monthEvents.filter((holiday) =>
+    holiday.dates.some((date) => {
+      const timestamp = date.getTime();
+      return timestamp >= activeMonthStart &&
+        timestamp <= activeMonthEnd &&
+        dateKey(date) >= today;
+    }),
+  );
 
-  const filteredHolidays = events.filter((holiday) => {
+  const filteredHolidays = monthEvents.filter((holiday) => {
     const matchesSearch = `${holiday.name} ${holiday.description ?? ""} ${HOLIDAY_CATEGORY_LABELS[holiday.category]} ${formatHolidayDepartmentScope(holiday.departments)}`.toLowerCase().includes(search.trim().toLowerCase());
     const matchesFilter =
-      filter === "all" || holiday.dates.some((date) => dateKey(date) >= today);
+      filter === "all" || monthUpcomingEvents.includes(holiday);
     const matchesDate =
       !selectedDate || holiday.dates.some((date) => dateKey(date) === selectedDate);
     return matchesSearch && matchesFilter && matchesDate;
@@ -201,7 +214,7 @@ export function HolidayCalendar({
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             {isManager
               ? "Plan company-wide holidays and help everyone see what’s coming."
-              : "See company holidays and your team’s weekly work schedule."}
+              : "See upcoming company holidays and dates observed by your team."}
           </p>
         </div>
 
@@ -241,8 +254,6 @@ export function HolidayCalendar({
           )}
         </div>
       </header>
-
-      <WeeklyScheduleSettings isManager={isManager} weekendDays={weekendDays} />
 
       <section aria-label="Holiday summary" className="-mx-3 flex gap-3 overflow-x-auto px-3 pb-1 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 xl:grid-cols-3">
         <Card className="min-w-[220px] flex-1 shadow-none sm:min-w-0">
@@ -393,13 +404,15 @@ export function HolidayCalendar({
               <div className="min-w-0">
                 <CardTitle className="text-base">Holiday calendar</CardTitle>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {selectedDate ? formatLongDate(new Date(`${selectedDate}T00:00:00Z`)) : `${events.length} scheduled for ${year}`}
+                  {selectedDate
+                    ? formatLongDate(new Date(`${selectedDate}T00:00:00Z`))
+                    : `${monthEvents.length} holiday${monthEvents.length === 1 ? "" : "s"} in ${formatMonth(month)}`}
                 </p>
               </div>
               <div className="flex items-center gap-1 rounded-lg bg-muted p-1" aria-label="Filter holidays">
                 {([
-                  ["all", `All ${events.length}`],
-                  ["upcoming", `Upcoming ${upcomingEvents.length}`],
+                  ["all", `This month ${monthEvents.length}`],
+                  ["upcoming", `Upcoming ${monthUpcomingEvents.length}`],
                 ] as const).map(([value, label]) => (
                   <button
                     key={value}
@@ -461,13 +474,15 @@ export function HolidayCalendar({
               <div className="rounded-lg border border-dashed px-4 py-10 text-center">
                 <CalendarDays aria-hidden="true" className="mx-auto size-7 text-muted-foreground" />
                 <p className="mt-3 font-medium">
-                {events.length === 0 ? `No holidays listed for ${year}` : "No matching holidays"}
+                {monthEvents.length === 0
+                  ? `No holidays in ${formatMonth(month)}`
+                  : "No matching holidays"}
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                {events.length === 0
+                {monthEvents.length === 0
                     ? isManager
-                      ? "Add a company holiday to publish it to staff."
-                      : "HR will publish company holidays here when they are available."
+                      ? "There are no holidays scheduled for this month."
+                      : "No company holidays are scheduled for this month."
                     : "Try another search or clear the selected date."}
                 </p>
                 {selectedDate && (
@@ -481,8 +496,15 @@ export function HolidayCalendar({
                 {filteredHolidays.map((holiday) => {
                   const firstDate = holiday.dates[0];
                   const lastDate = holiday.dates.at(-1) ?? firstDate;
-                  const nextDate = holiday.dates.find((date) => dateKey(date) >= today);
-                  const displayDate = nextDate ?? firstDate;
+                  const visibleDates = holiday.dates.filter((date) => {
+                    const timestamp = date.getTime();
+                    const isInActiveMonth =
+                      timestamp >= activeMonthStart && timestamp <= activeMonthEnd;
+                    return isInActiveMonth &&
+                      (!selectedDate || dateKey(date) === selectedDate);
+                  });
+                  const nextDate = visibleDates.find((date) => dateKey(date) >= today);
+                  const displayDate = nextDate ?? visibleDates[0] ?? firstDate;
                   const upcoming = nextDate !== undefined;
                   const daysAway = nextDate ? dayDiff(today, dateKey(nextDate)) : null;
                   const dateLabel = formatHolidayDateRange(firstDate, lastDate);

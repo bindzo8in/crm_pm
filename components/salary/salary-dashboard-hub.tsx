@@ -34,6 +34,7 @@ export function SalaryDashboardHub({
   staffLeaveSummary,
 }: SalaryDashboardHubProps) {
   const [activeTab, setActiveTab] = useState<"structures" | "slips">(isHrOrAdmin ? "structures" : "slips");
+  const payrollUsers = users.filter((user) => user.includeInPayroll);
 
   if (!isHrOrAdmin && staffProfile && staffLeaveSummary) {
     return (
@@ -94,7 +95,7 @@ export function SalaryDashboardHub({
 
         {activeTab === "slips" && (
           <SalarySlipsTab 
-            users={users} 
+            users={payrollUsers}
             initialSlips={initialSlips} 
             isHrOrAdmin={isHrOrAdmin}
           />
@@ -117,16 +118,17 @@ function AdminPayrollSummary({
     : [];
   const monthlyTotal = latestPeriodSlips.reduce((total, slip) => total + Number(slip.netSalary), 0);
   const paidCount = latestPeriodSlips.filter((slip) => slip.status === "PAID").length;
-  const configuredCount = users.filter((user) => user.hasSalaryStructure).length;
+  const includedUsers = users.filter((user) => user.includeInPayroll);
+  const configuredCount = includedUsers.filter((user) => user.hasSalaryStructure).length;
   const periodLabel = latestSlip
     ? new Intl.DateTimeFormat("en-US", { month: "long" }).format(new Date(2000, latestSlip.month - 1, 1))
     : "No payroll yet";
 
   const items = [
     { label: "Monthly payroll", value: monthlyTotal ? `₹${monthlyTotal.toLocaleString("en-IN")}` : "₹0", detail: periodLabel, icon: IndianRupee },
-    { label: "Configured staff", value: `${configuredCount}/${users.length}`, detail: "Salary profiles ready", icon: WalletCards },
+    { label: "Configured staff", value: `${configuredCount}/${includedUsers.length}`, detail: "Included payroll profiles", icon: WalletCards },
     { label: "Paid slips", value: `${paidCount}/${latestPeriodSlips.length}`, detail: periodLabel, icon: FileTextIcon },
-    { label: "Employees", value: String(users.length), detail: "In payroll directory", icon: UsersRound },
+    { label: "Employees", value: String(includedUsers.length), detail: `${users.length - includedUsers.length} excluded from payroll`, icon: UsersRound },
   ];
 
   return (

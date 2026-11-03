@@ -12,7 +12,7 @@ import {
     ComboboxTrigger,
     ComboboxValue,
 } from "@/components/ui/combobox";
-import { Plus } from "lucide-react";
+import { CircleMinus, Plus } from "lucide-react";
 
 import { useCustomerOptions } from "./customer-query";
 
@@ -26,30 +26,48 @@ export type CustomerOption = {
 
 type Props = {
     id?: string;
+    "aria-label"?: string;
     "aria-invalid"?: boolean;
     value?: string; // customerId
     selectedCustomer?: CustomerOption | null;
     onValueChange: (customer: CustomerOption) => void;
     onCreateCustomer?: () => void;
+    allowNoCustomer?: boolean;
+    onClear?: () => void;
+    disabled?: boolean;
+    placeholder?: string;
 };
 
-type CustomerComboboxOption = CustomerOption | { id: "__create_customer__"; action: "create" };
+type CustomerComboboxOption =
+    | CustomerOption
+    | { id: "__create_customer__"; action: "create" }
+    | { id: "__no_customer__"; action: "clear" };
 const createCustomerOption: CustomerComboboxOption = { id: "__create_customer__", action: "create" };
+const noCustomerOption: CustomerComboboxOption = { id: "__no_customer__", action: "clear" };
 
 export function CustomerCombobox({
     id,
+    "aria-label": ariaLabel,
     "aria-invalid": ariaInvalid,
     value,
     selectedCustomer: selectedCustomerFallback,
     onValueChange,
     onCreateCustomer,
+    allowNoCustomer = false,
+    onClear,
+    disabled = false,
+    placeholder = "Select customer",
 }: Props) {
     const [search, setSearch] = React.useState("");
 
     const { data, isLoading } = useCustomerOptions(search);
 
     const customers = data?.data ?? [];
-    const options: CustomerComboboxOption[] = [...customers, createCustomerOption];
+    const options: CustomerComboboxOption[] = [
+        ...(allowNoCustomer ? [noCustomerOption] : []),
+        ...customers,
+        ...(onCreateCustomer ? [createCustomerOption] : []),
+    ];
 
     const selectedCustomer =
     customers.find((customer) => customer.id === value)
@@ -62,7 +80,8 @@ export function CustomerCombobox({
             onValueChange={(customer: CustomerComboboxOption | null) => {
                 if (!customer) return;
                 if ("action" in customer) {
-                    onCreateCustomer?.();
+                    if (customer.action === "create") onCreateCustomer?.();
+                    else onClear?.();
                     return;
                 }
                 onValueChange(customer);
@@ -75,11 +94,13 @@ export function CustomerCombobox({
                 render={
                     <Button
                         id={id}
+                        aria-label={ariaLabel}
                         aria-invalid={ariaInvalid}
+                        disabled={disabled}
                         variant="outline"
                         className="w-full justify-between font-normal"
                     >
-                        <ComboboxValue placeholder="Select customer" />
+                        <ComboboxValue placeholder={placeholder} />
                     </Button>
                 }
             />
@@ -98,14 +119,21 @@ export function CustomerCombobox({
 
                 <ComboboxList>
                     {(option) => "action" in option ? (
-                        <ComboboxItem
-                            key={option.id}
-                            value={option}
-                            className="mt-1 border-t border-border pt-2 font-medium text-primary"
-                        >
-                            <Plus className="size-4" />
-                            <span>Add new customer</span>
-                        </ComboboxItem>
+                        option.action === "create" ? (
+                            <ComboboxItem
+                                key={option.id}
+                                value={option}
+                                className="mt-1 border-t border-border pt-2 font-medium text-primary"
+                            >
+                                <Plus className="size-4" />
+                                <span>Add new customer</span>
+                            </ComboboxItem>
+                        ) : (
+                            <ComboboxItem key={option.id} value={option}>
+                                <CircleMinus className="size-4 text-muted-foreground" />
+                                <span>No customer (standalone project)</span>
+                            </ComboboxItem>
+                        )
                     ) : (
                         <ComboboxItem key={option.id} value={option}>
                             <div className="flex flex-col">

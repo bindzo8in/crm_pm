@@ -9,7 +9,6 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -22,7 +21,6 @@ import { toast } from "sonner";
 import {
   CalendarDaysIcon,
   CalculatorIcon,
-  IndianRupeeIcon,
   RefreshCwIcon,
 } from "lucide-react";
 import type { SalaryEmployee, SalarySlipRecord } from "./types";
@@ -48,10 +46,6 @@ export function SalarySlipGenerateDialog({
 
   const [month, setMonth] = useState<string>(currentMonth.toString());
   const [year, setYear] = useState<string>(currentYear.toString());
-
-  const [medicalReimbursement, setMedicalReimbursement] = useState("0");
-  const [extraEarnings, setExtraEarnings] = useState("0");
-  const [extraDeductions, setExtraDeductions] = useState("0");
 
   const monthNames = [
     "January",
@@ -86,9 +80,6 @@ export function SalarySlipGenerateDialog({
           userId,
           month: Number(month),
           year: Number(year),
-          medicalReimbursement: Number(medicalReimbursement) || 0,
-          extraEarnings: Number(extraEarnings) || 0,
-          extraDeductions: Number(extraDeductions) || 0,
         }),
       });
       const data = await res.json();
@@ -127,8 +118,7 @@ export function SalarySlipGenerateDialog({
             <div className="min-w-0 space-y-1.5">
               <DialogTitle className="text-lg">Generate salary slip</DialogTitle>
               <DialogDescription>
-                Select an employee and payroll period, then add any applicable
-                adjustments.
+                Generate the base slip first. Add one-time earnings or deductions with a reason before review and approval.
               </DialogDescription>
             </div>
           </div>
@@ -207,84 +197,6 @@ export function SalarySlipGenerateDialog({
             </div>
           </section>
 
-          <section aria-labelledby="salary-adjustments-heading" className="space-y-4">
-            <div className="space-y-1">
-              <h3 id="salary-adjustments-heading" className="text-sm font-semibold">
-                Optional adjustments
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Add approved amounts for this payroll period. Leave at zero if
-                there are none.
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="salary-medical-reimbursement">
-                  Medical reimbursement
-                </Label>
-                <div className="relative">
-                  <IndianRupeeIcon
-                    aria-hidden="true"
-                    className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                  />
-                  <Input
-                    id="salary-medical-reimbursement"
-                    type="number"
-                    min="0"
-                    value={medicalReimbursement}
-                    onChange={(event) =>
-                      setMedicalReimbursement(event.target.value)
-                    }
-                    className="h-11 pl-9"
-                    placeholder="0"
-                  />
-                </div>
-              </div>
-              <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="min-w-0 space-y-1.5">
-                  <Label htmlFor="salary-extra-earnings">Other earnings</Label>
-                  <div className="relative">
-                    <IndianRupeeIcon
-                      aria-hidden="true"
-                      className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                    />
-                    <Input
-                      id="salary-extra-earnings"
-                      type="number"
-                      min="0"
-                      value={extraEarnings}
-                      onChange={(event) =>
-                        setExtraEarnings(event.target.value)
-                      }
-                      className="h-11 pl-9"
-                    />
-                  </div>
-                </div>
-                <div className="min-w-0 space-y-1.5">
-                  <Label htmlFor="salary-extra-deductions">
-                    Other deductions
-                  </Label>
-                  <div className="relative">
-                    <IndianRupeeIcon
-                      aria-hidden="true"
-                      className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                    />
-                    <Input
-                      id="salary-extra-deductions"
-                      type="number"
-                      min="0"
-                      value={extraDeductions}
-                      onChange={(event) =>
-                        setExtraDeductions(event.target.value)
-                      }
-                      className="h-11 pl-9"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
         </div>
 
         <div className="flex flex-col-reverse gap-2 border-t bg-muted/10 px-5 py-4 sm:flex-row sm:justify-end sm:px-7">

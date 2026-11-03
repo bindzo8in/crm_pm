@@ -28,6 +28,12 @@ interface SalarySlipRenderData {
   tds: number | string;
   absentDeduction: number | string;
   customComponents: SalaryComponent[] | null;
+  adjustments?: Array<{
+    id: string;
+    type: "EARNING" | "DEDUCTION";
+    description: string;
+    amount: number | string;
+  }>;
   totalEarnings: number | string;
   totalDeductions: number | string;
   netSalary: number | string;
@@ -216,6 +222,9 @@ export function SalarySlipRenderer({
                 <div className="flex justify-between"><span>Special Allowance</span><span>{formatVal(slip.specialAllowance)}</span></div>
                 {Number(slip.medicalReimbursement) > 0 && <div className="flex justify-between"><span>Medical Reimbursement</span><span>{formatVal(slip.medicalReimbursement)}</span></div>}
                 {Number(slip.extraEarnings) > 0 && <div className="flex justify-between"><span>Additional Earnings</span><span>{formatVal(slip.extraEarnings)}</span></div>}
+                {slip.adjustments?.filter((item) => item.type === "EARNING").map((item) => (
+                  <div key={item.id} className="flex justify-between"><span>{item.description}</span><span>{formatVal(item.amount)}</span></div>
+                ))}
                 {slip.customComponents?.filter((c) => c.type === "EARNING").map((comp, i) => (
                   <div key={i} className="flex justify-between"><span>{comp.name}</span><span>{formatVal(comp.amount)}</span></div>
                 ))}
@@ -231,6 +240,9 @@ export function SalarySlipRenderer({
                 <div className="flex justify-between"><span>TDS</span><span>{formatVal(slip.tds)}</span></div>
                 <div className="flex justify-between"><span>LOP Deduction</span><span>{formatVal(slip.absentDeduction)}</span></div>
                 {Number(slip.extraDeductions) > 0 && <div className="flex justify-between"><span>Additional Deductions</span><span>{formatVal(slip.extraDeductions)}</span></div>}
+                {slip.adjustments?.filter((item) => item.type === "DEDUCTION").map((item) => (
+                  <div key={item.id} className="flex justify-between"><span>{item.description}</span><span>{formatVal(item.amount)}</span></div>
+                ))}
                 {slip.customComponents?.filter((c) => c.type === "DEDUCTION").map((comp, i) => (
                   <div key={i} className="flex justify-between"><span>{comp.name}</span><span>{formatVal(comp.amount)}</span></div>
                 ))}

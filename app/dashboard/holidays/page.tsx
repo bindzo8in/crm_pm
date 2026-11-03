@@ -5,7 +5,6 @@ import {
   requireHolidayUser,
 } from "@/lib/leave-access";
 import { getHolidaysForYear } from "@/services/holiday-service";
-import { getWeekendDays } from "@/services/attendance-settings-service";
 import DashboardContainer from "../dashboard-container";
 import { HolidayCalendar } from "./holiday-calendar";
 
@@ -24,10 +23,7 @@ export default async function HolidaysPage({
   const user = await requireHolidayUser();
   const isManager = canManageHolidays(user);
   const year = getYear((await searchParams).year) ?? Number(formatInIST(new Date(), "yyyy"));
-  const [holidays, weekendDays] = await Promise.all([
-    getHolidaysForYear(year, getHolidayDepartment(user)),
-    getWeekendDays(),
-  ]);
+  const holidays = await getHolidaysForYear(year, getHolidayDepartment(user));
 
   return (
     <DashboardContainer title="Holidays">
@@ -37,7 +33,6 @@ export default async function HolidaysPage({
         today={formatInIST(new Date(), "yyyy-MM-dd")}
         isManager={isManager}
         holidays={holidays}
-        weekendDays={weekendDays}
       />
     </DashboardContainer>
   );

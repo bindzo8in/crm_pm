@@ -11,15 +11,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import {
-  CirclePlusIcon,
-  MinusCircleIcon,
-  RefreshCwIcon,
-  SaveIcon,
-  StethoscopeIcon,
-} from "lucide-react";
-import type { SalarySlipUpdate } from "./types";
+import { CirclePlusIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
+import type { SalarySlipAdjustmentRecord, SalarySlipUpdate } from "./types";
 import { formatCurrency } from "@/lib/utils";
 
 interface SalarySlipAdjustmentsDialogProps {
@@ -27,10 +22,8 @@ interface SalarySlipAdjustmentsDialogProps {
   onClose: () => void;
   slip: {
     id: string;
-    medicalReimbursement: number;
-    extraEarnings: number;
-    extraDeductions: number;
-    netSalary?: number;
+    netSalary: number;
+    adjustments: SalarySlipAdjustmentRecord[];
   };
   onSuccess: (slip: SalarySlipUpdate) => void;
 }
@@ -41,32 +34,19 @@ export function SalarySlipAdjustmentsDialog({
   slip,
   onSuccess,
 }: SalarySlipAdjustmentsDialogProps) {
+  const [type, setType] = useState<"EARNING" | "DEDUCTION">("EARNING");
+  const [description, setDescription] = useState("");
+  const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
-  const [medicalReimbursement, setMedicalReimbursement] = useState(
-    String(slip.medicalReimbursement ?? 0),
-  );
-  const [extraEarnings, setExtraEarnings] = useState(String(slip.extraEarnings ?? 0));
-  const [extraDeductions, setExtraDeductions] = useState(String(slip.extraDeductions ?? 0));
-  const asAmount = (value: string) => {
-    const amount = Number(value);
-    return Number.isFinite(amount) && amount >= 0 ? amount : 0;
-  };
-  const addedEarnings =
-    asAmount(medicalReimbursement) + asAmount(extraEarnings);
-  const currentAdjustmentImpact =
-    asAmount(String(slip.medicalReimbursement)) +
-    asAmount(String(slip.extraEarnings)) -
-    asAmount(String(slip.extraDeductions));
-  const netChange =
-    addedEarnings -
-    asAmount(extraDeductions) -
-    currentAdjustmentImpact;
-  const projectedNetSalary =
-    Number(slip.netSalary ?? 0) + netChange;
-  const hasInvalidAmount = [medicalReimbursement, extraEarnings, extraDeductions]
-    .some((value) => value.trim() === "" || Number(value) < 0 || !Number.isFinite(Number(value)));
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
-  const handleSave = async () => {
+  async function submitAdjustment() {
+    const parsedAmount = Number(amount);
+    if (!description.trim() || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      toast.error("Enter a reason and a positive amount.");
+      return;
+    }
+
     setLoading(true);
     try {
       const response = await fetch("/api/salary/adjustments", {
@@ -74,134 +54,169 @@ export function SalarySlipAdjustmentsDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           slipId: slip.id,
-          medicalReimbursement: Number(medicalReimbursement),
-          extraEarnings: Number(extraEarnings),
-          extraDeductions: Number(extraDeductions),
+          type,
+          description: description.trim(),
+          amount: parsedAmount,
         }),
       });
       const result = await response.json();
-
       if (!response.ok || !result.success) {
-        toast.error(result.error || "Failed to update salary adjustments.");
+        toast.error(result.error || "Could not add the adjustment.");
         return;
       }
 
-      toast.success("Salary adjustments updated.");
       onSuccess(result.slip);
-      onClose();
+      setDescription("");
+      setAmount("");
+      toast.success(type === "EARNING" ? "Earning added." : "Deduction added.");
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to update salary adjustments.",
-      );
+      toast.error(error instanceof Error ? error.message : "Could not add the adjustment.");
     } finally {
       setLoading(false);
     }
-  };
+  }
+
+  async function removeAdjustment(adjustmentId: string) {
+    setRemovingId(adjustmentId);
+    try {
+      const response = await fetch("/api/salary/adjustment-remove", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slipId: slip.id, adjustmentId }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        toast.error(result.error || "Could not remove the adjustment.");
+        return;
+      }
+      onSuccess(result.slip);
+      toast.success("Adjustment removed.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not remove the adjustment.");
+    } finally {
+      setRemovingId(null);
+    }
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-lg gap-0 rounded-2xl border-border bg-background p-0">
-        <DialogHeader>
-          <div className="border-b px-5 py-5 pr-14 sm:px-6">
-            <DialogTitle className="text-xl">Adjust salary slip</DialogTitle>
-            <DialogDescription className="mt-1">
-              Add one-time amounts before the slip is marked as paid.
-            </DialogDescription>
-          </div>
+      <DialogContent className="max-h-[90dvh] max-w-lg gap-0 overflow-y-auto rounded-2xl p-0">
+        <DialogHeader className="border-b px-5 py-5 pr-14 sm:px-6">
+          <DialogTitle className="text-xl">One-time adjustments</DialogTitle>
+          <DialogDescription>
+            Add an incentive or other earning, or a deduction, for this employee and month.
+            Each entry is recorded separately and appears on the slip.
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
-          <div className="rounded-xl border border-emerald-200/70 bg-emerald-50/70 p-4 dark:border-emerald-900 dark:bg-emerald-950/20">
-            <p className="text-xs font-medium text-muted-foreground">Projected take-home</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
-              {formatCurrency(projectedNetSalary)}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {netChange === 0
-                ? "No adjustment impact"
-                : `${netChange > 0 ? "+" : ""}${formatCurrency(netChange)} net change`}
+        <div className="space-y-5 px-5 py-5 sm:px-6">
+          <div className="rounded-xl border bg-muted/20 p-4">
+            <p className="text-xs text-muted-foreground">Current net pay</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums">
+              {formatCurrency(slip.netSalary)}
             </p>
           </div>
 
-          <fieldset className="space-y-3">
-            <legend className="flex items-center gap-2 text-sm font-semibold">
-              <CirclePlusIcon className="size-4 text-emerald-600" />
-              Earnings and reimbursements
-            </legend>
+          <div className="space-y-3 rounded-xl border p-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="medical-reimbursement">Medical reimbursement</Label>
-                <div className="relative">
-                  <StethoscopeIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    id="medical-reimbursement"
-                    className="h-11 pl-10"
-                    type="number"
-                    inputMode="decimal"
-                    min="0"
-                    step="0.01"
-                    value={medicalReimbursement}
-                    onChange={(event) => setMedicalReimbursement(event.target.value)}
-                  />
-                </div>
+                <Label htmlFor="salary-adjustment-type">Adjustment</Label>
+                <Select
+                  value={type}
+                  onValueChange={(value) =>
+                    setType(value === "DEDUCTION" ? "DEDUCTION" : "EARNING")
+                  }
+                >
+                  <SelectTrigger id="salary-adjustment-type" className="h-11">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="EARNING">Earning / incentive</SelectItem>
+                    <SelectItem value="DEDUCTION">Deduction</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="extra-earnings">Additional earnings</Label>
+                <Label htmlFor="salary-adjustment-amount">Amount</Label>
                 <Input
-                  id="extra-earnings"
+                  id="salary-adjustment-amount"
                   className="h-11"
                   type="number"
                   inputMode="decimal"
-                  min="0"
+                  min="0.01"
                   step="0.01"
-                  value={extraEarnings}
-                  onChange={(event) => setExtraEarnings(event.target.value)}
+                  value={amount}
+                  onChange={(event) => setAmount(event.target.value)}
+                  placeholder="0.00"
                 />
               </div>
             </div>
-          </fieldset>
-
-          <fieldset className="space-y-3">
-            <legend className="flex items-center gap-2 text-sm font-semibold">
-              <MinusCircleIcon className="size-4 text-rose-600" />
-              Deductions
-            </legend>
             <div className="space-y-2">
-              <Label htmlFor="extra-deductions">Additional deductions</Label>
+              <Label htmlFor="salary-adjustment-reason">Reason</Label>
               <Input
-                id="extra-deductions"
+                id="salary-adjustment-reason"
                 className="h-11"
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="0.01"
-                value={extraDeductions}
-                onChange={(event) => setExtraDeductions(event.target.value)}
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                maxLength={120}
+                placeholder={type === "EARNING" ? "e.g. November sales incentive" : "e.g. Approved salary correction"}
               />
             </div>
-          </fieldset>
+            {type === "DEDUCTION" && (
+              <p className="text-xs text-muted-foreground">
+                Use deductions only when permitted by your payroll and employment rules.
+              </p>
+            )}
+            <Button onClick={() => void submitAdjustment()} disabled={loading} className="w-full sm:w-auto">
+              {loading ? <RefreshCwIcon className="animate-spin" /> : <CirclePlusIcon />}
+              Add adjustment
+            </Button>
+          </div>
 
-          {hasInvalidAmount && (
-            <p className="text-sm text-destructive" role="alert">
-              Enter zero or a positive amount in every adjustment field.
-            </p>
-          )}
+          <section aria-labelledby="salary-adjustments-list" className="space-y-3">
+            <h3 id="salary-adjustments-list" className="text-sm font-semibold">Added to this slip</h3>
+            {slip.adjustments.length === 0 ? (
+              <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+                No one-time adjustments. The scheduled salary calculation is unchanged.
+              </p>
+            ) : (
+              <ul className="divide-y rounded-lg border">
+                {slip.adjustments.map((adjustment) => (
+                  <li key={adjustment.id} className="flex items-center gap-3 px-3 py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="break-words text-sm font-medium">{adjustment.description}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {adjustment.type === "EARNING" ? "Earning" : "Deduction"}
+                      </p>
+                    </div>
+                    <p className={`shrink-0 text-sm font-semibold tabular-nums ${adjustment.type === "EARNING" ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-400"}`}>
+                      {adjustment.type === "EARNING" ? "+" : "−"}
+                      {formatCurrency(Number(adjustment.amount))}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-9 shrink-0 text-muted-foreground hover:text-destructive"
+                      aria-label={`Remove ${adjustment.description}`}
+                      disabled={removingId === adjustment.id}
+                      onClick={() => void removeAdjustment(adjustment.id)}
+                    >
+                      {removingId === adjustment.id ? (
+                        <RefreshCwIcon className="size-4 animate-spin" />
+                      ) : (
+                        <Trash2Icon className="size-4" />
+                      )}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
 
-        <div className="sticky bottom-0 flex flex-col-reverse gap-2 border-t bg-background px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-          <Button variant="outline" size="lg" onClick={onClose} disabled={loading}>
-            Cancel
-          </Button>
-          <Button size="lg" onClick={handleSave} disabled={loading || hasInvalidAmount}>
-            {loading ? (
-              <RefreshCwIcon className="animate-spin" />
-            ) : (
-              <SaveIcon />
-            )}
-            Save adjustments
-          </Button>
+        <div className="sticky bottom-0 flex justify-end border-t bg-background px-5 py-4 sm:px-6">
+          <Button variant="outline" size="lg" onClick={onClose}>Done</Button>
         </div>
       </DialogContent>
     </Dialog>

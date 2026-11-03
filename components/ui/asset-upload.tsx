@@ -17,14 +17,16 @@ export type UploadedAsset = {
   publicId: string;
   resourceType: "image" | "raw";
   fileName?: string;
+  fileSize?: number;
 };
 
-type UploadScope = "customer" | "expense";
+type UploadScope = "customer" | "expense" | "task";
 
 type AssetUploadProps = {
   scope: UploadScope;
+  ownerId?: string;
   value: UploadedAsset[];
-  onChange: (assets: UploadedAsset[]) => void;
+  onChange: (assets: UploadedAsset[]) => void | Promise<void>;
   multiple?: boolean;
   maxFiles?: number;
   disabled?: boolean;
@@ -43,6 +45,7 @@ function isUploadedAsset(value: unknown): value is UploadedAsset {
     && "resourceType" in value
     && (value.resourceType === "image" || value.resourceType === "raw")
     && (!("fileName" in value) || typeof value.fileName === "string")
+    && (!("fileSize" in value) || typeof value.fileSize === "number")
   );
 }
 
@@ -64,6 +67,7 @@ function assetName(asset: UploadedAsset) {
 
 export function AssetUpload({
   scope,
+  ownerId,
   value,
   onChange,
   multiple = true,
@@ -81,6 +85,7 @@ export function AssetUpload({
   async function uploadFile(file: File, replaceAsset?: UploadedAsset) {
     const body = new FormData();
     body.set("scope", scope);
+    if (ownerId) body.set("ownerId", ownerId);
     body.set("file", file);
     if (replaceAsset) {
       body.set("replacePublicId", replaceAsset.publicId);
@@ -135,7 +140,7 @@ export function AssetUpload({
             nextAssets = nextAssets.map((asset, index) => index === targetIndex ? uploaded : asset);
           }
           addedCount += 1;
-          onChange(nextAssets);
+          await onChange(nextAssets);
         } catch (error) {
           toast.error(error instanceof Error ? error.message : "Could not upload this file.");
         }
@@ -156,6 +161,7 @@ export function AssetUpload({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           scope,
+          ...(ownerId ? { ownerId } : {}),
           publicId: asset.publicId,
           resourceType: asset.resourceType,
         }),
@@ -163,7 +169,7 @@ export function AssetUpload({
       const payload: unknown = await response.json();
       if (!response.ok) throw new Error(errorMessage(payload, "Could not delete this file."));
 
-      onChange(value.filter((item) => item.publicId !== asset.publicId));
+      await onChange(value.filter((item) => item.publicId !== asset.publicId));
       toast.success("File deleted");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not delete this file.");

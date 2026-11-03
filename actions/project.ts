@@ -9,10 +9,27 @@ import {
   projectInputSchema,
   projectCreationContextSchema,
   projectQuerySchema,
+  projectTaskWorkspaceQuerySchema,
   projectUserQuerySchema,
   projectStatusUpdateSchema,
+  projectTeamUpdateSchema,
   projectTaskInputSchema,
+  projectTaskFolderCreateSchema,
+  projectTaskFolderDeleteSchema,
+  projectTaskFolderUpdateSchema,
+  projectTaskAttachmentDeleteSchema,
+  projectTaskAttachmentInputSchema,
+  projectTaskChecklistDeleteSchema,
+  projectTaskChecklistInputSchema,
+  projectTaskChecklistUpdateSchema,
+  projectTaskCommentInputSchema,
+  projectTaskDependencyDeleteSchema,
+  projectTaskDependencyInputSchema,
+  projectTaskIdSchema,
+  projectTaskStatusTemplateInputSchema,
+  projectTaskTimerSchema,
   projectTaskUpdateSchema,
+  projectTaskWorkflowUpdateSchema,
   projectUpdateSchema,
 } from "@/lib/schemas/project-schema";
 import { errorResponse, successResponse } from "@/lib/action-response";
@@ -23,11 +40,26 @@ import {
   convertAcceptedProposalToProject,
   createProject,
   createProjectTask,
+  removeProjectTaskFolder,
+  saveProjectTaskFolder,
+  saveTaskStatusTemplate,
   deleteProjectTask,
   ProjectServiceError,
   updateProject,
+  updateProjectTeam,
   updateProjectStatus,
   updateProjectTask,
+  updateProjectTaskWorkflow,
+  createProjectTaskAttachment,
+  createProjectTaskChecklistItem,
+  createProjectTaskComment,
+  createProjectTaskDependency,
+  removeProjectTaskAttachment,
+  removeProjectTaskChecklistItem,
+  removeProjectTaskDependency,
+  startProjectTaskTimer,
+  stopProjectTaskTimer,
+  updateProjectTaskChecklistItem,
 } from "@/services/project-service";
 import { canTransitionProject } from "@/lib/project-policy";
 import {
@@ -37,6 +69,14 @@ import {
   getProjectByProposalId,
   getProjectFormOptions,
   getProjectPage,
+  getProjectTaskWorkspacePage,
+  getProjectTaskWorkflow,
+  getProjectTaskPreview,
+  getProjectAssignment,
+  findTaskForProject,
+  getProjectTeamById,
+  getTaskCreationProjectOptions,
+  getTaskStatusTemplates,
   getProjectUserPage,
   getRelatedInvoicesForProject,
   getProposalForConversion,
@@ -70,6 +110,10 @@ type ProjectActor = {
   canViewBudget: boolean;
   canManageProjects: boolean;
 };
+
+function isUserRole(role: string | null | undefined): role is UserRole {
+  return Object.values(UserRole).some((value) => value === role);
+}
 
 async function hasPermission(
   resource: "projects" | "tasks" | "invoices",
@@ -139,6 +183,147 @@ export async function getProjects(input: unknown) {
     });
   } catch (error) {
     return actionError(error, "Unable to load projects.");
+  }
+}
+
+export async function getProjectTaskWorkspace(input: unknown) {
+  const parsed = projectTaskWorkspaceQuerySchema.safeParse(input);
+  if (!parsed.success) return errorResponse("Task filters are invalid.", parsed.error.issues);
+
+  const requestHeaders = await headers();
+  const session = await auth.api.getSession({ headers: requestHeaders });
+  const sessionRole = session?.user?.role;
+  if (
+    !session?.user ||
+    !hasWorkspaceAccess(session.user) ||
+    !isUserRole(sessionRole)
+  ) {
+    return errorResponse("You do not have permission to view tasks.");
+  }
+  const user = session.user;
+  const role = sessionRole;
+  const checkRolePermission = (
+    resource: "projects" | "tasks",
+    permission: ProjectPermission | TaskPermission,
+  ) => auth.api.userHasPermission({
+    body: {
+      role,
+      permissions: { [resource]: [permission] },
+    },
+  });
+  const [
+    readAllUser,
+    readAssignedUser,
+    updateAllUser,
+    updateOwnUser,
+    createUser,
+    readAllProjectsUser,
+    readAssignedProjectsUser,
+  ] =
+    await Promise.all([
+      checkRolePermission("tasks", "read-all"),
+      checkRolePermission("tasks", "read-assigned"),
+      checkRolePermission("tasks", "update"),
+      checkRolePermission("tasks", "update-own"),
+      checkRolePermission("tasks", "create"),
+      checkRolePermission("projects", "read-all"),
+      checkRolePermission("projects", "read-assigned"),
+    ]);
+  if (!readAllUser.success && !readAssignedUser.success) {
+    return errorResponse("You do not have permission to view tasks.");
+  }
+
+  try {
+    const [page, creationProjects] = await Promise.all([
+      getProjectTaskWorkspacePage(parsed.data, {
+        id: user.id,
+        canReadAll: readAllUser.success,
+      }),
+      createUser.success && (readAllProjectsUser.success || readAssignedProjectsUser.success)
+        ? getTaskCreationProjectOptions(user.id, readAllProjectsUser.success)
+        : Promise.resolve({ items: [], hasMore: false }),
+    ]);
+    return successResponse("Tasks loaded.", {
+      ...page,
+      creationProjects,
+      actorId: user.id,
+      permissions: {
+        canReadAll: readAllUser.success,
+        canUpdateTasks: updateAllUser.success,
+        canUpdateOwnTasks: updateOwnUser.success,
+        canCreateTasks: createUser.success,
+        canReadAllProjects: readAllProjectsUser.success,
+      },
+    });
+  } catch (error) {
+    return actionError(error, "Unable to load tasks.");
+  }
+}
+
+export async function getTaskStatusTemplatesAction(projectId: string) {
+  const user = await hasPermission("projects", "update");
+  if (!user) return errorResponse("You do not have permission to change task workflows.");
+  if (typeof projectId !== "string" || projectId.trim().length === 0 || projectId.length > 100) {
+    return errorResponse("Project ID is required.");
+  }
+  const actor = await getProjectReadActor();
+  if (!actor || (!actor.canReadAll && !(await canViewProject(projectId, user.id)))) {
+    return errorResponse("Project not found or you do not have access.");
+  }
+
+  try {
+    if (!(await getProjectTaskWorkflow(projectId))) {
+      return errorResponse("Project not found or you do not have access.");
+    }
+    return successResponse("Task status templates loaded.", await getTaskStatusTemplates());
+  } catch (error) {
+    return actionError(error, "Unable to load task status templates.");
+  }
+}
+
+export async function updateProjectTaskWorkflowAction(input: unknown) {
+  const parsed = projectTaskWorkflowUpdateSchema.safeParse(input);
+  if (!parsed.success) {
+    return errorResponse("Task workflow details are invalid.", parsed.error.issues);
+  }
+  const user = await hasPermission("projects", "update");
+  if (!user) return errorResponse("You do not have permission to change task workflows.");
+  const actor = await getProjectReadActor();
+  if (!actor || (!actor.canReadAll && !(await canViewProject(parsed.data.projectId, user.id)))) {
+    return errorResponse("Project not found or you do not have access.");
+  }
+
+  try {
+    await updateProjectTaskWorkflow({ ...parsed.data, actorId: user.id });
+    revalidatePath(`/dashboard/projects/${parsed.data.projectId}`);
+    revalidatePath("/dashboard/tasks");
+    return successResponse("Task workflow updated.");
+  } catch (error) {
+    return actionError(error, "Unable to update task workflow.");
+  }
+}
+
+export async function saveTaskStatusTemplateAction(input: unknown) {
+  const parsed = projectTaskStatusTemplateInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return errorResponse("Task status template details are invalid.", parsed.error.issues);
+  }
+  const user = await hasPermission("projects", "update");
+  if (!user) return errorResponse("You do not have permission to save task status templates.");
+  const actor = await getProjectReadActor();
+  if (!actor || (!actor.canReadAll && !(await canViewProject(parsed.data.projectId, user.id)))) {
+    return errorResponse("Project not found or you do not have access.");
+  }
+
+  try {
+    if (!(await getProjectTaskWorkflow(parsed.data.projectId))) {
+      return errorResponse("Project not found or you do not have access.");
+    }
+    await saveTaskStatusTemplate({ ...parsed.data, actorId: user.id });
+    revalidatePath(`/dashboard/projects/${parsed.data.projectId}`);
+    return successResponse("Task status template saved.");
+  } catch (error) {
+    return actionError(error, "Unable to save task status template.");
   }
 }
 
@@ -227,9 +412,6 @@ export async function getProjectCreationContext(input: unknown) {
       return errorResponse("The customer linked to this proposal is unavailable.");
     }
     const selectedCustomer = proposalCustomer ?? customer;
-    const customers = selectedCustomer
-      ? [selectedCustomer, ...options.customers.filter(({ id }) => id !== selectedCustomer.id)]
-      : options.customers;
 
     const proposalPreview = proposal ? {
       id: proposal.id,
@@ -253,7 +435,6 @@ export async function getProjectCreationContext(input: unknown) {
 
     return successResponse("Project form data loaded.", {
       ...options,
-      customers,
       customer: selectedCustomer,
       proposal: proposalPreview,
       existingProject: existingProject && existingCanView
@@ -284,28 +465,69 @@ export async function getProjectEditContext(projectId: string) {
   try {
     const project = await getProjectById(projectId, actor);
     if (!project) return errorResponse("Project not found or you do not have access.");
-    const [options, canManageTeam, canManageBudget] = await Promise.all([
+    const [options, canManageBudget] = await Promise.all([
       getProjectFormOptions([
         ...(project.projectManagerId ? [project.projectManagerId] : []),
         ...project.members.map(({ user }) => user.id),
       ]),
-      hasPermission("projects", "manage-team"),
       hasPermission("projects", "view-budget"),
     ]);
-    const customers = project.customer
-      ? [project.customer, ...options.customers.filter(({ id }) => id !== project.customer?.id)]
-      : options.customers;
     return successResponse("Project edit data loaded.", {
       project,
-      customers,
       users: options.users,
       currentUserId: user.id,
       canManageProjects: true,
-      canManageTeam: Boolean(canManageTeam),
+      canManageTeam: false,
       canManageBudget: Boolean(canManageBudget),
     });
   } catch (error) {
     return actionError(error, "Unable to load project edit data.");
+  }
+}
+
+export async function getProjectTeamContext(projectId: string) {
+  const user = await hasPermission("projects", "manage-team");
+  if (!user) return errorResponse("You do not have permission to manage project teams.");
+  if (typeof projectId !== "string" || projectId.trim().length === 0 || projectId.length > 100) {
+    return errorResponse("Project ID is invalid.");
+  }
+  const actor = await getProjectReadActor();
+  if (!actor || (!actor.canReadAll && !(await canViewProject(projectId, user.id)))) {
+    return errorResponse("Project not found or you do not have access.");
+  }
+
+  try {
+    const project = await getProjectTeamById(projectId);
+    if (!project) return errorResponse("Project not found or you do not have access.");
+    return successResponse("Project team loaded.", {
+      ...project,
+      projectCode: formatProjectCode(project.projectNumber),
+    });
+  } catch (error) {
+    return actionError(error, "Unable to load project team.");
+  }
+}
+
+export async function updateProjectTeamAction(input: unknown) {
+  const parsed = projectTeamUpdateSchema.safeParse(input);
+  if (!parsed.success) {
+    return errorResponse("Project team details are invalid.", parsed.error.issues);
+  }
+  const user = await hasPermission("projects", "manage-team");
+  if (!user) return errorResponse("You do not have permission to manage project teams.");
+  const actor = await getProjectReadActor();
+  if (!actor || (!actor.canReadAll && !(await canViewProject(parsed.data.projectId, user.id)))) {
+    return errorResponse("Project not found or you do not have access.");
+  }
+
+  try {
+    const project = await updateProjectTeam(parsed.data, user.id);
+    revalidatePath("/dashboard/projects");
+    revalidatePath(`/dashboard/projects/${parsed.data.projectId}`);
+    revalidatePath(`/dashboard/projects/${parsed.data.projectId}/team`);
+    return successResponse("Project team updated.", project);
+  } catch (error) {
+    return actionError(error, "Unable to update project team.");
   }
 }
 
@@ -493,9 +715,73 @@ export async function createProjectTaskAction(input: unknown) {
   try {
     const task = await createProjectTask(parsed.data, user.id);
     revalidatePath(`/dashboard/projects/${parsed.data.projectId}`);
+    revalidatePath("/dashboard/tasks");
     return successResponse("Task created.", task);
   } catch (error) {
     return actionError(error, "Unable to create task.");
+  }
+}
+
+export async function createProjectTaskFolderAction(input: unknown) {
+  const parsed = projectTaskFolderCreateSchema.safeParse(input);
+  if (!parsed.success) return errorResponse("Folder details are invalid.", parsed.error.issues);
+  const user = await hasPermission("projects", "update");
+  if (!user) return errorResponse("You do not have permission to manage project folders.");
+  if (user.role === UserRole.STAFF && !(await canViewProject(parsed.data.projectId, user.id))) {
+    return errorResponse("Project not found or you do not have access.");
+  }
+
+  try {
+    const folder = await saveProjectTaskFolder({
+      ...parsed.data,
+      parentId: parsed.data.parentId ?? null,
+    });
+    revalidatePath(`/dashboard/projects/${parsed.data.projectId}`);
+    revalidatePath("/dashboard/tasks");
+    return successResponse("Folder created.", folder);
+  } catch (error) {
+    return actionError(error, "Unable to create folder.");
+  }
+}
+
+export async function updateProjectTaskFolderAction(input: unknown) {
+  const parsed = projectTaskFolderUpdateSchema.safeParse(input);
+  if (!parsed.success) return errorResponse("Folder details are invalid.", parsed.error.issues);
+  const user = await hasPermission("projects", "update");
+  if (!user) return errorResponse("You do not have permission to manage project folders.");
+  if (user.role === UserRole.STAFF && !(await canViewProject(parsed.data.projectId, user.id))) {
+    return errorResponse("Project not found or you do not have access.");
+  }
+
+  try {
+    const folder = await saveProjectTaskFolder({
+      ...parsed.data,
+      parentId: parsed.data.parentId ?? null,
+    });
+    revalidatePath(`/dashboard/projects/${parsed.data.projectId}`);
+    revalidatePath("/dashboard/tasks");
+    return successResponse("Folder updated.", folder);
+  } catch (error) {
+    return actionError(error, "Unable to update folder.");
+  }
+}
+
+export async function deleteProjectTaskFolderAction(input: unknown) {
+  const parsed = projectTaskFolderDeleteSchema.safeParse(input);
+  if (!parsed.success) return errorResponse("Folder details are invalid.", parsed.error.issues);
+  const user = await hasPermission("projects", "update");
+  if (!user) return errorResponse("You do not have permission to manage project folders.");
+  if (user.role === UserRole.STAFF && !(await canViewProject(parsed.data.projectId, user.id))) {
+    return errorResponse("Project not found or you do not have access.");
+  }
+
+  try {
+    await removeProjectTaskFolder(parsed.data.projectId, parsed.data.folderId);
+    revalidatePath(`/dashboard/projects/${parsed.data.projectId}`);
+    revalidatePath("/dashboard/tasks");
+    return successResponse("Folder deleted. Its tasks and subfolders were moved safely.");
+  } catch (error) {
+    return actionError(error, "Unable to delete folder.");
   }
 }
 
@@ -516,9 +802,237 @@ export async function updateProjectTaskAction(input: unknown) {
   try {
     const task = await updateProjectTask(parsed.data, user.id, isAdmin);
     revalidatePath(`/dashboard/projects/${task.projectId}`);
+    revalidatePath("/dashboard/tasks");
     return successResponse("Task updated.", task);
   } catch (error) {
     return actionError(error, "Unable to update task.");
+  }
+}
+
+async function revalidateTaskViews(taskId: string) {
+  const task = await findTaskForProject(taskId);
+  if (task) revalidatePath(`/dashboard/projects/${task.projectId}`);
+  revalidatePath("/dashboard/tasks");
+}
+
+async function authorizeTaskUpdate(taskId: string) {
+  const user = await hasPermission("tasks", "update");
+  if (!user) return null;
+  const task = await findTaskForProject(taskId);
+  return task ? { user, task } : null;
+}
+
+async function authorizeTaskTimer(taskId: string) {
+  const [updateUser, ownUser] = await Promise.all([
+    hasPermission("tasks", "update"),
+    hasPermission("tasks", "update-own"),
+  ]);
+  const user = updateUser ?? ownUser;
+  if (!user) return null;
+  const task = await findTaskForProject(taskId);
+  if (!task || (!updateUser && !(await canUpdateAssignedTask(taskId, user.id)))) return null;
+  return { user, task };
+}
+
+export async function getProjectTaskPreviewAction(input: unknown) {
+  const parsed = projectTaskIdSchema.safeParse(input);
+  if (!parsed.success) return errorResponse("Task ID is invalid.", parsed.error.issues);
+  const [readAllUser, readAssignedUser, updateUser, updateOwnUser, createUser] =
+    await Promise.all([
+      hasPermission("tasks", "read-all"),
+      hasPermission("tasks", "read-assigned"),
+      hasPermission("tasks", "update"),
+      hasPermission("tasks", "update-own"),
+      hasPermission("tasks", "create"),
+    ]);
+  const [readAllProjectsUser, readAssignedProjectsUser] = await Promise.all([
+    hasPermission("projects", "read-all"),
+    hasPermission("projects", "read-assigned"),
+  ]);
+  const user = readAllUser ?? readAssignedUser ?? readAllProjectsUser ?? readAssignedProjectsUser;
+  if (!user) return errorResponse("You do not have permission to view tasks.");
+
+  try {
+    const task = await findTaskForProject(parsed.data.taskId);
+    if (!task) {
+      return errorResponse("Task not found or you do not have access.");
+    }
+    const canReadThroughProject = Boolean(readAllProjectsUser) ||
+      Boolean(readAssignedProjectsUser && await canViewProject(task.projectId, user.id));
+    const canReadTask = Boolean(readAllUser) ||
+      Boolean(readAssignedUser && task.assigneeId === user.id) ||
+      canReadThroughProject;
+    if (!canReadTask) return errorResponse("Task not found or you do not have access.");
+    const preview = await getProjectTaskPreview(task.id, {
+      id: user.id,
+      canReadAll: Boolean(readAllUser || canReadThroughProject),
+    });
+    if (!preview) return errorResponse("Task not found or you do not have access.");
+    const canCreateSubtasks = Boolean(createUser) &&
+      (user.role !== UserRole.STAFF || Boolean(await getProjectAssignment(task.projectId, user.id)));
+    return successResponse("Task details loaded.", {
+      ...preview,
+      actorId: user.id,
+      permissions: {
+        canUpdate: Boolean(updateUser),
+        canCreateSubtasks,
+        canTrackTime: Boolean(updateUser || (updateOwnUser && task.assigneeId === user.id)),
+      },
+    });
+  } catch (error) {
+    return actionError(error, "Unable to load task details.");
+  }
+}
+
+export async function addProjectTaskChecklistItemAction(input: unknown) {
+  const parsed = projectTaskChecklistInputSchema.safeParse(input);
+  if (!parsed.success) return errorResponse("Checklist item is invalid.", parsed.error.issues);
+  const context = await authorizeTaskUpdate(parsed.data.taskId);
+  if (!context) return errorResponse("You do not have permission to update this task.");
+  try {
+    const item = await createProjectTaskChecklistItem(parsed.data.taskId, parsed.data.title);
+    await revalidateTaskViews(parsed.data.taskId);
+    return successResponse("Checklist item added.", item);
+  } catch (error) {
+    return actionError(error, "Unable to add checklist item.");
+  }
+}
+
+export async function updateProjectTaskChecklistItemAction(input: unknown) {
+  const parsed = projectTaskChecklistUpdateSchema.safeParse(input);
+  if (!parsed.success) return errorResponse("Checklist update is invalid.", parsed.error.issues);
+  const context = await authorizeTaskUpdate(parsed.data.taskId);
+  if (!context) return errorResponse("You do not have permission to update this task.");
+  try {
+    await updateProjectTaskChecklistItem(
+      parsed.data.taskId,
+      parsed.data.itemId,
+      parsed.data.isComplete,
+    );
+    await revalidateTaskViews(parsed.data.taskId);
+    return successResponse("Checklist updated.");
+  } catch (error) {
+    return actionError(error, "Unable to update checklist item.");
+  }
+}
+
+export async function removeProjectTaskChecklistItemAction(input: unknown) {
+  const parsed = projectTaskChecklistDeleteSchema.safeParse(input);
+  if (!parsed.success) return errorResponse("Checklist item is invalid.", parsed.error.issues);
+  const context = await authorizeTaskUpdate(parsed.data.taskId);
+  if (!context) return errorResponse("You do not have permission to update this task.");
+  try {
+    await removeProjectTaskChecklistItem(parsed.data.taskId, parsed.data.itemId);
+    await revalidateTaskViews(parsed.data.taskId);
+    return successResponse("Checklist item removed.");
+  } catch (error) {
+    return actionError(error, "Unable to remove checklist item.");
+  }
+}
+
+export async function addProjectTaskDependencyAction(input: unknown) {
+  const parsed = projectTaskDependencyInputSchema.safeParse(input);
+  if (!parsed.success) return errorResponse("Task dependency is invalid.", parsed.error.issues);
+  const context = await authorizeTaskUpdate(parsed.data.taskId);
+  if (!context) return errorResponse("You do not have permission to update this task.");
+  try {
+    await createProjectTaskDependency(
+      parsed.data.taskId,
+      parsed.data.dependsOnTaskId,
+      parsed.data.relationType,
+    );
+    await revalidateTaskViews(parsed.data.taskId);
+    return successResponse("Dependency added.");
+  } catch (error) {
+    return actionError(error, "Unable to add task dependency.");
+  }
+}
+
+export async function removeProjectTaskDependencyAction(input: unknown) {
+  const parsed = projectTaskDependencyDeleteSchema.safeParse(input);
+  if (!parsed.success) return errorResponse("Task dependency is invalid.", parsed.error.issues);
+  const context = await authorizeTaskUpdate(parsed.data.taskId);
+  if (!context) return errorResponse("You do not have permission to update this task.");
+  try {
+    await removeProjectTaskDependency(parsed.data.taskId, parsed.data.dependencyId);
+    await revalidateTaskViews(parsed.data.taskId);
+    return successResponse("Dependency removed.");
+  } catch (error) {
+    return actionError(error, "Unable to remove task dependency.");
+  }
+}
+
+export async function addProjectTaskAttachmentAction(input: unknown) {
+  const parsed = projectTaskAttachmentInputSchema.safeParse(input);
+  if (!parsed.success) return errorResponse("Task attachment is invalid.", parsed.error.issues);
+  const context = await authorizeTaskUpdate(parsed.data.taskId);
+  if (!context) return errorResponse("You do not have permission to update this task.");
+  try {
+    await createProjectTaskAttachment(parsed.data, context.user.id);
+    await revalidateTaskViews(parsed.data.taskId);
+    return successResponse("Attachment added.");
+  } catch (error) {
+    return actionError(error, "Unable to add task attachment.");
+  }
+}
+
+export async function removeProjectTaskAttachmentAction(input: unknown) {
+  const parsed = projectTaskAttachmentDeleteSchema.safeParse(input);
+  if (!parsed.success) return errorResponse("Task attachment is invalid.", parsed.error.issues);
+  const context = await authorizeTaskUpdate(parsed.data.taskId);
+  if (!context) return errorResponse("You do not have permission to update this task.");
+  try {
+    await removeProjectTaskAttachment(parsed.data.taskId, parsed.data.attachmentId);
+    await revalidateTaskViews(parsed.data.taskId);
+    return successResponse("Attachment removed.");
+  } catch (error) {
+    return actionError(error, "Unable to remove task attachment.");
+  }
+}
+
+export async function addProjectTaskCommentAction(input: unknown) {
+  const parsed = projectTaskCommentInputSchema.safeParse(input);
+  if (!parsed.success) return errorResponse("Task comment is invalid.", parsed.error.issues);
+  const context = await authorizeTaskUpdate(parsed.data.taskId);
+  if (!context) return errorResponse("You do not have permission to comment on this task.");
+  try {
+    const comment = await createProjectTaskComment(
+      parsed.data.taskId,
+      context.user.id,
+      parsed.data.content,
+    );
+    await revalidateTaskViews(parsed.data.taskId);
+    return successResponse("Comment added.", comment);
+  } catch (error) {
+    return actionError(error, "Unable to add task comment.");
+  }
+}
+
+export async function startProjectTaskTimerAction(input: unknown) {
+  const parsed = projectTaskTimerSchema.safeParse(input);
+  if (!parsed.success) return errorResponse("Task ID is invalid.", parsed.error.issues);
+  const context = await authorizeTaskTimer(parsed.data.taskId);
+  if (!context) return errorResponse("You do not have permission to track time on this task.");
+  try {
+    await startProjectTaskTimer(parsed.data.taskId, context.user.id);
+    await revalidateTaskViews(parsed.data.taskId);
+    return successResponse("Timer started.");
+  } catch (error) {
+    return actionError(error, "Unable to start task timer.");
+  }
+}
+
+export async function stopProjectTaskTimerAction(input: unknown) {
+  const parsed = projectTaskTimerSchema.safeParse(input);
+  if (!parsed.success) return errorResponse("Task ID is invalid.", parsed.error.issues);
+  const context = await authorizeTaskTimer(parsed.data.taskId);
+  if (!context) return errorResponse("You do not have permission to track time on this task.");
+  try {
+    await stopProjectTaskTimer(parsed.data.taskId, context.user.id);
+    await revalidateTaskViews(parsed.data.taskId);
+    return successResponse("Timer stopped.");
+  } catch (error) {
+    return actionError(error, "Unable to stop task timer.");
   }
 }
 
@@ -533,6 +1047,7 @@ export async function deleteProjectTaskAction(taskId: string) {
     const result = await deleteProjectTask(taskId, user.id);
     revalidatePath("/dashboard/projects");
     revalidatePath(`/dashboard/projects/${result.projectId}`);
+    revalidatePath("/dashboard/tasks");
     return successResponse("Task removed.");
   } catch (error) {
     return actionError(error, "Unable to remove task.");

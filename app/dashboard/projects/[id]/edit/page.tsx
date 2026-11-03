@@ -31,9 +31,9 @@ export default async function EditProjectPage({
   const { project } = data;
 
   return (
-    <DashboardContainer title={`Edit ${project.projectCode}`} back={{ href: `/dashboard/projects/${id}`, label: "Back to project" }}>
+    <DashboardContainer title={`Edit ${project.projectCode}`} back={{ href: `/dashboard/projects/${id}`, label: "Back to project" }} flush>
       <ProjectForm
-        customers={data.customers}
+        initialCustomer={project.customer}
         initialUsers={data.users}
         initialData={{
           projectId: project.id,

@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
 import prisma from "@/lib/prisma";
 import { uploadScopes, type UploadScope } from "@/lib/upload-scopes";
-import { hasBusinessWorkspaceAccess } from "@/lib/workspace-access";
+import { hasBusinessWorkspaceAccess, hasWorkspaceAccess } from "@/lib/workspace-access";
 
 export const runtime = "nodejs";
 
@@ -47,6 +47,14 @@ async function getAuthorizedUser(request: Request, scope: UploadScope) {
     return session.user;
   }
   if (scope === "proposal-signature") return null;
+  if (scope === "task") {
+    if (!hasWorkspaceAccess(session.user)) return null;
+    const permission = await auth.api.userHasPermission({
+      headers: request.headers,
+      body: { permissions: { tasks: ["update"] } },
+    });
+    return permission.success ? session.user : null;
+  }
 
   const permissionScope = {
     customer: "customers",
@@ -105,6 +113,14 @@ async function getAuthorizedFolder(
       return `cms/proposals/${user.id}`;
     case "terms":
       return `cms/terms/${user.id}`;
+    case "task": {
+      if (typeof ownerId !== "string" || !ownerId.trim()) return null;
+      const task = await prisma.projectTask.findFirst({
+        where: { id: ownerId, project: { deletedAt: null } },
+        select: { id: true },
+      });
+      return task ? `tasks/${task.id}` : null;
+    }
   }
 }
 
@@ -217,7 +233,7 @@ export async function POST(request: Request) {
     }
 
     const resourceType = detectedMimeType === "application/pdf" ? "raw" : "image";
-    if (resourceType === "raw" && scope !== "customer" && scope !== "expense") {
+    if (resourceType === "raw" && scope !== "customer" && scope !== "expense" && scope !== "task") {
       return jsonError("Only image files are supported in this area.", 415);
     }
     const oldPublicId = formData.get("replacePublicId");
@@ -258,6 +274,7 @@ export async function POST(request: Request) {
         publicId: uploaded.public_id,
         resourceType,
         fileName: file.name.slice(0, 255),
+        fileSize: file.size,
       },
     });
   } catch (error) {

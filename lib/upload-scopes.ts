@@ -8,6 +8,7 @@ export const uploadScopes = [
   "proposal",
   "terms",
   "proposal-signature",
+  "task",
 ] as const;
 
 export type UploadScope = (typeof uploadScopes)[number];

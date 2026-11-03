@@ -8,7 +8,7 @@ on:
 jobs:
   generate:
     concurrency:
-      group: monthly-salary-slip-generation
+      group: monthly-salary-slip-generation-${{ matrix.environment }}
       cancel-in-progress: false
     strategy:
       fail-fast: false

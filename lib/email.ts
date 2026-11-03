@@ -81,6 +81,107 @@ export async function sendResetPasswordEmail({
     }
 }
 
+export async function sendSalaryPinResetEmail({
+    name,
+    email,
+    appName,
+    resetUrl,
+    supportEmail,
+}: {
+    name: string;
+    email: string;
+    appName: string;
+    resetUrl: string;
+    supportEmail: string;
+}): Promise<void> {
+    const escapeHtml = (value: string) =>
+        value.replace(/[&<>"']/g, (character) => {
+            const entities: Record<string, string> = {
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#39;",
+            };
+            return entities[character] ?? character;
+        });
+
+    try {
+        const { error } = await resend.emails.send({
+            from: env.MAIL_FROM,
+            to: email,
+            subject: `Reset your salary PIN - ${appName}`,
+            html: `
+                <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h2>Hello ${escapeHtml(name)},</h2>
+                    <p>Use this link to reset the PIN for Salary Management. It expires in 30 minutes and can only be used once.</p>
+                    <p style="margin: 30px 0;">
+                        <a href="${escapeHtml(resetUrl)}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Reset salary PIN</a>
+                    </p>
+                    <p>If you did not request this, you can ignore this email. Your salary PIN will not change.</p>
+                    <p>Need help? Contact <a href="mailto:${escapeHtml(supportEmail)}">${escapeHtml(supportEmail)}</a>.</p>
+                    <hr style="border: none; border-top: 1px solid #eaeaea; margin: 30px 0;" />
+                    <p style="color: #666; font-size: 14px;">${escapeHtml(appName)}</p>
+                </div>
+            `,
+            tags: [{ name: "type", value: "salary-pin-reset" }],
+        });
+        if (error) throw error;
+    } catch (error) {
+        console.error("Failed to send salary PIN reset email.", error);
+        throw error;
+    }
+}
+
+export async function sendSalarySlipPdfEmail({
+    email,
+    employeeName,
+    monthName,
+    year,
+    pdf,
+}: {
+    email: string;
+    employeeName: string;
+    monthName: string;
+    year: number;
+    pdf: Buffer;
+}): Promise<void> {
+    const safeName = employeeName.replace(/[^\p{L}\p{N} -]/gu, "").trim() || "Employee";
+    const safeNameHtml = safeName
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    const filenameName = safeName.replace(/\s+/g, "-");
+
+    try {
+        const { error } = await resend.emails.send({
+            from: env.MAIL_FROM,
+            to: email,
+            subject: `Salary slip for ${monthName} ${year}`,
+            html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #202124;">
+                    <p>Hello ${safeNameHtml},</p>
+                    <p>Your salary slip for <strong>${monthName} ${year}</strong> is attached as a PDF.</p>
+                    <p>Please contact HR if you have questions about this slip.</p>
+                </div>
+            `,
+            attachments: [
+                {
+                    filename: `salary-slip-${filenameName}-${monthName}-${year}.pdf`,
+                    content: pdf.toString("base64"),
+                },
+            ],
+            tags: [{ name: "type", value: "salary-slip" }],
+        });
+        if (error) throw error;
+    } catch (error) {
+        console.error("Failed to send salary slip email:", error);
+        throw error;
+    }
+}
+
 export async function sendProposalLinkEmail({ email, appName, proposalUrl, companyName }: { email: string, appName: string, proposalUrl: string, companyName: string }) {
     try {
         const { error } = await resend.emails.send({

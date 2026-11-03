@@ -114,7 +114,7 @@ export function AttendanceBrowserReminders() {
 
       await saveWebPushSubscriptionAction(subscription.toJSON());
       setState("enabled");
-      toast.success("Browser attendance reminders enabled.");
+      toast.success("Browser notifications enabled.");
     } catch (error: unknown) {
       setState("disabled");
       toast.error(
@@ -140,7 +140,7 @@ export function AttendanceBrowserReminders() {
         await removeWebPushSubscriptionAction({ endpoint: subscription.endpoint });
       }
       setState("disabled");
-      toast.success("Browser attendance reminders disabled.");
+      toast.success("Browser notifications disabled.");
     } catch (error: unknown) {
       setState(browserSubscriptionRemoved ? "disabled" : "enabled");
       toast.error(error instanceof Error ? error.message : "Could not disable browser reminders.");
@@ -162,9 +162,9 @@ export function AttendanceBrowserReminders() {
       <div className="flex items-start gap-3">
         <BellRingIcon className="mt-0.5 size-4 shrink-0 text-primary" />
         <div className="space-y-1">
-          <h2 className="text-sm font-semibold">Attendance reminders on this browser</h2>
+          <h2 className="text-sm font-semibold">Browser notifications</h2>
           <p className="text-xs text-muted-foreground">
-            Enable browser notifications to receive a reminder at the time set by your administrator.
+            Receive attendance reminders and holiday announcements on this browser.
           </p>
         </div>
       </div>
@@ -194,7 +194,7 @@ export function AttendanceBrowserReminders() {
             ? "Updating..."
             : state === "checking"
               ? "Checking..."
-              : "Enable browser reminders"}
+              : "Enable notifications"}
         </Button>
       )}
     </div>

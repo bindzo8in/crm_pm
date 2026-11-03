@@ -1,10 +1,15 @@
+import type { EmploymentStatus } from "@/app/generated/prisma/enums";
+
 export interface SalaryEmployee {
   id: string;
   name: string;
   email: string;
   role: string;
+  employmentStatus: EmploymentStatus;
   department: string | null;
+  includeInPayroll: boolean;
   hasSalaryStructure: boolean;
+  grossSalary?: string | null;
   designation?: string | null;
   dateOfJoining?: Date | string | null;
   employmentType?: "PERMANENT" | "CONTRACT" | "PROBATION" | "INTERN" | null;
@@ -25,7 +30,7 @@ export interface SalaryEmployee {
   paymentMethod?: "BANK_TRANSFER" | "UPI" | "CHEQUE" | "CASH" | "OTHER";
 }
 
-export type SalarySlipStatus = "DRAFT" | "GENERATED" | "PAID";
+export type SalarySlipStatus = "DRAFT" | "GENERATED" | "APPROVED" | "PAID";
 
 export interface SalarySlipRecord {
   id: string;
@@ -40,8 +45,17 @@ export interface SalarySlipRecord {
   medicalReimbursement: number | string;
   extraEarnings: number | string;
   extraDeductions: number | string;
+  emailSentAt?: Date | string | null;
+  adjustments?: SalarySlipAdjustmentRecord[];
   user?: Pick<SalaryEmployee, "name" | "email" | "department"> | null;
 }
 
-export type SalarySlipUpdate = Pick<SalarySlipRecord, "id" | "status"> &
-  Partial<Omit<SalarySlipRecord, "id" | "status">>;
+export interface SalarySlipAdjustmentRecord {
+  id: string;
+  type: "EARNING" | "DEDUCTION";
+  description: string;
+  amount: number | string;
+}
+
+export type SalarySlipUpdate = Pick<SalarySlipRecord, "id"> &
+  Partial<Omit<SalarySlipRecord, "id">>;

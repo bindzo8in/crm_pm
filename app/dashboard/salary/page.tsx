@@ -9,6 +9,9 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { hasSalaryPin, isSalaryPinSessionValid } from "@/lib/salary-pin";
+import { SalaryPinGate } from "@/components/salary/salary-pin-gate";
+import { salaryComponentsSchema } from "@/lib/schemas/salary-schema";
 
 export const metadata: Metadata = {
   title: "Salary Management | CRM",
@@ -41,16 +44,46 @@ export default async function SalaryDashboardPage() {
     redirect("/dashboard/my-salary");
   }
 
+  const isPinConfigured = await hasSalaryPin(user.id);
+  const isPinUnlocked =
+    isPinConfigured && (await isSalaryPinSessionValid(user.id));
+  if (!isPinUnlocked) {
+    return (
+      <DashboardContainer title="Salary Management">
+        <div className="mx-auto w-full max-w-7xl px-4 pb-8 sm:px-6">
+          <SalaryPinGate
+            email={user.email}
+            isConfigured={isPinConfigured}
+            isUnlocked={false}
+          />
+        </div>
+      </DashboardContainer>
+    );
+  }
+
   const users = isHrOrAdmin
     ? (
         await prisma.user.findMany({
+          where: { employmentStatus: "ACTIVE" },
           select: {
             id: true,
             name: true,
             email: true,
             role: true,
             department: true,
-            salaryStructure: { select: { id: true } },
+            employmentStatus: true,
+            includeInPayroll: true,
+            salaryStructure: {
+              select: {
+                id: true,
+                basicSalary: true,
+                hra: true,
+                conveyance: true,
+                medical: true,
+                specialAllowance: true,
+                customComponents: true,
+              },
+            },
             designation: true,
             dateOfJoining: true,
             employmentType: true,
@@ -72,12 +105,37 @@ export default async function SalaryDashboardPage() {
           },
           orderBy: { name: "asc" },
         })
-      ).map(({ salaryStructure, ...employee }) => ({
-        ...employee,
-        hasSalaryStructure: salaryStructure !== null,
-        annualCtc: employee.annualCtc?.toString() ?? null,
-        paymentMethod: getPayrollPaymentMethod(employee.paymentMethod),
-      }))
+      ).map(({ salaryStructure, ...employee }) => {
+        let grossSalary: string | null = null;
+        if (salaryStructure) {
+          const parsedComponents = salaryComponentsSchema.safeParse(
+            salaryStructure.customComponents ?? [],
+          );
+          if (!parsedComponents.success) {
+            throw new Error(
+              `Salary structure has invalid custom components for employee ${employee.id}.`,
+            );
+          }
+          const fixedEarnings =
+            Number(salaryStructure.basicSalary) +
+            Number(salaryStructure.hra) +
+            Number(salaryStructure.conveyance) +
+            Number(salaryStructure.medical) +
+            Number(salaryStructure.specialAllowance);
+          const additionalEarnings = parsedComponents.data
+            .filter((component) => component.type === "EARNING")
+            .reduce((total, component) => total + component.amount, 0);
+          grossSalary = (fixedEarnings + additionalEarnings).toString();
+        }
+
+        return {
+          ...employee,
+          hasSalaryStructure: salaryStructure !== null,
+          grossSalary,
+          annualCtc: employee.annualCtc?.toString() ?? null,
+          paymentMethod: getPayrollPaymentMethod(employee.paymentMethod),
+        };
+      })
     : [];
   const slipsRes = await getSalarySlipsAction({});
   let staffProfile: {
@@ -146,22 +204,28 @@ export default async function SalaryDashboardPage() {
 
   return (
     <DashboardContainer title="Salary Management">
-      <div className="mx-auto w-full min-w-0 max-w-7xl space-y-5 pb-6 font-sans sm:space-y-6">
-        <div className="border-b pb-5">
-          <p className="text-sm font-medium text-muted-foreground">Payroll workspace</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Salary management</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Configure recurring compensation and review monthly salary slips.
-          </p>
+      <SalaryPinGate
+        email={user.email}
+        isConfigured
+        isUnlocked
+      >
+        <div className="mx-auto w-full min-w-0 max-w-7xl space-y-5 pb-6 font-sans sm:space-y-6">
+          <div className="border-b pb-5">
+            <p className="text-sm font-medium text-muted-foreground">Payroll workspace</p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Salary management</h1>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              Configure recurring compensation and review monthly salary slips.
+            </p>
+          </div>
+          <SalaryDashboardHub
+            users={users}
+            initialSlips={slipsRes.slips}
+            isHrOrAdmin={isHrOrAdmin}
+            staffProfile={staffProfile}
+            staffLeaveSummary={staffLeaveSummary}
+          />
         </div>
-        <SalaryDashboardHub
-          users={users}
-          initialSlips={slipsRes.slips}
-          isHrOrAdmin={isHrOrAdmin}
-          staffProfile={staffProfile}
-          staffLeaveSummary={staffLeaveSummary}
-        />
-      </div>
+      </SalaryPinGate>
     </DashboardContainer>
   );
 }

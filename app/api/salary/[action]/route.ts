@@ -6,6 +6,9 @@ import {
   getSalarySlipsAction,
   updateSalarySlipStatusAction,
   updateSalarySlipAdjustmentsAction,
+  removeSalarySlipAdjustmentAction,
+  approveSalarySlipAction,
+  sendSalarySlipEmailAction,
 } from "@/actions/salary";
 
 function errorMessage(error: unknown) {
@@ -75,6 +78,21 @@ export async function POST(
 
     if (action === "adjustments") {
       const res = await updateSalarySlipAdjustmentsAction(input);
+      return NextResponse.json(res);
+    }
+
+    if (action === "adjustment-remove") {
+      const res = await removeSalarySlipAdjustmentAction(input);
+      return NextResponse.json(res);
+    }
+
+    if (action === "approve") {
+      const res = await approveSalarySlipAction(input);
+      return NextResponse.json(res);
+    }
+
+    if (action === "email") {
+      const res = await sendSalarySlipEmailAction(input);
       return NextResponse.json(res);
     }
 

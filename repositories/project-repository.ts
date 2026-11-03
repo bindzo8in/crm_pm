@@ -1,11 +1,17 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import type { ProjectQuery } from "@/lib/schemas/project-schema";
+import type { ProjectTaskWorkspaceQuery } from "@/lib/schemas/project-schema";
 import { EmploymentStatus } from "@/app/generated/prisma/enums";
+import { getAttendanceDate } from "@/lib/date";
+import {
+  parseTaskWorkflowStatuses,
+  type TaskStatusGroup,
+  type TaskWorkflowStatus,
+} from "@/lib/task-status";
 import type {
   ProjectPriority,
   ProjectStatus,
-  ProjectTaskStatus,
 } from "@/app/generated/prisma/enums";
 
 const projectCardSelect = {
@@ -46,10 +52,22 @@ function assignedProjectFilter(userId: string): Prisma.ProjectWhereInput {
 function projectFilters(query: ProjectQuery): Prisma.ProjectWhereInput {
   const conditions: Prisma.ProjectWhereInput[] = [];
 
-  if (query.status) conditions.push({ status: query.status });
-  if (query.priority) conditions.push({ priority: query.priority });
+  if (query.status?.length) conditions.push({ status: { in: query.status } });
+  if (query.priority?.length) conditions.push({ priority: { in: query.priority } });
   if (query.customerId) conditions.push({ customerId: query.customerId });
-  if (query.projectManagerId) conditions.push({ projectManagerId: query.projectManagerId });
+  if (query.projectManagerId?.length) {
+    conditions.push({
+      OR: [
+        ...query.projectManagerId
+          .filter((id) => id !== "unassigned")
+          .map((id) => ({ projectManagerId: id })),
+        ...(query.projectManagerId.includes("unassigned") ? [{ projectManagerId: null }] : []),
+      ],
+    });
+  }
+  if (query.memberId?.length) {
+    conditions.push({ members: { some: { userId: { in: query.memberId } } } });
+  }
   if (query.dueFrom || query.dueTo) {
     conditions.push({
       dueDate: {
@@ -79,6 +97,20 @@ function projectFilters(query: ProjectQuery): Prisma.ProjectWhereInput {
       ],
     });
   }
+  if (query.overdue === "true") {
+    conditions.push({
+      status: { notIn: ["COMPLETED", "CANCELLED"] },
+      dueDate: { lt: new Date(`${getAttendanceDate()}T00:00:00.000Z`) },
+    });
+  } else if (query.overdue === "false") {
+    conditions.push({
+      OR: [
+        { dueDate: null },
+        { dueDate: { gte: new Date(`${getAttendanceDate()}T00:00:00.000Z`) } },
+        { status: { in: ["COMPLETED", "CANCELLED"] } },
+      ],
+    });
+  }
 
   return conditions.length ? { AND: conditions } : {};
 }
@@ -89,6 +121,7 @@ export async function getProjectPage(
 ) {
   const filters = projectFilters(query);
   const accessFilter = actor.canReadAll ? {} : assignedProjectFilter(actor.id);
+  const today = new Date(`${getAttendanceDate()}T00:00:00.000Z`);
   const baseWhere: Prisma.ProjectWhereInput = {
     deletedAt: null,
     AND: [filters, accessFilter],
@@ -108,22 +141,25 @@ export async function getProjectPage(
       ? query.sortDirection === "desc" ? "asc" : "desc"
       : query.sortDirection;
 
-  const [rawItems, total, allCount, activeCount, planningCount, upcomingCount, overdueCount, completedCount] =
+  const rawItems = await prisma.project.findMany({
+    where: pageWhere,
+    select: projectCardSelect,
+    orderBy: [{ projectNumber: orderDirection }, { id: orderDirection }],
+    take: query.pageSize + 1,
+  });
+  const [total, allCount, activeCount, onHoldCount, planningCount, upcomingCount, overdueCount, completedCount, projectManagers, teamMembers] =
     await prisma.$transaction(async (tx) => {
-      const rawItems = await tx.project.findMany({
-        where: pageWhere,
-        select: projectCardSelect,
-        orderBy: [{ projectNumber: orderDirection }, { id: orderDirection }],
-        take: query.pageSize + 1,
-      });
       const total = await tx.project.count({ where: baseWhere });
       const allCount = await tx.project.count({ where: { ...accessFilter, deletedAt: null } });
       const activeCount = await tx.project.count({
         where: {
           ...accessFilter,
           deletedAt: null,
-          status: { in: ["NOT_STARTED", "IN_PROGRESS", "ON_HOLD"] },
+          status: { in: ["NOT_STARTED", "IN_PROGRESS"] },
         },
+      });
+      const onHoldCount = await tx.project.count({
+        where: { ...accessFilter, deletedAt: null, status: "ON_HOLD" },
       });
       const planningCount = await tx.project.count({
         where: { ...accessFilter, deletedAt: null, status: "PLANNING" },
@@ -133,7 +169,7 @@ export async function getProjectPage(
           ...accessFilter,
           deletedAt: null,
           status: { in: ["PLANNING", "NOT_STARTED", "IN_PROGRESS", "ON_HOLD"] },
-          dueDate: { gte: new Date(), lte: new Date(Date.now() + 7 * 86400000) },
+          dueDate: { gte: today, lte: new Date(today.getTime() + 7 * 86400000) },
         },
       });
       const overdueCount = await tx.project.count({
@@ -141,22 +177,44 @@ export async function getProjectPage(
           ...accessFilter,
           deletedAt: null,
           status: { notIn: ["COMPLETED", "CANCELLED"] },
-          dueDate: { lt: new Date() },
+          dueDate: { lt: today },
         },
       });
       const completedCount = await tx.project.count({
         where: { ...accessFilter, deletedAt: null, status: "COMPLETED" },
       });
+      const projectManagers = await tx.user.findMany({
+        where: {
+          managedProjects: {
+            some: { deletedAt: null, ...accessFilter },
+          },
+        },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+        take: 100,
+      });
+      const teamMembers = await tx.user.findMany({
+        where: {
+          projectMemberships: {
+            some: { project: { deletedAt: null, ...accessFilter } },
+          },
+        },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+        take: 100,
+      });
 
       return [
-        rawItems,
         total,
         allCount,
         activeCount,
+        onHoldCount,
         planningCount,
         upcomingCount,
         overdueCount,
         completedCount,
+        projectManagers,
+        teamMembers,
       ] as const;
     });
 
@@ -192,11 +250,197 @@ export async function getProjectPage(
     summary: {
       total: allCount,
       active: activeCount,
+      onHold: onHoldCount,
       planning: planningCount,
       dueSoon: upcomingCount,
       overdue: overdueCount,
       completed: completedCount,
     },
+    filters: {
+      projectManagers,
+      teamMembers,
+    },
+  };
+}
+
+export async function getProjectTaskWorkspacePage(
+  query: ProjectTaskWorkspaceQuery,
+  actor: { id: string; canReadAll: boolean },
+) {
+  const today = new Date(`${getAttendanceDate()}T00:00:00.000Z`);
+  const nextWeek = new Date(today.getTime() + 8 * 24 * 60 * 60 * 1000);
+  const accessWhere: Prisma.ProjectTaskWhereInput = {
+    project: { deletedAt: null },
+    ...(!actor.canReadAll ? { assigneeId: actor.id } : {}),
+  };
+  const filters: Prisma.ProjectTaskWhereInput[] = [];
+
+  if (query.view === "assigned") filters.push({ assigneeId: actor.id });
+  if (query.view === "created") filters.push({ createdById: actor.id });
+  if (query.view === "upcoming") {
+    filters.push({
+      dueDate: { gte: today, lt: nextWeek },
+      statusGroup: { notIn: ["DONE", "CLOSED"] },
+    });
+  }
+  if (query.view === "overdue") {
+    filters.push({
+      dueDate: { lt: today },
+      statusGroup: { notIn: ["DONE", "CLOSED"] },
+    });
+  }
+  if (query.view === "completed") filters.push({ statusGroup: "DONE" });
+  if (query.status?.length) {
+    filters.push({
+      OR: query.status.map((selection) => {
+        const separator = selection.indexOf(":");
+        if (separator < 0) return { status: selection };
+        return {
+          projectId: selection.slice(0, separator),
+          status: selection.slice(separator + 1),
+        };
+      }),
+    });
+  }
+  if (query.priority?.length) filters.push({ priority: { in: query.priority } });
+  if (query.search) {
+    filters.push({
+      OR: [
+        { title: { contains: query.search, mode: "insensitive" } },
+        { project: { name: { contains: query.search, mode: "insensitive" } } },
+      ],
+    });
+  }
+
+  const where: Prisma.ProjectTaskWhereInput = {
+    AND: [accessWhere, ...filters],
+  };
+  const [tasks, total, statusCounts, overdueCount] = await prisma.$transaction(async (tx) => {
+    const tasks = await tx.projectTask.findMany({
+      where,
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        folderId: true,
+        status: true,
+        statusGroup: true,
+        priority: true,
+        startDate: true,
+        dueDate: true,
+        timeEstimateMinutes: true,
+        sprintPoints: true,
+        timeTrackedSeconds: true,
+        createdAt: true,
+        assigneeId: true,
+        assignee: { select: { id: true, name: true } },
+        createdBy: { select: { id: true, name: true } },
+        project: {
+          select: {
+            id: true,
+            name: true,
+            projectNumber: true,
+            projectManager: { select: { id: true, name: true } },
+            members: {
+              select: { user: { select: { id: true, name: true } } },
+              orderBy: { assignedAt: "asc" },
+            },
+            taskStatuses: true,
+            taskFolders: {
+              select: { id: true, name: true, parentId: true },
+              orderBy: [{ parentId: "asc" }, { name: "asc" }],
+            },
+          },
+        },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      take: query.pageSize + 1,
+    });
+    const total = await tx.projectTask.count({ where });
+    const statusCounts = await tx.projectTask.groupBy({
+      by: ["statusGroup"],
+      where: accessWhere,
+      _count: { _all: true },
+    });
+    const overdueCount = await tx.projectTask.count({
+      where: {
+        ...accessWhere,
+        dueDate: { lt: today },
+        statusGroup: { notIn: ["DONE", "CLOSED"] },
+      },
+    });
+    return [tasks, total, statusCounts, overdueCount] as const;
+  });
+  const hasMore = tasks.length > query.pageSize;
+  const pageTasks = tasks.slice(0, query.pageSize);
+  const summary = statusCounts.reduce(
+    (counts, row) => {
+      counts.total += row._count._all;
+      if (row.statusGroup !== "DONE" && row.statusGroup !== "CLOSED") {
+        counts.open += row._count._all;
+      }
+      if (row.statusGroup === "ACTIVE") counts.active += row._count._all;
+      if (row.statusGroup === "DONE") counts.completed += row._count._all;
+      return counts;
+    },
+    { total: 0, open: 0, active: 0, completed: 0, overdue: overdueCount },
+  );
+
+  return {
+    items: pageTasks.map((task) => ({
+      ...task,
+      project: {
+        ...task.project,
+        taskStatuses: parseTaskWorkflowStatuses(task.project.taskStatuses),
+      },
+      projectCode: formatProjectCode(task.project.projectNumber),
+    })),
+    total,
+    nextCursor: hasMore ? pageTasks.at(-1)?.id ?? null : null,
+    summary,
+  };
+}
+
+export async function getTaskCreationProjectOptions(
+  userId: string,
+  canReadAllProjects: boolean,
+) {
+  const projects = await prisma.project.findMany({
+    where: {
+      deletedAt: null,
+      ...(!canReadAllProjects ? assignedProjectFilter(userId) : {}),
+    },
+    select: {
+      id: true,
+      name: true,
+      projectNumber: true,
+      projectManager: { select: { id: true, name: true } },
+      members: {
+        select: { user: { select: { id: true, name: true } } },
+        orderBy: { assignedAt: "asc" },
+      },
+      taskStatuses: true,
+      taskFolders: {
+        select: { id: true, name: true, parentId: true },
+        orderBy: [{ parentId: "asc" }, { name: "asc" }],
+      },
+    },
+    orderBy: { projectNumber: "desc" },
+    take: 101,
+  });
+  const hasMore = projects.length > 100;
+  return {
+    items: projects.slice(0, 100).map((project) => ({
+      id: project.id,
+      name: project.name,
+      projectCode: formatProjectCode(project.projectNumber),
+      projectManager: project.projectManager,
+      members: project.members.map(({ user }) => user),
+      taskStatuses: parseTaskWorkflowStatuses(project.taskStatuses),
+      taskFolders: project.taskFolders,
+    })),
+    hasMore,
   };
 }
 
@@ -223,6 +467,7 @@ export async function getProjectById(
       customer: {
         select: {
           id: true,
+          customerNumber: true,
           displayName: true,
           companyName: true,
           primaryContactName: true,
@@ -244,6 +489,10 @@ export async function getProjectById(
         },
         orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
       },
+      taskFolders: {
+        select: { id: true, name: true, parentId: true },
+        orderBy: [{ parentId: "asc" }, { name: "asc" }],
+      },
       activities: {
         include: { actor: { select: { id: true, name: true } } },
         orderBy: { createdAt: "desc" },
@@ -256,6 +505,7 @@ export async function getProjectById(
   if (!project) return null;
   return {
     ...project,
+    taskStatuses: parseTaskWorkflowStatuses(project.taskStatuses),
     projectCode: formatProjectCode(project.projectNumber),
     budgetAmount: actor.canViewBudget ? project.budgetAmount?.toNumber() ?? null : null,
     internalNotes: actor.canManageProjects ? project.internalNotes : null,
@@ -270,23 +520,35 @@ export async function getProjectById(
 }
 
 export async function getProjectFormOptions(userIds: string[] = []) {
-  const [customers, users] = await prisma.$transaction([
-    prisma.customer.findMany({
-      where: { deletedAt: null },
-      select: { id: true, displayName: true, companyName: true },
-      orderBy: { displayName: "asc" },
-      take: 250,
-    }),
-    prisma.user.findMany({
-      where: {
-        id: { in: userIds },
-        banned: { not: true },
-        employmentStatus: EmploymentStatus.ACTIVE,
+  const users = await prisma.user.findMany({
+    where: {
+      id: { in: userIds },
+      banned: { not: true },
+      employmentStatus: EmploymentStatus.ACTIVE,
+    },
+    select: { id: true, name: true, designation: true, department: true },
+  });
+  return { users };
+}
+
+export async function getProjectTeamById(projectId: string) {
+  return prisma.project.findFirst({
+    where: { id: projectId, deletedAt: null },
+    select: {
+      id: true,
+      projectNumber: true,
+      name: true,
+      projectManager: {
+        select: { id: true, name: true, designation: true, department: true },
       },
-      select: { id: true, name: true, designation: true, department: true },
-    }),
-  ]);
-  return { customers, users };
+      members: {
+        select: {
+          user: { select: { id: true, name: true, designation: true, department: true } },
+        },
+        orderBy: { assignedAt: "asc" },
+      },
+    },
+  });
 }
 
 const projectUserPageSize = 20;
@@ -386,6 +648,7 @@ export async function getCustomerForProject(customerId: string) {
     where: { id: customerId, deletedAt: null },
     select: {
       id: true,
+      customerNumber: true,
       displayName: true,
       companyName: true,
       primaryContactName: true,
@@ -449,6 +712,8 @@ export type NewProjectData = {
   status: ProjectStatus;
   budgetAmount?: number;
   currency: string;
+  taskStatuses: Prisma.InputJsonValue;
+  workflowTemplateId: string;
 };
 
 export async function createProjectRecord(
@@ -472,6 +737,8 @@ export async function createProjectRecord(
         dueDate: input.dueDate || null,
         priority: input.priority,
         status: input.status,
+        taskStatuses: input.taskStatuses,
+        workflowTemplateId: input.workflowTemplateId,
         budgetAmount: input.budgetAmount === undefined ? null : new Prisma.Decimal(input.budgetAmount),
         currency: input.currency,
         createdById: actorId,
@@ -486,6 +753,7 @@ export async function createProjectRecord(
             metadata: proposal ? { proposalId: proposal.id } : Prisma.JsonNull,
           },
         },
+        taskFolders: { create: { name: "General" } },
       },
       select: { id: true, projectNumber: true, proposalId: true },
     });
@@ -528,6 +796,8 @@ export async function createConvertedProjectRecord(
         dueDate: input.dueDate || null,
         priority: input.priority,
         status: input.status,
+        taskStatuses: input.taskStatuses,
+        workflowTemplateId: input.workflowTemplateId,
         budgetAmount: input.budgetAmount === undefined ? null : new Prisma.Decimal(input.budgetAmount),
         currency: input.currency,
         createdById: actorId,
@@ -540,6 +810,7 @@ export async function createConvertedProjectRecord(
             metadata: { proposalId },
           },
         },
+        taskFolders: { create: { name: "General" } },
       },
       select: { id: true, projectNumber: true, proposalId: true },
     });
@@ -557,6 +828,12 @@ export async function updateProjectRecord(
   actorId: string,
 ) {
   return prisma.$transaction(async (tx) => {
+    const currentProjectManager = changes.projectManagerId === undefined
+      ? null
+      : await tx.project.findFirst({
+        where: { id: projectId, deletedAt: null },
+        select: { projectManagerId: true },
+      });
     const currentMembers = changes.teamMemberIds === undefined
       ? []
       : await tx.projectMember.findMany({
@@ -595,7 +872,9 @@ export async function updateProjectRecord(
         data: toAdd.map((userId) => ({ projectId, userId })),
       });
     }
-    const teamChanged = toAdd.length > 0 || toRemove.length > 0;
+    const managerChanged = currentProjectManager !== null &&
+      currentProjectManager.projectManagerId !== changes.projectManagerId;
+    const teamChanged = managerChanged || toAdd.length > 0 || toRemove.length > 0;
     await tx.projectActivity.create({
       data: {
         projectId,
@@ -605,11 +884,19 @@ export async function updateProjectRecord(
             ? "DETAILS_UPDATED"
             : toAdd.length
               ? "TEAM_MEMBER_ADDED"
-              : "TEAM_MEMBER_REMOVED",
+                : toRemove.length
+                  ? "TEAM_MEMBER_REMOVED"
+                  : "DETAILS_UPDATED",
         message: teamChanged ? "Project team updated" : "Project details updated",
         metadata: {
           addedUserIds: toAdd,
           removedUserIds: toRemove,
+          ...(managerChanged
+              ? {
+                previousProjectManagerId: currentProjectManager.projectManagerId,
+                projectManagerId: changes.projectManagerId,
+              }
+              : {}),
         },
       },
     });
@@ -679,10 +966,17 @@ export async function createProjectTaskRecord(
   input: {
     projectId: string;
     title: string;
+    status: string;
+    statusGroup: TaskStatusGroup;
     description?: string | null;
     assigneeId?: string | null;
+    startDate?: Date | null;
     dueDate?: Date | null;
     priority: ProjectPriority;
+    timeEstimateMinutes?: number | null;
+    sprintPoints?: number | null;
+    parentTaskId?: string | null;
+    folderId: string;
   },
   actorId: string,
 ) {
@@ -692,7 +986,12 @@ export async function createProjectTaskRecord(
         ...input,
         description: input.description || null,
         assigneeId: input.assigneeId || null,
+        startDate: input.startDate || null,
         dueDate: input.dueDate || null,
+        timeEstimateMinutes: input.timeEstimateMinutes ?? null,
+        sprintPoints: input.sprintPoints ?? null,
+        parentTaskId: input.parentTaskId ?? null,
+        folderId: input.folderId,
         createdById: actorId,
       },
       select: { id: true, title: true },
@@ -710,36 +1009,130 @@ export async function createProjectTaskRecord(
   });
 }
 
+export async function getProjectTaskFolders(projectId: string) {
+  return prisma.projectTaskFolder.findMany({
+    where: { projectId },
+    select: { id: true, projectId: true, name: true, parentId: true },
+    orderBy: [{ parentId: "asc" }, { name: "asc" }],
+  });
+}
+
+export async function getProjectTaskFolder(folderId: string) {
+  return prisma.projectTaskFolder.findUnique({
+    where: { id: folderId },
+    select: { id: true, projectId: true, name: true, parentId: true },
+  });
+}
+
+export async function createProjectTaskFolderRecord(input: {
+  projectId: string;
+  name: string;
+  parentId: string | null;
+}) {
+  return prisma.projectTaskFolder.create({
+    data: input,
+    select: { id: true, name: true, parentId: true },
+  });
+}
+
+export async function updateProjectTaskFolderRecord(input: {
+  folderId: string;
+  name: string;
+  parentId: string | null;
+}) {
+  return prisma.projectTaskFolder.update({
+    where: { id: input.folderId },
+    data: { name: input.name, parentId: input.parentId },
+    select: { id: true, name: true, parentId: true },
+  });
+}
+
+export async function deleteProjectTaskFolderRecord(projectId: string, folderId: string) {
+  return prisma.$transaction(async (tx) => {
+    const folder = await tx.projectTaskFolder.findFirst({
+      where: { id: folderId, projectId },
+      select: { id: true, name: true, parentId: true },
+    });
+    if (!folder) return false;
+
+    let destinationId = folder.parentId;
+    if (!destinationId) {
+      const sibling = await tx.projectTaskFolder.findFirst({
+        where: { projectId, parentId: null, id: { not: folderId } },
+        select: { id: true },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      });
+      destinationId = sibling?.id ?? null;
+    }
+
+    if (!destinationId) {
+      const replacement = await tx.projectTaskFolder.create({
+        data: { projectId, name: "General" },
+        select: { id: true },
+      });
+      destinationId = replacement.id;
+    }
+
+    await tx.projectTask.updateMany({
+      where: { projectId, folderId },
+      data: { folderId: destinationId },
+    });
+    await tx.projectTaskFolder.updateMany({
+      where: { projectId, parentId: folderId },
+      data: { parentId: destinationId },
+    });
+    await tx.projectTaskFolder.delete({ where: { id: folderId } });
+    return true;
+  });
+}
+
 export async function findTaskForProject(taskId: string) {
   return prisma.projectTask.findFirst({
     where: { id: taskId, project: { deletedAt: null } },
-    select: { id: true, projectId: true, assigneeId: true, status: true, title: true },
+    select: {
+      id: true,
+      projectId: true,
+      assigneeId: true,
+      status: true,
+      title: true,
+      parentTaskId: true,
+      folderId: true,
+      startDate: true,
+      dueDate: true,
+    },
   });
 }
 
 export async function updateProjectTaskRecord(
   taskId: string,
   changes: {
-    status?: ProjectTaskStatus;
+    status?: string;
+    statusGroup?: TaskStatusGroup;
+    statusLabel?: string;
+    folderId?: string;
     title?: string;
     description?: string | null;
     assigneeId?: string | null;
+    startDate?: Date | null;
     dueDate?: Date | null;
     priority?: ProjectPriority;
+    timeEstimateMinutes?: number | null;
+    sprintPoints?: number | null;
   },
   actorId: string,
 ) {
   return prisma.$transaction(async (tx) => {
     const current = await tx.projectTask.findUniqueOrThrow({
       where: { id: taskId },
-      select: { projectId: true, status: true, title: true },
+      select: { projectId: true, status: true, statusGroup: true, title: true },
     });
+    const { statusLabel, ...taskChanges } = changes;
     const updated = await tx.projectTask.update({
       where: { id: taskId },
       data: {
-        ...changes,
-        ...(changes.status !== undefined
-          ? { completedAt: changes.status === "DONE" ? new Date() : null }
+        ...taskChanges,
+        ...(changes.statusGroup !== undefined && changes.statusGroup !== current.statusGroup
+          ? { completedAt: changes.statusGroup === "DONE" ? new Date() : null }
           : {}),
       },
     });
@@ -749,12 +1142,420 @@ export async function updateProjectTaskRecord(
         actorId,
         type: "TASK_UPDATED",
         message: changes.status
-          ? `Task "${current.title}" status changed to ${changes.status.replaceAll("_", " ")}`
+          ? `Task "${current.title}" status changed to ${statusLabel ?? changes.status.replaceAll("_", " ")}`
           : `Task updated: ${current.title}`,
         metadata: { taskId, from: current.status, to: changes.status ?? current.status },
       },
     });
     return updated;
+  });
+}
+
+export async function getProjectTaskWorkflow(projectId: string) {
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, deletedAt: null },
+    select: { id: true, taskStatuses: true, workflowTemplateId: true },
+  });
+  if (!project) return null;
+  return {
+    ...project,
+    taskStatuses: parseTaskWorkflowStatuses(project.taskStatuses),
+  };
+}
+
+export async function getProjectTaskPreview(
+  taskId: string,
+  actor: { id: string; canReadAll: boolean },
+) {
+  const task = await prisma.projectTask.findFirst({
+    where: { id: taskId, project: { deletedAt: null } },
+    select: {
+      id: true,
+      projectId: true,
+      title: true,
+      description: true,
+      status: true,
+      statusGroup: true,
+      priority: true,
+      startDate: true,
+      dueDate: true,
+      timeEstimateMinutes: true,
+      sprintPoints: true,
+      timeTrackedSeconds: true,
+      parentTaskId: true,
+      createdAt: true,
+      updatedAt: true,
+      assigneeId: true,
+      assignee: { select: { id: true, name: true, image: true } },
+      createdBy: { select: { id: true, name: true } },
+      parentTask: { select: { id: true, title: true } },
+      project: {
+        select: {
+          id: true,
+          name: true,
+          projectNumber: true,
+          taskStatuses: true,
+          projectManager: { select: { id: true, name: true } },
+          members: {
+            select: { user: { select: { id: true, name: true } } },
+            orderBy: { assignedAt: "asc" },
+          },
+          tasks: {
+            where: {
+              id: { not: taskId },
+              parentTaskId: null,
+              ...(!actor.canReadAll ? { assigneeId: actor.id } : {}),
+            },
+            select: { id: true, title: true, status: true, statusGroup: true },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: 100,
+          },
+        },
+      },
+      subtasks: {
+        where: actor.canReadAll ? {} : { assigneeId: actor.id },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          statusGroup: true,
+          assignee: { select: { id: true, name: true } },
+          dueDate: true,
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      },
+      dependencies: {
+        where: actor.canReadAll ? {} : { dependsOnTask: { assigneeId: actor.id } },
+        select: {
+          id: true,
+          relationType: true,
+          dependsOnTask: {
+            select: { id: true, title: true, status: true, statusGroup: true },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+      },
+      blockedTasks: {
+        where: { relationType: "BLOCKED_BY", ...(!actor.canReadAll ? { task: { assigneeId: actor.id } } : {}) },
+        select: {
+          id: true,
+          task: { select: { id: true, title: true, status: true, statusGroup: true } },
+        },
+        orderBy: { createdAt: "asc" },
+      },
+      checklist: {
+        select: { id: true, title: true, isComplete: true, sortOrder: true },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      },
+      attachments: {
+        select: {
+          id: true,
+          url: true,
+          publicId: true,
+          resourceType: true,
+          fileName: true,
+          fileSize: true,
+          uploadedBy: { select: { id: true, name: true } },
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+      },
+      comments: {
+        select: {
+          id: true,
+          content: true,
+          createdAt: true,
+          author: { select: { id: true, name: true, image: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+      },
+      timeEntries: {
+        select: {
+          id: true,
+          startedAt: true,
+          endedAt: true,
+          durationSeconds: true,
+          userId: true,
+          user: { select: { id: true, name: true } },
+        },
+        orderBy: { startedAt: "desc" },
+        take: 50,
+      },
+    },
+  });
+  if (!task) return null;
+  const { tasks: availableDependencies, ...project } = task.project;
+  return {
+    ...task,
+    project: {
+      ...project,
+      projectCode: formatProjectCode(project.projectNumber),
+      taskStatuses: parseTaskWorkflowStatuses(project.taskStatuses),
+      availableDependencies,
+    },
+  };
+}
+
+export async function createTaskChecklistItem(taskId: string, title: string) {
+  return prisma.$transaction(async (tx) => {
+    const lastItem = await tx.projectTaskChecklistItem.findFirst({
+      where: { taskId },
+      select: { sortOrder: true },
+      orderBy: { sortOrder: "desc" },
+    });
+    return tx.projectTaskChecklistItem.create({
+      data: { taskId, title, sortOrder: (lastItem?.sortOrder ?? -1) + 1 },
+      select: { id: true, title: true, isComplete: true, sortOrder: true },
+    });
+  });
+}
+
+export async function updateTaskChecklistItem(
+  taskId: string,
+  itemId: string,
+  isComplete: boolean,
+) {
+  const result = await prisma.projectTaskChecklistItem.updateMany({
+    where: { id: itemId, taskId },
+    data: { isComplete },
+  });
+  return result.count > 0;
+}
+
+export async function deleteTaskChecklistItem(taskId: string, itemId: string) {
+  const result = await prisma.projectTaskChecklistItem.deleteMany({
+    where: { id: itemId, taskId },
+  });
+  return result.count > 0;
+}
+
+export async function getTaskDependencyGraph(projectId: string) {
+  return prisma.projectTask.findMany({
+    where: { projectId },
+    select: {
+      id: true,
+      dependencies: { select: { dependsOnTaskId: true, relationType: true } },
+    },
+  });
+}
+
+export async function createTaskDependency(
+  taskId: string,
+  dependsOnTaskId: string,
+  relationType: "BLOCKED_BY" | "RELATED_TO",
+) {
+  return prisma.projectTaskDependency.create({
+    data: { taskId, dependsOnTaskId, relationType },
+    select: { id: true },
+  });
+}
+
+export async function deleteTaskDependency(taskId: string, dependencyId: string) {
+  const result = await prisma.projectTaskDependency.deleteMany({
+    where: { id: dependencyId, taskId },
+  });
+  return result.count > 0;
+}
+
+export async function createTaskAttachment(
+  input: {
+    taskId: string;
+    url: string;
+    publicId: string;
+    resourceType: string;
+    fileName: string;
+    fileSize: number;
+  },
+  uploadedById: string,
+) {
+  return prisma.$transaction(async (tx) => {
+    const count = await tx.projectTaskAttachment.count({ where: { taskId: input.taskId } });
+    if (count >= 20) throw new Error("A task can have up to 20 attachments.");
+    return tx.projectTaskAttachment.create({
+      data: { ...input, uploadedById },
+      select: { id: true },
+    });
+  });
+}
+
+export async function getTaskAttachment(taskId: string, attachmentId: string) {
+  return prisma.projectTaskAttachment.findFirst({
+    where: { id: attachmentId, taskId },
+    select: { id: true, publicId: true, resourceType: true },
+  });
+}
+
+export async function deleteTaskAttachment(taskId: string, attachmentId: string) {
+  const result = await prisma.projectTaskAttachment.deleteMany({
+    where: { id: attachmentId, taskId },
+  });
+  return result.count > 0;
+}
+
+export async function createTaskComment(taskId: string, authorId: string, content: string) {
+  return prisma.projectTaskComment.create({
+    data: { taskId, authorId, content },
+    select: {
+      id: true,
+      content: true,
+      createdAt: true,
+      author: { select: { id: true, name: true, image: true } },
+    },
+  });
+}
+
+export async function startTaskTimeEntry(taskId: string, userId: string) {
+  return prisma.$transaction(async (tx) => {
+    const running = await tx.projectTaskTimeEntry.findFirst({
+      where: { userId, endedAt: null },
+      select: { id: true, taskId: true },
+    });
+    if (running) {
+      if (running.taskId !== taskId) {
+        throw new Error("Stop your running timer before starting another task.");
+      }
+      return running;
+    }
+    return tx.projectTaskTimeEntry.create({
+      data: { taskId, userId },
+      select: { id: true, taskId: true },
+    });
+  });
+}
+
+export async function stopTaskTimeEntry(taskId: string, userId: string) {
+  return prisma.$transaction(async (tx) => {
+    const running = await tx.projectTaskTimeEntry.findFirst({
+      where: { taskId, userId, endedAt: null },
+      select: { id: true, startedAt: true },
+    });
+    if (!running) return false;
+    const endedAt = new Date();
+    const durationSeconds = Math.max(
+      0,
+      Math.floor((endedAt.getTime() - running.startedAt.getTime()) / 1000),
+    );
+    const result = await tx.projectTaskTimeEntry.updateMany({
+      where: { id: running.id, endedAt: null },
+      data: { endedAt, durationSeconds },
+    });
+    if (result.count === 0) return false;
+    await tx.projectTask.update({
+      where: { id: taskId },
+      data: { timeTrackedSeconds: { increment: durationSeconds } },
+    });
+    return true;
+  });
+}
+
+export async function getTaskStatusTemplates() {
+  const templates = await prisma.projectTaskStatusTemplate.findMany({
+    select: { id: true, name: true, statuses: true, isSystem: true },
+    orderBy: [{ isSystem: "desc" }, { name: "asc" }],
+  });
+  return templates.map(({ statuses, ...template }) => ({
+    ...template,
+    statuses: parseTaskWorkflowStatuses(statuses),
+  }));
+}
+
+export async function createTaskStatusTemplateRecord(input: {
+  name: string;
+  statuses: Prisma.InputJsonValue;
+  createdById: string;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.projectTaskStatusTemplate.findFirst({
+      where: { name: { equals: input.name, mode: "insensitive" } },
+      select: { id: true },
+    });
+    if (existing) return false;
+    await tx.projectTaskStatusTemplate.create({
+      data: {
+        name: input.name,
+        statuses: input.statuses,
+        createdById: input.createdById,
+      },
+      select: { id: true },
+    });
+    return true;
+  });
+}
+
+export async function updateProjectTaskWorkflowRecord(input: {
+  projectId: string;
+  templateId: string | null;
+  statuses: TaskWorkflowStatus[];
+  actorId: string;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const project = await tx.project.findFirst({
+      where: { id: input.projectId, deletedAt: null },
+      select: { taskStatuses: true },
+    });
+    if (!project) return { kind: "not-found" as const };
+
+    if (input.templateId) {
+      const template = await tx.projectTaskStatusTemplate.findUnique({
+        where: { id: input.templateId },
+        select: { id: true },
+      });
+      if (!template) return { kind: "template-not-found" as const };
+    }
+
+    const currentStatuses = parseTaskWorkflowStatuses(project.taskStatuses);
+    const nextStatusIds = new Set(input.statuses.map(({ id }) => id));
+    const removedStatuses = currentStatuses.filter(({ id }) => !nextStatusIds.has(id));
+    if (removedStatuses.length > 0) {
+      const usedStatuses = await tx.projectTask.groupBy({
+        by: ["status"],
+        where: {
+          projectId: input.projectId,
+          status: { in: removedStatuses.map(({ id }) => id) },
+        },
+        _count: { _all: true },
+      });
+      if (usedStatuses.length > 0) {
+        return {
+          kind: "statuses-in-use" as const,
+          statusNames: usedStatuses.map(({ status }) =>
+            currentStatuses.find(({ id }) => id === status)?.name ?? status,
+          ),
+        };
+      }
+    }
+
+    await tx.project.update({
+      where: { id: input.projectId },
+      data: {
+        taskStatuses: input.statuses,
+        workflowTemplateId: input.templateId,
+      },
+    });
+
+    const currentGroups = new Map(currentStatuses.map(({ id, group }) => [id, group]));
+    for (const status of input.statuses) {
+      if (currentGroups.get(status.id) === status.group) continue;
+      await tx.projectTask.updateMany({
+        where: { projectId: input.projectId, status: status.id },
+        data: {
+          statusGroup: status.group,
+          ...(status.group === "DONE" ? { completedAt: new Date() } : { completedAt: null }),
+        },
+      });
+    }
+
+    await tx.projectActivity.create({
+      data: {
+        projectId: input.projectId,
+        actorId: input.actorId,
+        type: "TASK_UPDATED",
+        message: "Task workflow updated",
+        metadata: { statuses: input.statuses },
+      },
+    });
+    return { kind: "updated" as const };
   });
 }
 

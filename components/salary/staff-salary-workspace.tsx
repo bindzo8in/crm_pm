@@ -189,12 +189,14 @@ function StatusBadge({ status }: { status: SalarySlipRecord["status"] }) {
       className={
         status === "PAID"
           ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-          : status === "GENERATED"
+          : status === "APPROVED"
+            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+            : status === "GENERATED"
             ? "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400"
             : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400"
       }
     >
-      {status}
+      {status === "GENERATED" ? "Awaiting review" : status === "APPROVED" ? "Approved" : status === "PAID" ? "Paid" : "Draft"}
     </Badge>
   );
 }

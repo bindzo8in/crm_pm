@@ -39,9 +39,9 @@ export default async function NewProjectPage({
   }
 
   return (
-    <DashboardContainer title={data.proposal ? "Convert proposal to project" : "Create project"} back={{ href: "/dashboard/projects", label: "Back to projects" }}>
+    <DashboardContainer title={data.proposal ? "Convert proposal to project" : "Create project"} back={{ href: "/dashboard/projects", label: "Back to projects" }} flush>
       <ProjectForm
-        customers={data.customers}
+        initialCustomer={data.customer}
         initialUsers={data.users}
         customerLocked={Boolean(data.proposal || data.customer)}
         proposal={data.proposal}

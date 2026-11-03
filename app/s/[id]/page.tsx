@@ -5,10 +5,55 @@ import { Metadata } from "next";
 import prisma from "@/lib/prisma";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { auth } from "@/lib/auth";
+import { cookies, headers } from "next/headers";
+import { UserRole } from "@/app/generated/prisma/enums";
+import { hasSalaryPin, isSalaryPinSessionValid } from "@/lib/salary-pin";
+import { SalaryPinGate } from "@/components/salary/salary-pin-gate";
+import { verifySalaryPdfCronToken } from "@/lib/salary-pdf-cron-auth";
+
+async function getSlipForPage(id: string) {
+  const cookieStore = await cookies();
+  if (!verifySalaryPdfCronToken(id, cookieStore.get("salary_pdf_cron")?.value)) {
+    return getSalarySlipByIdAction(id);
+  }
+
+  const slip = await prisma.salarySlip.findUnique({
+    where: { id },
+    include: {
+      adjustments: {
+        where: { removedAt: null },
+        select: { id: true, type: true, description: true, amount: true },
+        orderBy: { createdAt: "asc" },
+      },
+      user: {
+        select: {
+          name: true,
+          email: true,
+          department: true,
+          designation: true,
+          employeeId: true,
+          dateOfJoining: true,
+          bankName: true,
+          bankAccountNo: true,
+          bankIfsc: true,
+          panNo: true,
+          costCenter: true,
+          uanNo: true,
+          pfNo: true,
+          esiNo: true,
+        },
+      },
+    },
+  });
+  return slip
+    ? { success: true as const, slip: JSON.parse(JSON.stringify(slip)) }
+    : { success: false as const, error: "Salary slip not found." };
+}
 
 export async function generateMetadata(props: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const params = await props.params;
-  const res = await getSalarySlipByIdAction(params.id);
+  const res = await getSlipForPage(params.id);
 
   if (!res.success || !res.slip) {
     return { title: "Salary Slip Not Found" };
@@ -31,8 +76,32 @@ export default async function SalarySlipPage({ params, searchParams }: SalarySli
   const { id } = await params;
   const { pdf } = await searchParams;
   const isPdfMode = pdf === "1";
+  const session = await auth.api.getSession({ headers: await headers() });
+  const isSalaryManager =
+    session?.user.role === UserRole.SUPER_ADMIN ||
+    session?.user.role === UserRole.ADMIN ||
+    (session?.user.role === UserRole.STAFF && session.user.department === "HR");
 
-  const res = await getSalarySlipByIdAction(id);
+  if (isSalaryManager && session) {
+    const isConfigured = await hasSalaryPin(session.user.id);
+    const isUnlocked =
+      isConfigured && (await isSalaryPinSessionValid(session.user.id));
+    if (!isUnlocked) {
+      return (
+        <DashboardProviders>
+          <main className="min-h-screen bg-background px-4 py-8">
+            <SalaryPinGate
+              email={session.user.email}
+              isConfigured={isConfigured}
+              isUnlocked={false}
+            />
+          </main>
+        </DashboardProviders>
+      );
+    }
+  }
+
+  const res = await getSlipForPage(id);
   const company = await prisma.company.findFirst();
 
   if (!res.success || !res.slip) {
@@ -46,17 +115,13 @@ export default async function SalarySlipPage({ params, searchParams }: SalarySli
     );
   }
 
-  if (isPdfMode) {
-    return (
+  const content = isPdfMode ? (
       <DashboardProviders>
         <div className="pdf-renderer-document bg-white p-0 m-0">
           <SalarySlipRenderer slip={res.slip} company={company} isPdfMode={true} />
         </div>
       </DashboardProviders>
-    );
-  }
-
-  return (
+  ) : (
     <DashboardProviders>
       <div className="min-h-screen bg-gray-50/50 p-4 md:p-8">
         <div className="mx-auto mb-6 flex max-w-4xl items-center justify-between gap-3">
@@ -80,4 +145,18 @@ export default async function SalarySlipPage({ params, searchParams }: SalarySli
       </div>
     </DashboardProviders>
   );
+
+  if (isSalaryManager && session) {
+    return (
+      <SalaryPinGate
+        email={session.user.email}
+        isConfigured
+        isUnlocked
+      >
+        {content}
+      </SalaryPinGate>
+    );
+  }
+
+  return content;
 }

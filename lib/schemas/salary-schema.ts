@@ -23,6 +23,11 @@ export const saveSalaryStructureSchema = z.object({
 
 export type SaveSalaryStructureInput = z.infer<typeof saveSalaryStructureSchema>;
 
+export const salaryPayrollInclusionSchema = z.object({
+  userId: z.string().trim().min(1).max(255),
+  includeInPayroll: z.boolean(),
+});
+
 export const salarySlipsQuerySchema = z.object({
   userId: z.string().min(1).optional(),
   month: z.number().int().min(1).max(12).optional(),
@@ -52,12 +57,25 @@ export type UpdateSalarySlipStatusInput = z.infer<typeof updateSalarySlipStatusS
 
 export const updateSalarySlipAdjustmentsSchema = z.object({
   slipId: z.string().min(1, "Slip ID is required"),
-  medicalReimbursement: z.number().min(0),
-  extraEarnings: z.number().min(0),
-  extraDeductions: z.number().min(0),
+  type: z.enum(["EARNING", "DEDUCTION"]),
+  description: z.string().trim().min(2).max(120),
+  amount: z.coerce.number().positive().max(99999999.99),
 });
 
 export type UpdateSalarySlipAdjustmentsInput = z.infer<typeof updateSalarySlipAdjustmentsSchema>;
+
+export const salarySlipAdjustmentRemovalSchema = z.object({
+  slipId: z.string().min(1),
+  adjustmentId: z.string().min(1),
+});
+
+export const approveSalarySlipSchema = z.object({
+  slipId: z.string().min(1),
+});
+
+export const sendSalarySlipEmailSchema = z.object({
+  slipId: z.string().min(1),
+});
 
 export const autoGenerateMonthlySalarySlipsSchema = z.object({
   month: z.number().int().min(1).max(12),

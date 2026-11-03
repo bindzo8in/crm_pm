@@ -2,22 +2,45 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useOptimistic, useState, useTransition, type FormEvent } from "react";
 import { toast } from "sonner";
 import {
   archiveProjectAction,
-  createProjectTaskAction,
   deleteProjectTaskAction,
   getProject,
   updateProjectStatusAction,
   updateProjectTaskAction,
 } from "@/actions/project";
-import type { ProjectPriority } from "@/app/generated/prisma/enums";
+import {
+  Activity,
+  Archive,
+  CalendarDays,
+  CheckCircle2,
+  CircleAlert,
+  Clock3,
+  Flag,
+  Kanban,
+  LayoutDashboard,
+  ListTodo,
+  Pencil,
+  Trash2,
+  UserRound,
+  UsersRound,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { formatInIST } from "@/lib/date";
+import { TaskStatusBoard } from "@/components/projects/task-status-board";
+import { TaskStatusSettingsDialog } from "@/components/projects/task-status-settings-dialog";
+import { TaskPreviewDrawer } from "@/components/projects/task-preview-drawer";
+import { TaskCreateDialog, type TaskComposerProject } from "@/components/projects/task-create-dialog";
+import { TaskFolderNavigation } from "@/components/projects/task-folder-navigation";
+import type { TaskStatusGroup } from "@/lib/task-status";
+import {
+  type MultiSelectOption,
+} from "@/components/ui/multi-select";
+import { OptionSelect } from "@/components/ui/option-select";
 
 export type ProjectWorkspaceData = NonNullable<
   Extract<Awaited<ReturnType<typeof getProject>>, { success: true }>["data"]
@@ -32,28 +55,13 @@ const projectStatusLabels: Record<string, string> = {
   CANCELLED: "Cancelled",
 };
 
-const taskStatusLabels: Record<string, string> = {
-  TODO: "To do",
-  IN_PROGRESS: "In progress",
-  BLOCKED: "Blocked",
-  DONE: "Done",
-  CANCELLED: "Cancelled",
-};
-
 function dateLabel(value: Date | string | null | undefined) {
   if (!value) return "Not set";
-  return new Intl.DateTimeFormat("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
+  return formatInIST(new Date(value), "d MMM yyyy");
 }
 
 function dateTimeLabel(value: Date | string) {
-  return new Intl.DateTimeFormat("en-IN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
+  return formatInIST(new Date(value), "d MMM yyyy, HH:mm");
 }
 
 function priorityLabel(value: string) {
@@ -63,13 +71,23 @@ function priorityLabel(value: string) {
 export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
   const router = useRouter();
   const { project, permissions } = data;
+  const [activeTab, setActiveTab] = useState<"overview" | "tasks" | "board" | "team" | "activity">("overview");
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [boardTasks, setOptimisticTaskStatus] = useOptimistic(
+    project.tasks,
+    (
+      currentTasks,
+      update: { taskId: string; status: string; statusGroup: TaskStatusGroup },
+    ) => currentTasks.map((task) =>
+      task.id === update.taskId
+        ? { ...task, status: update.status, statusGroup: update.statusGroup }
+        : task,
+    ),
+  );
+  const [, startTransition] = useTransition();
   const [selectedStatus, setSelectedStatus] = useState(project.status);
-  const [taskTitle, setTaskTitle] = useState("");
-  const [taskDescription, setTaskDescription] = useState("");
-  const [taskAssignee, setTaskAssignee] = useState("");
-  const [taskDueDate, setTaskDueDate] = useState("");
-  const [taskPriority, setTaskPriority] = useState<ProjectPriority>("MEDIUM");
 
   async function saveStatus(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -93,53 +111,32 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
     }
   }
 
-  async function createTask(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function updateTaskStatus(taskId: string, status: string) {
+    const nextStatus = project.taskStatuses.find((candidate) => candidate.id === status);
+    const previousStatus = boardTasks.find((task) => task.id === taskId)?.status;
+    if (!nextStatus || !previousStatus || previousStatus === nextStatus.id) return;
     setPending(true);
-    try {
-      const result = await createProjectTaskAction({
-        projectId: project.id,
-        title: taskTitle,
-        description: taskDescription || null,
-        assigneeId: taskAssignee || null,
-        dueDate: taskDueDate || null,
-        priority: taskPriority,
+    startTransition(async () => {
+      setOptimisticTaskStatus({
+        taskId,
+        status: nextStatus.id,
+        statusGroup: nextStatus.group,
       });
-      if (!result.success) {
-        toast.error(result.message);
-        return;
+      try {
+        const result = await updateProjectTaskAction({ taskId, status: nextStatus.id });
+        if (!result.success) {
+          toast.error(result.message);
+          return;
+        }
+        toast.success(result.message);
+        router.refresh();
+      } catch (error) {
+        console.error("Failed to update task", error);
+        toast.error("Unable to update task.");
+      } finally {
+        setPending(false);
       }
-      setTaskTitle("");
-      setTaskDescription("");
-      setTaskAssignee("");
-      setTaskDueDate("");
-      setTaskPriority("MEDIUM");
-      toast.success(result.message);
-      router.refresh();
-    } catch (error) {
-      console.error("Failed to create project task", error);
-      toast.error("Unable to create task.");
-    } finally {
-      setPending(false);
-    }
-  }
-
-  async function updateTaskStatus(taskId: string, status: string) {
-    setPending(true);
-    try {
-      const result = await updateProjectTaskAction({ taskId, status });
-      if (!result.success) {
-        toast.error(result.message);
-        return;
-      }
-      toast.success(result.message);
-      router.refresh();
-    } catch (error) {
-      console.error("Failed to update task", error);
-      toast.error("Unable to update task.");
-    } finally {
-      setPending(false);
-    }
+    });
   }
 
   async function removeTask(taskId: string) {
@@ -155,6 +152,24 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
     } catch (error) {
       console.error("Failed to remove project task", error);
       toast.error("Unable to remove task.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function updateTaskFolder(taskId: string, folderId: string) {
+    setPending(true);
+    try {
+      const result = await updateProjectTaskAction({ taskId, folderId });
+      if (!result.success) {
+        toast.error(result.message);
+        return;
+      }
+      toast.success(result.message);
+      router.refresh();
+    } catch (error) {
+      console.error("Failed to move task to another folder", error);
+      toast.error("Unable to move task.");
     } finally {
       setPending(false);
     }
@@ -179,10 +194,78 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
     }
   }
 
-  const assignees = [
-    ...(project.projectManager ? [project.projectManager] : []),
-    ...project.members.map(({ user }) => user),
-  ].filter((person, index, all) => all.findIndex(({ id }) => id === person.id) === index);
+  const composerProjects: TaskComposerProject[] = [{
+    id: project.id,
+    name: project.name,
+    projectCode: project.projectCode,
+    projectManager: project.projectManager
+      ? { id: project.projectManager.id, name: project.projectManager.name }
+      : null,
+    members: project.members.map(({ user }) => ({ id: user.id, name: user.name })),
+    taskStatuses: project.taskStatuses,
+    taskFolders: project.taskFolders,
+  }];
+  const taskFolderOptions: MultiSelectOption[] = project.taskFolders.map((folder) => {
+    const foldersById = new Map(project.taskFolders.map((item) => [item.id, item]));
+    const path: string[] = [];
+    let current = foldersById.get(folder.id);
+    while (current) {
+      path.unshift(current.name);
+      current = current.parentId ? foldersById.get(current.parentId) : undefined;
+    }
+    return { value: folder.id, label: path.join(" / "), icon: "project" };
+  });
+  const visibleProjectTasks = project.tasks.filter((task) =>
+    selectedFolderId === null || task.folderId === selectedFolderId,
+  );
+  const visibleBoardTasks = boardTasks.filter((task) =>
+    selectedFolderId === null || task.folderId === selectedFolderId,
+  );
+  const projectStatusOptions: MultiSelectOption[] = data.statusOptions.map((status) => ({
+    value: status,
+    label: projectStatusLabels[status],
+    icon: status === "COMPLETED"
+      ? "completed"
+      : status === "CANCELLED"
+        ? "cancelled"
+        : status === "ON_HOLD"
+          ? "onHold"
+          : status === "IN_PROGRESS"
+            ? "inProgress"
+            : status === "PLANNING"
+              ? "planning"
+              : "notStarted",
+  }));
+  const taskStatusLabels = Object.fromEntries(
+    project.taskStatuses.map(({ id, name }) => [id, name]),
+  );
+  const taskStatusGroups = Object.fromEntries(
+    project.taskStatuses.map(({ id, group }) => [id, group]),
+  );
+  const taskStatusOptions: MultiSelectOption[] = project.taskStatuses.map((status) => ({
+    value: status.id,
+    label: status.name,
+    icon: status.group === "DONE"
+      ? "completed"
+      : status.group === "CLOSED"
+        ? "cancelled"
+        : status.group === "ACTIVE"
+          ? "inProgress"
+          : "notStarted",
+  }));
+  const completedTasks = project.tasks.filter((task) => task.statusGroup === "DONE").length;
+  const activeTasks = project.tasks.filter((task) => task.statusGroup === "ACTIVE").length;
+  const today = formatInIST(new Date(), "yyyy-MM-dd");
+  const overdueTasks = project.tasks.filter((task) =>
+    task.dueDate &&
+    formatInIST(new Date(task.dueDate), "yyyy-MM-dd") < today &&
+    task.statusGroup !== "DONE" &&
+    task.statusGroup !== "CLOSED",
+  ).length;
+  const taskProgress = project.tasks.length
+    ? Math.round((completedTasks / project.tasks.length) * 100)
+    : 0;
+  const boardStatuses = project.taskStatuses.map(({ id }) => id);
 
   return (
     <div className="space-y-5">
@@ -192,7 +275,10 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
             <div className="flex flex-wrap items-center gap-2">
               <p className="font-mono text-sm text-muted-foreground">{project.projectCode}</p>
               <Badge variant="secondary">{projectStatusLabels[project.status]}</Badge>
-              <Badge variant="outline">{priorityLabel(project.priority)}</Badge>
+              <Badge variant="outline" className="gap-1">
+                <Flag aria-hidden="true" />
+                {priorityLabel(project.priority)}
+              </Badge>
             </div>
             <h1 className="mt-3 break-words text-2xl font-semibold tracking-tight sm:text-3xl">{project.name}</h1>
             {project.description && (
@@ -217,13 +303,23 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
           </div>
           <div className="flex flex-wrap gap-2">
             {permissions.canEdit && (
-              <Button asChild variant="outline">
-                <Link href={`/dashboard/projects/${project.id}/edit`}>Edit project</Link>
-              </Button>
+              <>
+                <TaskStatusSettingsDialog
+                  projectId={project.id}
+                  initialStatuses={project.taskStatuses}
+                  initialTemplateId={project.workflowTemplateId}
+                />
+                <Button asChild variant="outline">
+                  <Link href={`/dashboard/projects/${project.id}/edit`}>
+                    <Pencil aria-hidden="true" />
+                    Edit project
+                  </Link>
+                </Button>
+              </>
             )}
             {permissions.canArchive && (
               <ConfirmDialog
-                trigger={<Button variant="outline" disabled={pending}>Archive</Button>}
+                trigger={<Button variant="outline" disabled={pending}><Archive aria-hidden="true" />Archive</Button>}
                 title="Archive this project?"
                 description="The project will be removed from the active project list."
                 confirmLabel="Archive project"
@@ -236,11 +332,17 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
 
         <div className="grid divide-y sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
           <div className="p-4 sm:p-5">
-            <p className="text-sm text-muted-foreground">Project manager</p>
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <UserRound aria-hidden="true" className="size-4" />
+              Project manager
+            </p>
             <p className="mt-1 font-medium">{project.projectManager?.name ?? "Not assigned"}</p>
           </div>
           <div className="p-4 sm:p-5">
-            <p className="text-sm text-muted-foreground">Team</p>
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <UsersRound aria-hidden="true" className="size-4" />
+              Team
+            </p>
             <p className="mt-1 font-medium">
               {project.members.length
                 ? project.members.map(({ user }) => user.name).join(", ")
@@ -248,83 +350,90 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
             </p>
           </div>
           <div className="p-4 sm:p-5">
-            <p className="text-sm text-muted-foreground">Start date</p>
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <CalendarDays aria-hidden="true" className="size-4" />
+              Start date
+            </p>
             <p className="mt-1 font-medium">{dateLabel(project.startDate)}</p>
           </div>
           <div className="p-4 sm:p-5">
-            <p className="text-sm text-muted-foreground">Target completion</p>
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <CalendarDays aria-hidden="true" className="size-4" />
+              Target completion
+            </p>
             <p className="mt-1 font-medium">{dateLabel(project.dueDate)}</p>
           </div>
         </div>
       </section>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(280px,0.8fr)]">
+      <nav aria-label="Project workspace views" className="-mx-1 flex gap-1 overflow-x-auto border-b px-1">
+        {([
+          { tab: "overview", label: "Overview", icon: LayoutDashboard },
+          { tab: "tasks", label: "Tasks", icon: ListTodo },
+          { tab: "board", label: "Board", icon: Kanban },
+          { tab: "team", label: "Team", icon: UsersRound },
+          { tab: "activity", label: "Activity", icon: Activity },
+        ] as const).map(({ tab, label, icon: TabIcon }) => (
+          <button
+            key={tab}
+            type="button"
+            aria-pressed={activeTab === tab}
+            onClick={() => setActiveTab(tab)}
+            className={`min-h-11 shrink-0 border-b-2 px-3 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              activeTab === tab
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <TabIcon aria-hidden="true" className="mr-1.5 inline size-4 align-text-bottom" />
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {activeTab === "tasks" ? (
+      <div
+        aria-label="Project tasks"
+        className="grid gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(280px,0.8fr)]"
+      >
         <section className="space-y-5">
           <article className="rounded-xl border bg-card p-4 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold">Tasks</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {project.tasks.length} visible task{project.tasks.length === 1 ? "" : "s"}
+                  {visibleProjectTasks.length} visible task{visibleProjectTasks.length === 1 ? "" : "s"}
                   {!permissions.canReadAllTasks && " assigned to you"}
                 </p>
               </div>
+              {permissions.canCreateTasks && (
+                <TaskCreateDialog
+                  projects={composerProjects}
+                  defaultProjectId={project.id}
+                  defaultFolderId={selectedFolderId}
+                />
+              )}
             </div>
-            {permissions.canCreateTasks && (
-              <form onSubmit={createTask} className="mt-5 grid gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-2 sm:p-4">
-                <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
-                  Task title
-                  <Input required maxLength={160} value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} />
-                </label>
-                <label className="grid gap-1.5 text-sm font-medium">
-                  Assign to
-                  <select
-                    value={taskAssignee}
-                    onChange={(event) => setTaskAssignee(event.target.value)}
-                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                  >
-                    <option value="">Unassigned</option>
-                    {assignees.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
-                  </select>
-                </label>
-                <label className="grid gap-1.5 text-sm font-medium">
-                  Target date
-                  <Input type="date" value={taskDueDate} onChange={(event) => setTaskDueDate(event.target.value)} />
-                </label>
-                <label className="grid gap-1.5 text-sm font-medium">
-                  Priority
-                  <select
-                    value={taskPriority}
-                    onChange={(event) => setTaskPriority(event.target.value as ProjectPriority)}
-                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                  >
-                    <option value="LOW">Low</option>
-                    <option value="MEDIUM">Medium</option>
-                    <option value="HIGH">High</option>
-                    <option value="URGENT">Urgent</option>
-                  </select>
-                </label>
-                <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
-                  Notes
-                  <Textarea rows={2} maxLength={3000} value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} />
-                </label>
-                <div className="sm:col-span-2">
-                  <Button type="submit" disabled={pending || !taskTitle.trim()}>
-                    {pending ? "Saving…" : "Add task"}
-                  </Button>
-                </div>
-              </form>
-            )}
-            {project.tasks.length === 0 ? (
-              <div className="mt-5 rounded-lg border border-dashed px-4 py-8 text-center">
-                <p className="font-medium">No tasks yet</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Add tasks to make the project work visible and assignable.
-                </p>
-              </div>
-            ) : (
-              <div className="mt-5 space-y-3">
-                {project.tasks.map((task) => {
+            <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(190px,0.65fr)_minmax(0,2fr)]">
+              <TaskFolderNavigation
+                projectId={project.id}
+                folders={project.taskFolders}
+                tasks={project.tasks}
+                selectedFolderId={selectedFolderId}
+                onSelect={setSelectedFolderId}
+                canManage={permissions.canEdit}
+              />
+              <div className="min-w-0 space-y-3">
+                {visibleProjectTasks.length === 0 ? (
+                  <div className="rounded-lg border border-dashed px-4 py-8 text-center">
+                    <p className="font-medium">{project.tasks.length ? "No tasks in this folder" : "No tasks yet"}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {project.tasks.length
+                        ? "Choose another folder or create a task here."
+                        : "Create a task to start tracking this project’s work."}
+                    </p>
+                  </div>
+                ) : visibleProjectTasks.map((task) => {
                   const mayUpdate =
                     permissions.canUpdateTasks ||
                     (permissions.canUpdateOwnTasks && task.assigneeId === data.actorId);
@@ -332,29 +441,53 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
                     <article key={task.id} className="rounded-lg border p-3 sm:p-4">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0">
-                          <h3 className="break-words font-medium">{task.title}</h3>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTaskId(task.id)}
+                            className="break-words text-left font-medium outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            {task.title}
+                          </button>
                           {task.description && (
                             <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{task.description}</p>
                           )}
                           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                            <span>{task.assignee?.name ?? "Unassigned"}</span>
-                            <span>Due {dateLabel(task.dueDate)}</span>
-                            <span>{priorityLabel(task.priority)} priority</span>
+                            <span className="inline-flex items-center gap-1">
+                              <UserRound aria-hidden="true" className="size-3.5" />
+                              {task.assignee?.name ?? "Unassigned"}
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <CalendarDays aria-hidden="true" className="size-3.5" />
+                              Due {dateLabel(task.dueDate)}
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <Flag aria-hidden="true" className="size-3.5" />
+                              {priorityLabel(task.priority)} priority
+                            </span>
                           </div>
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
-                          <select
-                            aria-label={`Status for ${task.title}`}
+                          {permissions.canUpdateTasks && (
+                            <OptionSelect
+                              label={`Folder for ${task.title}`}
+                              value={task.folderId}
+                              disabled={pending}
+                              onValueChange={(folderId) => void updateTaskFolder(task.id, folderId)}
+                              options={taskFolderOptions}
+                              className="h-9 max-w-40"
+                            />
+                          )}
+                          <OptionSelect
+                            label={`Status for ${task.title}`}
                             value={task.status}
                             disabled={!mayUpdate || pending}
-                            onChange={(event) => void updateTaskStatus(task.id, event.target.value)}
-                            className="h-9 max-w-36 rounded-md border border-input bg-background px-2 text-sm disabled:opacity-60"
-                          >
-                            {Object.entries(taskStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                          </select>
+                            onValueChange={(value) => updateTaskStatus(task.id, value)}
+                            options={taskStatusOptions}
+                            className="h-9 max-w-36"
+                          />
                           {permissions.canDeleteTasks && (
                             <ConfirmDialog
-                              trigger={<Button variant="ghost" size="sm" disabled={pending}>Remove</Button>}
+                              trigger={<Button variant="ghost" size="sm" disabled={pending}><Trash2 aria-hidden="true" />Remove</Button>}
                               title="Remove task?"
                               description="This task will be removed from the project."
                               confirmLabel="Remove task"
@@ -368,7 +501,7 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
                   );
                 })}
               </div>
-            )}
+            </div>
           </article>
 
           {(project.objectives || project.scope) && (
@@ -395,15 +528,12 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
             <section className="rounded-xl border bg-card p-4 sm:p-5">
               <h2 className="font-semibold">Project status</h2>
               <form onSubmit={saveStatus} className="mt-3 grid gap-3">
-                <select
+                <OptionSelect
+                  label="Project status"
                   value={selectedStatus}
-                  onChange={(event) => setSelectedStatus(event.target.value as typeof project.status)}
-                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                >
-                  {data.statusOptions.map((status) => (
-                    <option key={status} value={status}>{projectStatusLabels[status]}</option>
-                  ))}
-                </select>
+                  onValueChange={(value) => setSelectedStatus(value as typeof project.status)}
+                  options={projectStatusOptions}
+                />
                 <Button type="submit" disabled={pending || selectedStatus === project.status}>
                   Update status
                 </Button>
@@ -482,6 +612,277 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
           </section>
         </aside>
       </div>
+      ) : activeTab === "overview" ? (
+        <section
+          aria-label="Project overview"
+          className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(280px,0.8fr)]"
+        >
+          <div className="space-y-4">
+            <section className="rounded-xl border bg-card p-4 sm:p-6">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold">Delivery snapshot</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {permissions.canReadAllTasks
+                      ? "Progress across every project task."
+                      : "Progress across tasks assigned to you."}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl font-semibold tabular-nums">{taskProgress}%</span>
+                  {permissions.canCreateTasks && (
+                    <Button type="button" size="sm" onClick={() => setActiveTab("tasks")}>
+                      Add task
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <div
+                role="progressbar"
+                aria-label="Task completion"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={taskProgress}
+                className="mt-4 h-2 overflow-hidden rounded-full bg-muted"
+              >
+                <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${taskProgress}%` }} />
+              </div>
+              <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {[
+                  { label: "Visible tasks", count: project.tasks.length, icon: ListTodo },
+                  { label: "Active", count: activeTasks, icon: Clock3 },
+                  { label: "Completed", count: completedTasks, icon: CheckCircle2 },
+                  { label: "Overdue", count: overdueTasks, icon: CircleAlert },
+                ].map(({ label, count, icon: StatIcon }) => (
+                  <div key={label} className="rounded-md bg-muted/50 px-3 py-2">
+                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <StatIcon aria-hidden="true" className="size-3.5" />
+                      {label}
+                    </p>
+                    <p className="mt-1 font-semibold tabular-nums">{count}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-xl border bg-card p-4 sm:p-6">
+              <h2 className="text-lg font-semibold">Project brief</h2>
+              {project.description ? (
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{project.description}</p>
+              ) : (
+                <p className="mt-3 text-sm text-muted-foreground">Add a project description to keep the team aligned.</p>
+              )}
+              {(project.objectives || project.scope) && (
+                <div className="mt-5 grid gap-5 border-t pt-4 md:grid-cols-2">
+                  {project.objectives && (
+                    <div>
+                      <h3 className="text-sm font-medium">Objectives</h3>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{project.objectives}</p>
+                    </div>
+                  )}
+                  {project.scope && (
+                    <div>
+                      <h3 className="text-sm font-medium">Scope and deliverables</h3>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{project.scope}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          </div>
+
+          <aside className="space-y-4">
+            <section className="rounded-xl border bg-card p-4 sm:p-5">
+              <h2 className="font-semibold">Next deadlines</h2>
+              {project.tasks.filter((task) => task.dueDate && task.statusGroup !== "DONE" && task.statusGroup !== "CLOSED").length === 0 ? (
+                <p className="mt-3 text-sm text-muted-foreground">No upcoming task deadlines.</p>
+              ) : (
+                <ul className="mt-3 space-y-3">
+                  {project.tasks
+                    .filter((task) => task.dueDate && task.statusGroup !== "DONE" && task.statusGroup !== "CLOSED")
+                    .slice(0, 5)
+                    .map((task) => (
+                      <li key={task.id} className="border-l-2 border-primary/40 pl-3">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTaskId(task.id)}
+                          className="break-words text-left text-sm font-medium hover:text-primary"
+                        >
+                          {task.title}
+                        </button>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {dateLabel(task.dueDate)} · {task.assignee?.name ?? "Unassigned"}
+                        </p>
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </section>
+            <section className="rounded-xl border bg-card p-4 sm:p-5">
+              <h2 className="font-semibold">Project team</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {project.projectManager?.name ?? "No project manager"} · {project.members.length} team member{project.members.length === 1 ? "" : "s"}
+              </p>
+              <Button type="button" variant="link" className="mt-2 h-auto p-0" onClick={() => setActiveTab("team")}>
+                View team
+              </Button>
+            </section>
+            {permissions.canChangeStatus && (
+              <section className="rounded-xl border bg-card p-4 sm:p-5">
+                <h2 className="font-semibold">Project status</h2>
+                <form onSubmit={saveStatus} className="mt-3 grid gap-3">
+                  <OptionSelect
+                    label="Project status"
+                    value={selectedStatus}
+                    onValueChange={(value) => setSelectedStatus(value as typeof project.status)}
+                    options={projectStatusOptions}
+                  />
+                  <Button type="submit" disabled={pending || selectedStatus === project.status}>Update status</Button>
+                </form>
+              </section>
+            )}
+          </aside>
+        </section>
+      ) : activeTab === "board" ? (
+        <div className="grid gap-5 xl:grid-cols-[minmax(190px,0.65fr)_minmax(0,2fr)]">
+          <TaskFolderNavigation
+            projectId={project.id}
+            folders={project.taskFolders}
+            tasks={project.tasks}
+            selectedFolderId={selectedFolderId}
+            onSelect={setSelectedFolderId}
+            canManage={permissions.canEdit}
+          />
+          <TaskStatusBoard
+            items={visibleBoardTasks}
+            statuses={boardStatuses}
+            statusLabels={taskStatusLabels}
+            statusGroups={taskStatusGroups}
+            canMove={(task) => !pending && (
+              permissions.canUpdateTasks ||
+              (permissions.canUpdateOwnTasks && task.assigneeId === data.actorId)
+            )}
+            onMove={(taskId, status) => void updateTaskStatus(taskId, status)}
+            renderTask={(task, dragHandle) => {
+              const mayUpdate =
+                permissions.canUpdateTasks ||
+                (permissions.canUpdateOwnTasks && task.assigneeId === data.actorId);
+              return (
+                <article className="rounded-lg border bg-card p-3">
+                  <div className="flex items-start justify-between gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTaskId(task.id)}
+                      className="break-words text-left text-sm font-medium hover:text-primary"
+                    >
+                      {task.title}
+                    </button>
+                    {dragHandle}
+                  </div>
+                  <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1">
+                      <UserRound aria-hidden="true" className="size-3.5" />
+                      {task.assignee?.name ?? "Unassigned"}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <Flag aria-hidden="true" className="size-3.5" />
+                      {priorityLabel(task.priority)}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <CalendarDays aria-hidden="true" className="size-3.5" />
+                      {dateLabel(task.dueDate)}
+                    </span>
+                  </p>
+                  <OptionSelect
+                    label={`Status for ${task.title}`}
+                    value={task.status}
+                    disabled={!mayUpdate || pending}
+                    onValueChange={(value) => updateTaskStatus(task.id, value)}
+                    options={taskStatusOptions}
+                    className="mt-3 h-9"
+                  />
+                </article>
+              );
+            }}
+          />
+        </div>
+      ) : activeTab === "team" ? (
+        <section
+          aria-label="Project team"
+          className="rounded-xl border bg-card p-4 sm:p-6"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Project team</h2>
+              <p className="mt-1 text-sm text-muted-foreground">People responsible for delivering this work.</p>
+            </div>
+            {permissions.canManageTeam && (
+              <Button asChild variant="outline">
+                <Link href={`/dashboard/projects/${project.id}/team`}>Manage team</Link>
+              </Button>
+            )}
+          </div>
+          <ul className="mt-5 divide-y">
+            {project.projectManager && (
+              <li className="flex items-center justify-between gap-3 py-3">
+                <div>
+                  <p className="font-medium">{project.projectManager.name}</p>
+                  <p className="text-sm text-muted-foreground">{project.projectManager.designation ?? "Project manager"}</p>
+                </div>
+                <Badge variant="secondary">Project manager</Badge>
+              </li>
+            )}
+            {project.members.map(({ user }) => (
+              <li key={user.id} className="flex items-center justify-between gap-3 py-3">
+                <div>
+                  <p className="font-medium">{user.name}</p>
+                  <p className="text-sm text-muted-foreground">{user.designation ?? "Team member"}</p>
+                </div>
+                <span className="text-sm text-muted-foreground">
+                  {project.tasks.filter((task) =>
+                    task.assigneeId === user.id &&
+                    task.statusGroup !== "DONE" &&
+                    task.statusGroup !== "CLOSED",
+                  ).length} visible open tasks
+                </span>
+              </li>
+            ))}
+            {!project.projectManager && project.members.length === 0 && (
+              <li className="py-8 text-center text-sm text-muted-foreground">No project team assigned yet.</li>
+            )}
+          </ul>
+        </section>
+      ) : (
+        <section
+          aria-label="Project activity"
+          className="rounded-xl border bg-card p-4 sm:p-6"
+        >
+          <h2 className="text-lg font-semibold">Project activity</h2>
+          <p className="mt-1 text-sm text-muted-foreground">A chronological record of project and task changes.</p>
+          {project.activities.length === 0 ? (
+            <p className="mt-5 rounded-md border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">No activity recorded yet.</p>
+          ) : (
+            <ol className="mt-5 space-y-4">
+              {project.activities.map((activity) => (
+                <li key={activity.id} className="border-l-2 border-primary/30 pl-4">
+                  <p className="text-sm">{activity.message}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {activity.actor?.name ?? "System"} · {dateTimeLabel(activity.createdAt)}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+      )}
+      <TaskPreviewDrawer
+        taskId={selectedTaskId}
+        open={selectedTaskId !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedTaskId(null);
+        }}
+        onTaskSelect={setSelectedTaskId}
+      />
     </div>
   );
 }

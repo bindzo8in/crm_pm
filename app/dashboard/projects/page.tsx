@@ -1,20 +1,31 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import {
+  CalendarDays,
+  CheckCircle2,
+  CircleAlert,
+  CircleDot,
+  Flag,
+  FolderKanban,
+  LayoutGrid,
+  List,
+  ListTodo,
+  Plus,
+  Search,
+  UserRound,
+  UsersRound,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import DashboardContainer from "@/app/dashboard/dashboard-container";
 import { getProjects } from "@/actions/project";
 import { projectQuerySchema } from "@/lib/schemas/project-schema";
 import { requirePageAccess } from "@/lib/auth-guard";
 import { notFound } from "next/navigation";
+import {
+  MultiSelect,
+  type MultiSelectOption,
+} from "@/components/ui/multi-select";
+import { OptionSelect } from "@/components/ui/option-select";
 
 export const metadata = { title: "Projects" };
 
@@ -36,6 +47,22 @@ const statusVariants: Record<string, "default" | "secondary" | "outline" | "dest
   CANCELLED: "destructive",
 };
 
+const projectStatusOptions: MultiSelectOption[] = [
+  { value: "PLANNING", label: "Planning", icon: "planning" },
+  { value: "NOT_STARTED", label: "Not started", icon: "notStarted" },
+  { value: "IN_PROGRESS", label: "In progress", icon: "inProgress" },
+  { value: "ON_HOLD", label: "On hold", icon: "onHold" },
+  { value: "COMPLETED", label: "Completed", icon: "completed" },
+  { value: "CANCELLED", label: "Cancelled", icon: "cancelled" },
+];
+
+const projectPriorityOptions: MultiSelectOption[] = [
+  { value: "LOW", label: "Low", icon: "flag" },
+  { value: "MEDIUM", label: "Medium", icon: "flag" },
+  { value: "HIGH", label: "High", icon: "flag" },
+  { value: "URGENT", label: "Urgent", icon: "overdue" },
+];
+
 function formatDate(value: Date | string | null) {
   if (!value) return "—";
   return new Intl.DateTimeFormat("en-IN", {
@@ -46,13 +73,17 @@ function formatDate(value: Date | string | null) {
 }
 
 function pageUrl(
-  searchParams: Record<string, string | undefined>,
+  searchParams: Record<string, string | string[] | undefined>,
   cursor: number,
   direction: "next" | "previous",
 ) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(searchParams)) {
-    if (value) params.set(key, value);
+    if (Array.isArray(value)) {
+      value.forEach((item) => params.append(key, item));
+    } else if (value) {
+      params.set(key, value);
+    }
   }
   params.set("cursor", String(cursor));
   params.set("direction", direction);
@@ -70,17 +101,22 @@ export default async function ProjectsPage({
   const params = await searchParams;
   const scalar = (value: string | string[] | undefined) =>
     Array.isArray(value) ? value[0] : value;
+  const list = (value: string | string[] | undefined) =>
+    value === undefined ? [] : Array.isArray(value) ? value : [value];
   const rawFilters = {
     search: scalar(params.search),
-    status: scalar(params.status),
-    priority: scalar(params.priority),
+    status: list(params.status),
+    priority: list(params.priority),
     customerId: scalar(params.customerId),
-    projectManagerId: scalar(params.projectManagerId),
+    projectManagerId: list(params.projectManagerId),
+    memberId: list(params.memberId),
+    overdue: scalar(params.overdue),
     dueFrom: scalar(params.dueFrom),
     dueTo: scalar(params.dueTo),
     cursor: scalar(params.cursor),
     direction: scalar(params.direction),
     sortDirection: scalar(params.sortDirection),
+    view: scalar(params.view),
     pageSize: scalar(params.pageSize),
   };
   const validQuery = projectQuerySchema.safeParse(rawFilters);
@@ -99,9 +135,24 @@ export default async function ProjectsPage({
   const { items, summary, canGoNext, canGoPrevious, nextCursor, previousCursor } = result.data;
   const preserve = Object.fromEntries(
     Object.entries(rawFilters).filter(([key, value]) =>
-      key !== "cursor" && key !== "direction" && Boolean(value),
+      key !== "cursor" &&
+      key !== "direction" &&
+      (Array.isArray(value) ? value.length > 0 : Boolean(value)),
     ),
-  ) as Record<string, string | undefined>;
+  ) as Record<string, string | string[] | undefined>;
+  const projectManagerOptions: MultiSelectOption[] = [
+    { value: "unassigned", label: "No project manager", icon: "manager" },
+    ...result.data.filters.projectManagers.map((manager) => ({
+      value: manager.id,
+      label: manager.name,
+      icon: "manager" as const,
+    })),
+  ];
+  const teamMemberOptions: MultiSelectOption[] = result.data.filters.teamMembers.map((member) => ({
+    value: member.id,
+    label: member.name,
+    icon: "team",
+  }));
 
   return (
     <DashboardContainer
@@ -110,42 +161,95 @@ export default async function ProjectsPage({
         ? { href: "/dashboard/projects/new", label: "Create project", icon: <Plus /> }
         : undefined}
     >
-      <section aria-label="Project summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      <p className="-mt-2 text-sm text-muted-foreground">
+        Track delivery, owners, and deadlines across your customer work.
+      </p>
+
+      <section aria-label="Project summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {[
-          ["Total", summary.total],
-          ["Active", summary.active],
-          ["Planning", summary.planning],
-          ["Due in 7 days", summary.dueSoon],
-          ["Overdue", summary.overdue],
-          ["Completed", summary.completed],
-        ].map(([label, value]) => (
-          <article key={label} className="rounded-xl border bg-card p-4">
-            <p className="text-sm text-muted-foreground">{label}</p>
-            <p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p>
+          { label: "All projects", value: summary.total, icon: FolderKanban },
+          { label: "Active", value: summary.active, icon: CircleDot },
+          { label: "On hold", value: summary.onHold, icon: CircleAlert },
+          { label: "Completed", value: summary.completed, icon: CheckCircle2 },
+          { label: "Overdue", value: summary.overdue, icon: CalendarDays },
+        ].map(({ label, value, icon: SummaryIcon }) => (
+          <article key={label} className="rounded-lg border bg-card px-4 py-3">
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <SummaryIcon aria-hidden="true" className="size-4" />
+              {label}
+            </p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
           </article>
         ))}
       </section>
 
-      <form method="GET" className="grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-2 lg:grid-cols-4">
-        <input
-          name="search"
-          defaultValue={rawFilters.search}
-          aria-label="Search projects"
-          className="h-10 min-w-0 rounded-md border border-input bg-background px-3 text-sm"
-          placeholder="Search projects, code, customer"
+      <form method="GET" className="grid gap-3 rounded-lg border bg-card p-4 sm:grid-cols-2 lg:grid-cols-4">
+        <input type="hidden" name="view" value={rawFilters.view === "list" ? "list" : "grid"} />
+        <div className="relative min-w-0">
+          <Search aria-hidden="true" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            name="search"
+            defaultValue={rawFilters.search}
+            aria-label="Search projects"
+            className="h-10 w-full min-w-0 rounded-md border border-input bg-background pl-9 pr-3 text-sm"
+            placeholder="Search projects, code, customer"
+          />
+        </div>
+        <MultiSelect
+          key={`status-${rawFilters.status.join(",")}`}
+          name="status"
+          label="Filter by status"
+          options={projectStatusOptions}
+          defaultValue={rawFilters.status}
+          placeholder="All statuses"
+          searchPlaceholder="Search statuses"
         />
-        <select aria-label="Filter by status" name="status" defaultValue={rawFilters.status ?? ""} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
-          <option value="">All statuses</option>
-          {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select>
-        <select aria-label="Filter by priority" name="priority" defaultValue={rawFilters.priority ?? ""} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
-          <option value="">All priorities</option>
-          {["LOW", "MEDIUM", "HIGH", "URGENT"].map((value) => <option key={value} value={value}>{value[0]}{value.slice(1).toLowerCase()}</option>)}
-        </select>
-        <select aria-label="Sort projects" name="sortDirection" defaultValue={rawFilters.sortDirection === "asc" ? "asc" : "desc"} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
-          <option value="desc">Newest first</option>
-          <option value="asc">Oldest first</option>
-        </select>
+        <MultiSelect
+          key={`priority-${rawFilters.priority.join(",")}`}
+          name="priority"
+          label="Filter by priority"
+          options={projectPriorityOptions}
+          defaultValue={rawFilters.priority}
+          placeholder="All priorities"
+          searchPlaceholder="Search priorities"
+        />
+        <MultiSelect
+          key={`manager-${rawFilters.projectManagerId.join(",")}`}
+          name="projectManagerId"
+          label="Filter by project manager"
+          options={projectManagerOptions}
+          defaultValue={rawFilters.projectManagerId}
+          placeholder="All project managers"
+          searchPlaceholder="Search managers"
+        />
+        <MultiSelect
+          key={`member-${rawFilters.memberId.join(",")}`}
+          name="memberId"
+          label="Filter by team member"
+          options={teamMemberOptions}
+          defaultValue={rawFilters.memberId}
+          placeholder="All team members"
+          searchPlaceholder="Search team members"
+        />
+        <OptionSelect
+          name="overdue"
+          label="Filter overdue projects"
+          defaultValue={rawFilters.overdue ?? ""}
+          emptyLabel="Any deadline"
+          options={[
+            { value: "true", label: "Overdue only", icon: "overdue" },
+            { value: "false", label: "Exclude overdue", icon: "calendar" },
+          ]}
+        />
+        <OptionSelect
+          name="sortDirection"
+          label="Sort projects"
+          defaultValue={rawFilters.sortDirection === "asc" ? "asc" : "desc"}
+          options={[
+            { value: "desc", label: "Newest first", icon: "calendar" },
+            { value: "asc", label: "Oldest first", icon: "calendar" },
+          ]}
+        />
         <label className="grid gap-1 text-xs text-muted-foreground">
           Target date from
           <input name="dueFrom" type="date" defaultValue={rawFilters.dueFrom} className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground" />
@@ -155,12 +259,50 @@ export default async function ProjectsPage({
           <input name="dueTo" type="date" defaultValue={rawFilters.dueTo} className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground" />
         </label>
         <div className="flex items-end gap-2 sm:col-span-2">
-          <Button type="submit">Apply filters</Button>
+          <Button type="submit">
+            <Search aria-hidden="true" />
+            Apply filters
+          </Button>
           <Button asChild variant="outline">
             <Link href="/dashboard/projects">Clear</Link>
           </Button>
         </div>
       </form>
+
+      <nav aria-label="Project display" className="flex items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          {result.data.total} project{result.data.total === 1 ? "" : "s"}
+        </p>
+        <div className="inline-flex rounded-lg border bg-card p-1">
+          {(["grid", "list"] as const).map((view) => {
+            const params = new URLSearchParams();
+            for (const [key, value] of Object.entries(preserve)) {
+              if (Array.isArray(value)) {
+                value.forEach((item) => params.append(key, item));
+              } else if (value) {
+                params.set(key, value);
+              }
+            }
+            params.set("view", view);
+            const selected = (rawFilters.view === "list" ? "list" : "grid") === view;
+            return (
+              <Link
+                key={view}
+                href={`/dashboard/projects?${params.toString()}`}
+                aria-current={selected ? "page" : undefined}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium capitalize outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  selected ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {view === "grid"
+                  ? <LayoutGrid aria-hidden="true" className="mr-1.5 inline size-4 align-text-bottom" />
+                  : <List aria-hidden="true" className="mr-1.5 inline size-4 align-text-bottom" />}
+                {view}
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
 
       {items.length === 0 ? (
         <section className="rounded-xl border border-dashed bg-card px-6 py-12 text-center">
@@ -176,80 +318,123 @@ export default async function ProjectsPage({
         </section>
       ) : (
         <>
-          <div className="grid gap-3 lg:hidden">
-            {items.map((project) => (
-              <Link
-                key={project.id}
-                href={`/dashboard/projects/${project.id}`}
-                className="rounded-xl border bg-card p-4 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <div className="flex items-start justify-between gap-3">
+          {rawFilters.view === "list" ? (
+            <div className="space-y-2">
+              {items.map((project) => (
+                <Link
+                  key={project.id}
+                  href={`/dashboard/projects/${project.id}`}
+                  className="grid min-w-0 gap-3 rounded-lg border bg-card p-4 outline-none transition-colors hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[minmax(0,1.5fr)_minmax(120px,1fr)_auto] sm:items-center"
+                >
                   <div className="min-w-0">
                     <p className="font-mono text-xs text-muted-foreground">{project.projectCode}</p>
-                    <h2 className="mt-1 break-words font-semibold">{project.name}</h2>
+                    <h2 className="mt-1 truncate font-semibold">{project.name}</h2>
+                    <p className="mt-1 truncate text-sm text-muted-foreground">
+                      {project.customer?.displayName ?? "Standalone project"}
+                    </p>
                   </div>
-                  <Badge variant={statusVariants[project.status]}>{statusLabels[project.status]}</Badge>
-                </div>
-                <p className="mt-3 text-sm text-muted-foreground">
-                  {project.customer?.displayName ?? "Standalone project"}
-                </p>
-                <div className="mt-4 grid grid-cols-2 gap-3 border-t pt-3 text-sm">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Project manager</p>
-                    <p className="mt-1">{project.projectManager?.name ?? "Unassigned"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Target date</p>
-                    <p className="mt-1">{formatDate(project.dueDate)}</p>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
-
-          <div className="hidden overflow-hidden rounded-xl border bg-card lg:block">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Project</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Project manager</TableHead>
-                  <TableHead>Team</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Priority</TableHead>
-                  <TableHead>Target date</TableHead>
-                  <TableHead>Updated</TableHead>
-                  {items.some((project) => project.budgetAmount !== null) && <TableHead className="text-right">Budget</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((project) => (
-                  <TableRow key={project.id}>
-                    <TableCell>
-                      <Link href={`/dashboard/projects/${project.id}`} className="font-medium hover:underline">
-                        {project.name}
-                      </Link>
-                      <p className="mt-1 font-mono text-xs text-muted-foreground">{project.projectCode}</p>
-                    </TableCell>
-                    <TableCell>{project.customer?.displayName ?? "Standalone"}</TableCell>
-                    <TableCell>{project.projectManager?.name ?? "Unassigned"}</TableCell>
-                    <TableCell>{project.members.length} member{project.members.length === 1 ? "" : "s"}</TableCell>
-                    <TableCell><Badge variant={statusVariants[project.status]}>{statusLabels[project.status]}</Badge></TableCell>
-                    <TableCell>{project.priority[0]}{project.priority.slice(1).toLowerCase()}</TableCell>
-                    <TableCell>{formatDate(project.dueDate)}</TableCell>
-                    <TableCell>{formatDate(project.updatedAt)}</TableCell>
-                    {items.some((item) => item.budgetAmount !== null) && (
-                      <TableCell className="text-right tabular-nums">
-                        {project.budgetAmount === null
-                          ? "—"
-                          : `${project.currency} ${project.budgetAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`}
-                      </TableCell>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                    <span className="inline-flex items-center gap-1">
+                      <UserRound aria-hidden="true" className="size-3.5" />
+                      {project.projectManager?.name ?? "No owner"}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <UsersRound aria-hidden="true" className="size-3.5" />
+                      {project.members.length} team member{project.members.length === 1 ? "" : "s"}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <ListTodo aria-hidden="true" className="size-3.5" />
+                      {project.taskCount} task{project.taskCount === 1 ? "" : "s"}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <CalendarDays aria-hidden="true" className="size-3.5" />
+                      Starts {formatDate(project.startDate)}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <CalendarDays aria-hidden="true" className="size-3.5" />
+                      Due {formatDate(project.dueDate)}
+                    </span>
+                    <span>Updated {formatDate(project.updatedAt)}</span>
+                    {project.budgetAmount !== null && (
+                      <span>
+                        Budget {project.currency} {project.budgetAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                      </span>
                     )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                  </div>
+                  <div className="flex items-center gap-2 sm:justify-end">
+                    <Badge variant={statusVariants[project.status]}>{statusLabels[project.status]}</Badge>
+                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      <Flag aria-hidden="true" className="size-3.5" />
+                      {project.priority.toLowerCase()}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+              {items.map((project) => (
+                <Link
+                  key={project.id}
+                  href={`/dashboard/projects/${project.id}`}
+                  className="flex min-w-0 flex-col rounded-lg border bg-card p-4 outline-none transition-colors hover:bg-muted/20 focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs text-muted-foreground">{project.projectCode}</p>
+                      <h2 className="mt-1 break-words font-semibold">{project.name}</h2>
+                    </div>
+                    <Badge variant={statusVariants[project.status]}>{statusLabels[project.status]}</Badge>
+                  </div>
+                  <p className="mt-2 truncate text-sm text-muted-foreground">
+                    {project.customer?.displayName ?? "Standalone project"}
+                  </p>
+                  <div className="mt-4 grid grid-cols-2 gap-3 border-t pt-3 text-sm">
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <UserRound aria-hidden="true" className="size-3.5" />
+                        Project manager
+                      </p>
+                      <p className="mt-1 truncate">{project.projectManager?.name ?? "Unassigned"}</p>
+                    </div>
+                    <div>
+                      <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <CalendarDays aria-hidden="true" className="size-3.5" />
+                        Target date
+                      </p>
+                      <p className="mt-1">{formatDate(project.dueDate)}</p>
+                    </div>
+                    <div>
+                      <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <CalendarDays aria-hidden="true" className="size-3.5" />
+                        Start date
+                      </p>
+                      <p className="mt-1">{formatDate(project.startDate)}</p>
+                    </div>
+                    <div>
+                      <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <UsersRound aria-hidden="true" className="size-3.5" />
+                        Team
+                      </p>
+                      <p className="mt-1">{project.members.length} member{project.members.length === 1 ? "" : "s"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Tasks · Priority</p>
+                      <p className="mt-1">{project.taskCount} · {project.priority.toLowerCase()}</p>
+                    </div>
+                    {project.budgetAmount !== null && (
+                      <div className="col-span-2 border-t pt-2">
+                        <p className="text-xs text-muted-foreground">Budget</p>
+                        <p className="mt-1 tabular-nums">
+                          {project.currency} {project.budgetAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
           <nav aria-label="Project pages" className="flex justify-between gap-3">
             {canGoPrevious && previousCursor ? (
               <Button asChild variant="outline">

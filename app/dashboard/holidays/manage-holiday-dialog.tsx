@@ -152,13 +152,13 @@ export function ManageHolidayDialog({
         : createHolidayAction(values),
     onSuccess: (result) => {
       setError(null);
-      if (result.failed > 0) {
+      if (result.failed > 0 || result.pushFailures > 0) {
         toast.warning(
-          `Holiday saved and in-app alerts created, but ${result.failed} email${result.failed === 1 ? "" : "s"} could not be sent.`,
+          `Holiday saved with ${result.notificationCount} in-app alerts; ${result.failed} email and ${result.pushFailures} browser notification deliveries failed.`,
         );
       } else if (result.notificationCount > 0) {
         toast.success(
-          `${holiday ? "Holiday updated" : "Holiday added"} and ${result.notificationCount} staff member${result.notificationCount === 1 ? " notified" : "s notified"}.`,
+          `${holiday ? "Holiday updated" : "Holiday added"} and ${result.notificationCount} staff member${result.notificationCount === 1 ? " notified" : "s notified"}${result.pushSent > 0 ? `; ${result.pushSent} browser notification${result.pushSent === 1 ? "" : "s"} sent` : ""}.`,
         );
       } else {
         toast.success(holiday ? "Holiday updated." : "Holiday added.");
@@ -384,7 +384,8 @@ export function ManageHolidayDialog({
             <div className="space-y-1">
               <Label htmlFor="notify-holiday-staff">Notify affected staff</Label>
               <p className="text-xs leading-5 text-muted-foreground">
-                Send an email and add an in-app notification for each affected staff member.
+                Send an email and in-app notification to affected staff. Browser
+                notifications are also sent to staff who enabled them.
               </p>
             </div>
             <Controller
@@ -395,7 +396,7 @@ export function ManageHolidayDialog({
                   id="notify-holiday-staff"
                   checked={field.value}
                   onCheckedChange={field.onChange}
-                  aria-label="Notify affected staff by email and in-app notification"
+                  aria-label="Notify affected staff by email, in-app notification, and browser notification when enabled"
                 />
               )}
             />

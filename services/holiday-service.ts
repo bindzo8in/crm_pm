@@ -1,7 +1,11 @@
 import { ActionError } from "@/lib/action-error";
 import { getAttendanceDate } from "@/lib/date";
+import { formatHolidayDateRange } from "@/lib/holiday-format";
 import { parseDateOnly } from "@/lib/leave-policy";
 import { sendHolidayAnnouncementEmails } from "@/lib/email";
+import webpush from "web-push";
+import prisma from "@/lib/prisma";
+import { env } from "@/lib/env";
 import {
   createHolidayEvent,
   deleteHolidayEvent,
@@ -30,6 +34,83 @@ async function sendHolidayEmails(
   });
 }
 
+async function sendHolidayPushNotifications(
+  result: Awaited<ReturnType<typeof createHolidayEvent>>,
+  data: HolidayWriteData,
+) {
+  if (!data.notifyStaff || result.recipients.length === 0) {
+    return { pushSent: 0, pushFailures: 0 };
+  }
+  const publicKey = env.VAPID_PUBLIC_KEY;
+  const privateKey = env.VAPID_PRIVATE_KEY;
+  if (!publicKey && !privateKey) return { pushSent: 0, pushFailures: 0 };
+  if (!publicKey || !privateKey) {
+    console.error("Holiday announcement push configuration is incomplete.");
+    return { pushSent: 0, pushFailures: 1 };
+  }
+
+  try {
+    webpush.setVapidDetails(
+      `mailto:${env.NEXT_PUBLIC_SUPPORT_EMAIL}`,
+      publicKey,
+      privateKey,
+    );
+  } catch (error: unknown) {
+    console.error("Holiday announcement push configuration is invalid.", {
+      errorName: error instanceof Error ? error.name : "UnknownError",
+    });
+    return { pushSent: 0, pushFailures: 1 };
+  }
+
+  const subscriptions = await prisma.webPushSubscription.findMany({
+    where: { userId: { in: result.recipients.map(({ id }) => id) } },
+    select: { id: true, userId: true, endpoint: true, p256dh: true, auth: true },
+  });
+  const payload = JSON.stringify({
+    title: `Holiday: ${data.name}`,
+    body: `${formatHolidayDateRange(data.startDate, data.endDate)} · ${data.description || "Holiday announcement"}`,
+    url: "/dashboard/holidays",
+  });
+  const deliveries = await Promise.all(
+    subscriptions.map(async (subscription) => {
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint: subscription.endpoint,
+            keys: { p256dh: subscription.p256dh, auth: subscription.auth },
+          },
+          payload,
+        );
+        return "sent" as const;
+      } catch (error: unknown) {
+        const statusCode =
+          typeof error === "object" &&
+          error !== null &&
+          "statusCode" in error &&
+          typeof error.statusCode === "number"
+            ? error.statusCode
+            : null;
+        if (statusCode === 404 || statusCode === 410) {
+          await prisma.webPushSubscription.deleteMany({
+            where: { id: subscription.id },
+          });
+          return "expired" as const;
+        }
+        console.error("Holiday announcement push delivery failed.", {
+          userId: subscription.userId,
+          statusCode,
+          errorName: error instanceof Error ? error.name : "UnknownError",
+        });
+        return "failed" as const;
+      }
+    }),
+  );
+  return {
+    pushSent: deliveries.filter((delivery) => delivery === "sent").length,
+    pushFailures: deliveries.filter((delivery) => delivery === "failed").length,
+  };
+}
+
 export async function getHolidaysForYear(
   year: number,
   department?: Department,
@@ -49,11 +130,15 @@ export async function getUpcomingHolidays(department?: Department) {
 export async function addHoliday(data: HolidayWriteData) {
   try {
     const result = await createHolidayEvent(data);
-    const emailDelivery = await sendHolidayEmails(result, data);
+    const [emailDelivery, pushDelivery] = await Promise.all([
+      sendHolidayEmails(result, data),
+      sendHolidayPushNotifications(result, data),
+    ]);
     return {
       holiday: result.holidays[0],
       notificationCount: result.notificationCount,
       ...emailDelivery,
+      ...pushDelivery,
     };
   } catch (error) {
     if (isUniqueHolidayDateConflict(error)) {
@@ -69,11 +154,15 @@ export async function addHoliday(data: HolidayWriteData) {
 export async function editHoliday(id: string, data: HolidayWriteData) {
   try {
     const result = await updateHolidayEvent(id, data);
-    const emailDelivery = await sendHolidayEmails(result, data);
+    const [emailDelivery, pushDelivery] = await Promise.all([
+      sendHolidayEmails(result, data),
+      sendHolidayPushNotifications(result, data),
+    ]);
     return {
       holiday: result.holidays[0],
       notificationCount: result.notificationCount,
       ...emailDelivery,
+      ...pushDelivery,
     };
   } catch (error) {
     if (isUniqueHolidayDateConflict(error)) {

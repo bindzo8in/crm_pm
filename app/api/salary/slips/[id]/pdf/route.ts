@@ -3,9 +3,19 @@ import puppeteer from "puppeteer-core";
 import { NextRequest } from "next/server";
 import { env } from "@/lib/env";
 import { cookies } from "next/headers";
+import { timingSafeEqual } from "node:crypto";
+import { createSalaryPdfCronToken } from "@/lib/salary-pdf-cron-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+function hasValidCronAuthorization(authorization: string | null) {
+  const secret = env.SALARY_CRON_SECRET;
+  if (!secret || !authorization?.startsWith("Bearer ")) return false;
+  const supplied = Buffer.from(authorization.slice("Bearer ".length));
+  const expected = Buffer.from(secret);
+  return supplied.length === expected.length && timingSafeEqual(supplied, expected);
+}
 
 async function getLocalChromePath(): Promise<string | undefined> {
   const { execSync } = await import("child_process");
@@ -38,10 +48,11 @@ async function getLocalChromePath(): Promise<string | undefined> {
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const cronAuthorization = hasValidCronAuthorization(req.headers.get("authorization"));
   const baseUrl = env.NEXT_PUBLIC_SITE_URL;
   const targetUrl = `${baseUrl}/s/${id}?pdf=1`;
 
@@ -95,12 +106,27 @@ export async function GET(
 
     // Forward the current user's cookies to the Puppeteer browser
     const cookieStore = await cookies();
-    const cookieString = cookieStore.getAll().map(c => `${c.name}=${c.value}`).join('; ');
+    const storedCookies = cookieStore.getAll();
+    await page.setCookie(
+      ...storedCookies.map((cookie) => ({
+        name: cookie.name,
+        value: cookie.value,
+        url: baseUrl,
+      })),
+    );
+    if (cronAuthorization) {
+      await page.setCookie({
+        name: "salary_pdf_cron",
+        value: createSalaryPdfCronToken(id),
+        url: baseUrl,
+        httpOnly: true,
+        sameSite: "Strict",
+      });
+    }
 
-    // Bypass Microsoft Dev Tunnels warning page and pass auth cookies
+    // Bypass Microsoft Dev Tunnels warning page without forwarding cookies to external assets.
     await page.setExtraHTTPHeaders({
       "X-Tunnel-Skip-AntiPhishing-Page": "true",
-      "Cookie": cookieString
     });
 
     await page.setViewport({ width: 900, height: 1200, deviceScaleFactor: 2 });

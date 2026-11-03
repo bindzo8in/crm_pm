@@ -19,6 +19,7 @@ import {
 import {
   Banknote,
   BookUser,
+  CalendarDays,
   CalendarHeart,
   CalendarOff,
   ChartNoAxesCombined,
@@ -27,6 +28,7 @@ import {
   HandshakeIcon,
   Landmark,
   LayoutDashboardIcon,
+  ListTodo,
   Package,
   ReceiptText,
   ScrollText,
@@ -60,6 +62,12 @@ const data = {
       icon: (
         <ClockIcon />
       ),
+    },
+    {
+      title: "Work schedule",
+      section: "People",
+      url: "/dashboard/attendance/schedule",
+      icon: <CalendarDays />,
     },
     {
       title: "Leaves",
@@ -133,6 +141,12 @@ const data = {
       section: "Business",
       url: "/dashboard/projects",
       icon: <FolderKanban />
+    },
+    {
+      title: "Tasks",
+      section: "Business",
+      url: "/dashboard/tasks",
+      icon: <ListTodo />
     },
     {
       title: "Invoices",
