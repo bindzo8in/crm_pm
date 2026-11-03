@@ -38,6 +38,7 @@ export interface SalarySlipRecord {
   month: number;
   year: number;
   status: SalarySlipStatus;
+  approvedAt?: Date | string | null;
   totalDays: number;
   paidDays: number;
   absentDays: number;

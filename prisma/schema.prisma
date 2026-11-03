@@ -1607,7 +1607,6 @@ model SalaryPinResetToken {
 enum SalarySlipStatus {
   DRAFT
   GENERATED
-  APPROVED
   PAID
 }
 

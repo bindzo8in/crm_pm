@@ -34,6 +34,12 @@ interface SalarySlipsTabProps {
   isHrOrAdmin: boolean;
 }
 
+function getDisplayedSlipStatus(slip: SalarySlipRecord): SalarySlipRecord["status"] {
+  return slip.status === "GENERATED" && slip.approvedAt
+    ? "APPROVED"
+    : slip.status;
+}
+
 export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlipsTabProps) {
   const [slips, setSlips] = useState<SalarySlipRecord[]>(initialSlips);
   const [search, setSearch] = useState("");
@@ -53,7 +59,8 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlips
     const matchesSearch = `${slip.user?.name ?? ""} ${slip.user?.department ?? ""}`
       .toLowerCase()
       .includes(search.trim().toLowerCase());
-    return matchesSearch && (statusFilter === "ALL" || slip.status === statusFilter);
+    return matchesSearch &&
+      (statusFilter === "ALL" || getDisplayedSlipStatus(slip) === statusFilter);
   });
 
   const slipsByYear = visibleSlips.reduce<Array<{ year: number; months: Array<{ month: number; slips: SalarySlipRecord[] }> }>>(
@@ -172,8 +179,8 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlips
                           <h3 className="break-words font-medium text-foreground">{slip.user?.name}</h3>
                           <p className="text-xs text-muted-foreground">{slip.user?.department || "Not assigned"}</p>
                         </div>
-                        <Badge variant={slip.status === "PAID" || slip.status === "APPROVED" ? "default" : "secondary"} className="shrink-0 text-xs">
-                          {slip.status === "GENERATED" ? "Needs review" : slip.status}
+                        <Badge variant={getDisplayedSlipStatus(slip) === "PAID" || getDisplayedSlipStatus(slip) === "APPROVED" ? "default" : "secondary"} className="shrink-0 text-xs">
+                          {getDisplayedSlipStatus(slip) === "GENERATED" ? "Needs review" : getDisplayedSlipStatus(slip)}
                         </Badge>
                       </div>
                       <dl className="grid grid-cols-2 gap-3 rounded-md bg-muted/40 p-3">
@@ -208,7 +215,7 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlips
                             <DownloadIcon aria-hidden="true" className="size-4" />
                           </a>
                         </Button>
-                        {isHrOrAdmin && slip.status === "GENERATED" && (
+                        {isHrOrAdmin && getDisplayedSlipStatus(slip) === "GENERATED" && (
                           <>
                             <Button variant="ghost" size="icon" className="size-10 text-muted-foreground hover:text-foreground" onClick={() => setAdjustmentSlip(slip)} aria-label={`Adjust salary slip for ${slip.user?.name ?? "employee"}`}>
                               <PencilIcon aria-hidden="true" className="size-4" />
@@ -219,12 +226,12 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlips
                             </Button>
                           </>
                         )}
-                        {isHrOrAdmin && slip.status === "APPROVED" && (
+                        {isHrOrAdmin && getDisplayedSlipStatus(slip) === "APPROVED" && (
                           <Button variant="ghost" size="icon" className="size-10 text-emerald-700 hover:text-emerald-800 dark:text-emerald-400" onClick={() => setMarkPaidSlipId(slip.id)} aria-label={`Mark salary slip for ${slip.user?.name ?? "employee"} as paid`}>
                             <DollarSignIcon aria-hidden="true" className="size-4" />
                           </Button>
                         )}
-                        {isHrOrAdmin && (slip.status === "APPROVED" || slip.status === "PAID") && slip.user?.email && (
+                        {isHrOrAdmin && (getDisplayedSlipStatus(slip) === "APPROVED" || slip.status === "PAID") && slip.user?.email && (
                           <Button variant="outline" size="sm" className="h-10" onClick={() => setEmailSlip(slip)} aria-label={`${slip.emailSentAt ? "Resend" : "Send"} salary slip email to ${slip.user.name}`}>
                             <MailIcon aria-hidden="true" className="size-4" />
                             {slip.emailSentAt ? "Resend" : "Email PDF"}
@@ -297,8 +304,8 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlips
                       </TableCell>
                       <TableCell>
                         <div className="space-y-1">
-                          <Badge variant={slip.status === 'PAID' || slip.status === 'APPROVED' ? 'default' : 'secondary'} className="text-xs">
-                              {slip.status === "GENERATED" ? "Needs review" : slip.status}
+                          <Badge variant={getDisplayedSlipStatus(slip) === 'PAID' || getDisplayedSlipStatus(slip) === 'APPROVED' ? 'default' : 'secondary'} className="text-xs">
+                              {getDisplayedSlipStatus(slip) === "GENERATED" ? "Needs review" : getDisplayedSlipStatus(slip)}
                           </Badge>
                           {slip.emailSentAt && (
                             <div className="text-xs text-muted-foreground">
@@ -319,7 +326,7 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlips
                               <DownloadIcon aria-hidden="true" className="size-4" />
                             </a>
                           </Button>
-                          {isHrOrAdmin && slip.status === 'GENERATED' && (
+                          {isHrOrAdmin && getDisplayedSlipStatus(slip) === 'GENERATED' && (
                             <>
                               <Button variant="ghost" size="icon" className="size-10 text-muted-foreground hover:text-foreground" onClick={() => setAdjustmentSlip(slip)} aria-label={`Adjust salary slip for ${slip.user?.name ?? "employee"}`}>
                                 <PencilIcon aria-hidden="true" className="size-4" />
@@ -330,12 +337,12 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlips
                               </Button>
                             </>
                           )}
-                          {isHrOrAdmin && slip.status === 'APPROVED' && (
+                          {isHrOrAdmin && getDisplayedSlipStatus(slip) === 'APPROVED' && (
                             <Button variant="ghost" size="icon" className="size-10 text-emerald-700 hover:text-emerald-800 dark:text-emerald-400" onClick={() => setMarkPaidSlipId(slip.id)} aria-label={`Mark salary slip for ${slip.user?.name ?? "employee"} as paid`}>
                               <DollarSignIcon aria-hidden="true" className="size-4" />
                             </Button>
                           )}
-                          {isHrOrAdmin && (slip.status === "APPROVED" || slip.status === "PAID") && slip.user?.email && (
+                          {isHrOrAdmin && (getDisplayedSlipStatus(slip) === "APPROVED" || slip.status === "PAID") && slip.user?.email && (
                             <Button variant="outline" size="sm" className="h-10" onClick={() => setEmailSlip(slip)} aria-label={`${slip.emailSentAt ? "Resend" : "Send"} salary slip email to ${slip.user.name}`}>
                               <MailIcon aria-hidden="true" className="size-4" />
                               {slip.emailSentAt ? "Resend" : "Email PDF"}

@@ -71,6 +71,7 @@ async function emailAutomaticallyGeneratedSalarySlip(slipId: string) {
       month: true,
       year: true,
       status: true,
+      approvedAt: true,
       emailSentAt: true,
       user: { select: { name: true, email: true } },
     },
@@ -78,6 +79,9 @@ async function emailAutomaticallyGeneratedSalarySlip(slipId: string) {
   if (!slip) throw new Error("Generated salary slip could not be found.");
   if (slip.status !== "GENERATED") {
     throw new Error("Only newly generated, unapproved slips can be emailed automatically.");
+  }
+  if (slip.approvedAt) {
+    throw new Error("Approved slips must be emailed manually.");
   }
   if (slip.emailSentAt) return;
   if (!slip.user.email) {
@@ -568,6 +572,7 @@ export async function autoGenerateMonthlySalarySlipsAction(input: unknown) {
           existing &&
           existing.scheduledGeneration &&
           existing.status === "GENERATED" &&
+          !existing.approvedAt &&
           !existing.emailSentAt
         ) {
           await emailAutomaticallyGeneratedSalarySlip(existing.id);
@@ -791,7 +796,7 @@ export async function updateSalarySlipAdjustmentsAction(input: unknown) {
     if (!existing) {
       return { success: false, error: "Salary slip not found." };
     }
-    if (existing.status !== "GENERATED") {
+    if (existing.status !== "GENERATED" || existing.approvedAt) {
       return { success: false, error: "Only generated, unpaid salary slips can be adjusted." };
     }
 
@@ -801,6 +806,7 @@ export async function updateSalarySlipAdjustmentsAction(input: unknown) {
         where: {
           id: existing.id,
           status: "GENERATED",
+          approvedAt: null,
           ...(isEarning ? {} : { netSalary: { gte: validated.data.amount } }),
         },
         data: {
@@ -889,7 +895,7 @@ export async function removeSalarySlipAdjustmentAction(input: unknown) {
           id: parsed.data.adjustmentId,
           salarySlipId: parsed.data.slipId,
           removedAt: null,
-          salarySlip: { status: "GENERATED" },
+          salarySlip: { status: "GENERATED", approvedAt: null },
         },
       });
       if (!adjustment) return null;
@@ -900,6 +906,7 @@ export async function removeSalarySlipAdjustmentAction(input: unknown) {
         where: {
           id: parsed.data.slipId,
           status: "GENERATED",
+          approvedAt: null,
         },
         data: {
           ...(isEarning
@@ -964,11 +971,15 @@ export async function approveSalarySlipAction(input: unknown) {
       return { success: false, error: "Invalid salary slip.", details: parsed.error.issues };
     }
 
+    const approvedAt = new Date();
     const result = await prisma.salarySlip.updateMany({
-      where: { id: parsed.data.slipId, status: "GENERATED" },
+      where: {
+        id: parsed.data.slipId,
+        status: "GENERATED",
+        approvedAt: null,
+      },
       data: {
-        status: "APPROVED",
-        approvedAt: new Date(),
+        approvedAt,
         approvedById: session.user.id,
       },
     });
@@ -1024,12 +1035,16 @@ export async function sendSalarySlipEmailAction(input: unknown) {
         month: true,
         year: true,
         status: true,
+        approvedAt: true,
         netSalary: true,
         user: { select: { name: true, email: true } },
       },
     });
     if (!slip) return { success: false, error: "Salary slip not found." };
-    if (slip.status !== "APPROVED" && slip.status !== "PAID") {
+    if (
+      !(slip.status === "GENERATED" && slip.approvedAt) &&
+      slip.status !== "PAID"
+    ) {
       return { success: false, error: "Approve the salary slip before emailing it." };
     }
     if (!slip.user.email) {
@@ -1072,7 +1087,13 @@ export async function sendSalarySlipEmailAction(input: unknown) {
 
     const emailSentAt = new Date();
     const updated = await prisma.salarySlip.updateMany({
-      where: { id: slip.id, status: { in: ["APPROVED", "PAID"] } },
+      where: {
+        id: slip.id,
+        OR: [
+          { status: "GENERATED", approvedAt: { not: null } },
+          { status: "PAID" },
+        ],
+      },
       data: { emailSentAt, emailSentById: session.user.id },
     });
     if (updated.count !== 1) {
@@ -1116,13 +1137,17 @@ export async function updateSalarySlipStatusAction(input: unknown) {
       return { success: false, error: "Salary slip not found." };
     }
 
-    if (existing.status !== "APPROVED") {
+    if (existing.status !== "GENERATED" || !existing.approvedAt) {
       return { success: false, error: "Approve the salary slip before marking it as paid." };
     }
 
     const updated = await prisma.$transaction(async (tx) => {
       const result = await tx.salarySlip.updateMany({
-        where: { id: validated.slipId, status: "APPROVED" },
+        where: {
+          id: validated.slipId,
+          status: "GENERATED",
+          approvedAt: { not: null },
+        },
         data: {
           status: "PAID",
           paymentDate: new Date(`${validated.paymentDate}T00:00:00.000Z`),

@@ -67,3 +67,5 @@ no longer be changed. HR can then manually choose **Email PDF** to send the
 updated approved slip to the employee's account email. Successful delivery is
 recorded and the action can be repeated to resend.
 Marking a slip **Paid** is a separate step that records the actual payment.
+Approval is recorded separately from the database status enum so deployments
+do not need ownership privileges to alter the existing PostgreSQL enum.

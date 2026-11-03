@@ -128,7 +128,13 @@ export function StaffSalaryWorkspace({
                         Attendance: {slip.paidDays} of {slip.totalDays} paid days
                       </p>
                     </div>
-                    <StatusBadge status={slip.status} />
+                    <StatusBadge
+                      status={
+                        slip.status === "GENERATED" && slip.approvedAt
+                          ? "APPROVED"
+                          : slip.status
+                      }
+                    />
                   </div>
                   <div className="mt-5 flex items-end justify-between gap-3 border-t pt-4">
                     <div>

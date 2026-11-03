@@ -1,5 +1,3 @@
-ALTER TYPE "SalarySlipStatus" ADD VALUE 'APPROVED';
-
 CREATE TYPE "SalarySlipAdjustmentType" AS ENUM ('EARNING', 'DEDUCTION');
 
 ALTER TABLE "salary_slip"

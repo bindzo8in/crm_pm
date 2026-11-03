@@ -1,1 +1,4 @@
+pnpm exec prisma validate
+pnpm exec prisma migrate deploy
+pnpm exec prisma generate
 pnpm build

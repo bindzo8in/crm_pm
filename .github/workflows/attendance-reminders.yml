@@ -8,7 +8,7 @@ on:
 jobs:
   send-reminders:
     concurrency:
-      group: attendance-reminders
+      group: attendance-reminders-${{ matrix.environment }}
       cancel-in-progress: false
     strategy:
       fail-fast: false
