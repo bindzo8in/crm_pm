@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
@@ -16,9 +17,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SalaryStructureDialog } from "./salary-structure-dialog";
 import { EditIcon, Eye, EyeOff, MoreHorizontal, SearchIcon, WalletCardsIcon } from "lucide-react";
-import type { SalaryEmployee } from "./types";
 import { Input } from "@/components/ui/input";
-import { setSalaryPayrollInclusionAction } from "@/actions/salary";
+import {
+  getSalaryRosterAction,
+  setSalaryPayrollInclusionAction,
+} from "@/actions/salary";
+import { PaginationControls } from "@/components/ui/pagination-controls";
+import type {
+  SalaryEmployee,
+  SalaryManagementSummary,
+  SalaryRosterPageInfo,
+} from "./types";
 
 const grossSalaryFormatter = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -27,25 +36,62 @@ const grossSalaryFormatter = new Intl.NumberFormat("en-IN", {
 });
 
 interface SalaryStructuresTabProps {
-  users: SalaryEmployee[];
+  initialUsers: SalaryEmployee[];
+  initialPage: SalaryRosterPageInfo;
+  summary: SalaryManagementSummary;
 }
 
-export function SalaryStructuresTab({ users }: SalaryStructuresTabProps) {
+export function SalaryStructuresTab({
+  initialUsers,
+  initialPage,
+  summary,
+}: SalaryStructuresTabProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [selectedUser, setSelectedUser] = useState<SalaryEmployee | null>(null);
   const [search, setSearch] = useState("");
   const [showExcluded, setShowExcluded] = useState(false);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const normalizedSearch = search.trim().toLowerCase();
-  const activeUsers = users.filter((user) => user.employmentStatus === "ACTIVE");
-  const includedUsers = activeUsers.filter((user) => user.includeInPayroll);
-  const excludedUsers = activeUsers.filter((user) => !user.includeInPayroll);
-  const rosterUsers = showExcluded ? excludedUsers : includedUsers;
-  const filteredUsers = rosterUsers.filter((user) =>
-    `${user.name} ${user.email} ${user.department ?? ""}`
-      .toLowerCase()
-      .includes(normalizedSearch),
-  );
+  const [debouncedSearch, setDebouncedSearch] = useState(normalizedSearch);
+  const [page, setPage] = useState(initialPage.page);
+  const [pageSize, setPageSize] = useState(initialPage.pageSize);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(normalizedSearch), 300);
+    return () => window.clearTimeout(timer);
+  }, [normalizedSearch]);
+
+  const rosterQuery = useQuery({
+    queryKey: ["salary-roster", page, pageSize, debouncedSearch, showExcluded],
+    queryFn: async () => {
+      const result = await getSalaryRosterAction({
+        page,
+        pageSize,
+        search: debouncedSearch,
+        view: showExcluded ? "excluded" : "included",
+      });
+      if (!result.success) throw new Error(result.error);
+      return result;
+    },
+    initialData:
+      page === initialPage.page &&
+      pageSize === initialPage.pageSize &&
+      debouncedSearch === "" &&
+      !showExcluded
+        ? {
+            success: true as const,
+            employees: initialUsers,
+            page: initialPage.page,
+            pageSize: initialPage.pageSize,
+            totalCount: initialPage.totalCount,
+            totalPages: Math.ceil(initialPage.totalCount / initialPage.pageSize),
+          }
+        : undefined,
+    placeholderData: keepPreviousData,
+  });
+  const employees = rosterQuery.data?.employees ?? [];
+  const totalCount = rosterQuery.data?.totalCount ?? 0;
 
   async function togglePayrollInclusion(user: SalaryEmployee) {
     setUpdatingUserId(user.id);
@@ -59,6 +105,8 @@ export function SalaryStructuresTab({ users }: SalaryStructuresTabProps) {
         return;
       }
       toast.success(result.message);
+      setPage(0);
+      await queryClient.invalidateQueries({ queryKey: ["salary-roster"] });
       router.refresh();
     } catch (error) {
       console.error("Failed to update payroll inclusion", error);
@@ -130,24 +178,33 @@ export function SalaryStructuresTab({ users }: SalaryStructuresTabProps) {
                 type="button"
                 variant={showExcluded ? "ghost" : "secondary"}
                 aria-pressed={!showExcluded}
-                onClick={() => setShowExcluded(false)}
+                onClick={() => {
+                  setPage(0);
+                  setShowExcluded(false);
+                }}
               >
-                Included ({includedUsers.length})
+                Included ({summary.includedCount})
               </Button>
               <Button
                 type="button"
                 variant={showExcluded ? "secondary" : "ghost"}
                 aria-pressed={showExcluded}
-                onClick={() => setShowExcluded(true)}
+                onClick={() => {
+                  setPage(0);
+                  setShowExcluded(true);
+                }}
               >
-                Not included ({excludedUsers.length})
+                Not included ({summary.excludedCount})
               </Button>
             </div>
             <div className="relative w-full sm:max-w-xs">
               <SearchIcon aria-hidden="true" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => {
+                  setPage(0);
+                  setSearch(event.target.value);
+                }}
                 type="search"
                 aria-label="Search payroll roster"
                 placeholder="Search employees"
@@ -169,15 +226,25 @@ export function SalaryStructuresTab({ users }: SalaryStructuresTabProps) {
         </p>
       </div>
 
+      {rosterQuery.isError ? (
+        <div role="alert" className="px-4 py-8 text-center text-sm text-destructive">
+          {rosterQuery.error.message}
+        </div>
+      ) : rosterQuery.isLoading ? (
+        <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+          Loading payroll employees…
+        </div>
+      ) : (
+      <>
       <div className="divide-y lg:hidden">
-        {filteredUsers.length === 0 ? (
+        {employees.length === 0 ? (
           <div className="px-4 py-12 text-center">
             <p className="font-medium">No matching employees</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              {search ? "Try a different name, email, or department." : "Employees will appear here when they are available."}
+              {normalizedSearch ? "Try a different name, email, or department." : "Employees will appear here when they are available."}
             </p>
           </div>
-        ) : filteredUsers.map((u) => (
+        ) : employees.map((u) => (
           <article key={u.id} className="space-y-3 px-4 py-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -238,10 +305,10 @@ export function SalaryStructuresTab({ users }: SalaryStructuresTabProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {filteredUsers.length === 0 ? (
+          {employees.length === 0 ? (
             <TableRow>
               <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                {search
+                {normalizedSearch
                   ? "No employees match your search."
                   : showExcluded
                     ? "Everyone is included in payroll."
@@ -249,7 +316,7 @@ export function SalaryStructuresTab({ users }: SalaryStructuresTabProps) {
               </TableCell>
             </TableRow>
           ) : (
-          filteredUsers.map((u) => (
+          employees.map((u) => (
               <TableRow key={u.id} className="hover:bg-muted/30">
                 <TableCell>
                   <div className="font-medium text-foreground">{u.name}</div>
@@ -287,6 +354,18 @@ export function SalaryStructuresTab({ users }: SalaryStructuresTabProps) {
         </TableBody>
       </Table>
       </div>
+      <PaginationControls
+        page={page}
+        pageSize={pageSize}
+        total={totalCount}
+        onPageChange={setPage}
+        onPageSizeChange={(nextPageSize) => {
+          setPageSize(nextPageSize);
+          setPage(0);
+        }}
+      />
+      </>
+      )}
 
       {selectedUser && (
         <SalaryStructureDialog 

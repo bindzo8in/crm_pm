@@ -28,6 +28,7 @@ export function isEligibleForAttendanceReminder(input: {
   date: Date;
   weekendDays: readonly number[];
   department: string | null;
+  additionalDepartments?: readonly string[];
   holidayDepartments: readonly (readonly string[])[] | null;
   hasApprovedLeave: boolean;
   hasAttendanceRecord: boolean;
@@ -37,7 +38,9 @@ export function isEligibleForAttendanceReminder(input: {
     input.holidayDepartments.some(
       (departments) =>
         departments.length === 0 ||
-        departments.includes(input.department ?? ""),
+        [input.department, ...(input.additionalDepartments ?? [])].some(
+          (department) => department !== null && departments.includes(department),
+        ),
     );
 
   return (

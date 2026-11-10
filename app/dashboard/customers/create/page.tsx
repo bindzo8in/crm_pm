@@ -11,7 +11,7 @@ export default async function Page() {
 
     return (
         <DashboardContainer title="Create Customer" flush hideHeaderOnMobile>
-            <CustomerForm />
+            <CustomerForm presentation="dialog" />
         </DashboardContainer>
     )
 }

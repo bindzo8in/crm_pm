@@ -16,12 +16,15 @@ export type LeaveRange = {
   endDate: Date;
   status: "APPROVED" | "PENDING" | "REJECTED";
   type: string;
+  isHalfDay?: boolean;
+  halfDayPeriod?: "MORNING" | "AFTERNOON" | null;
 };
 
 export type HolidayRange = {
   date: Date;
   name: string;
   departments: string[];
+  isHalfDay?: boolean;
 };
 
 type AttendanceLike = {
@@ -35,6 +38,7 @@ type AttendanceLike = {
     email: string;
     employeeId: string | number | null;
     department: string | null;
+    additionalDepartments?: string[];
     designation?: string | null;
   };
   clockIn?: Date | null;
@@ -53,7 +57,10 @@ type AttendanceLike = {
   regularizationReason?: string | null;
   notes?: string | null;
   holidayName?: string;
+  holidayIsHalfDay?: boolean;
   leaveType?: string;
+  leaveIsHalfDay?: boolean;
+  leaveHalfDayPeriod?: "MORNING" | "AFTERNOON" | null;
   leaveRequestStatus?: string;
   isSynthetic?: boolean;
 };
@@ -63,13 +70,18 @@ function dateKey(date: Date) {
 }
 
 export function isScheduledAttendanceShift(
-  record: { date: Date; status: string; holidayName?: string },
+  record: {
+    date: Date;
+    status: string;
+    holidayName?: string;
+    holidayIsHalfDay?: boolean;
+  },
   weekendDays: readonly number[] = DEFAULT_WEEKEND_DAYS,
   isHoliday = false,
 ) {
   if (
-    isHoliday ||
-    record.holidayName ||
+    (isHoliday && !record.holidayIsHalfDay) ||
+    (record.holidayName && !record.holidayIsHalfDay) ||
     record.status === "HOLIDAY" ||
     record.status === "WEEKEND" ||
     isWeekendDate(record.date, weekendDays)
@@ -77,7 +89,14 @@ export function isScheduledAttendanceShift(
     return false;
   }
 
-  return ["PRESENT", "LATE", "HALF_DAY", "ABSENT", "ON_LEAVE"].includes(
+  return [
+    "PRESENT",
+    "LATE",
+    "HALF_DAY",
+    "ABSENT",
+    "ON_LEAVE",
+    "AWAITING_ATTENDANCE",
+  ].includes(
     record.status,
   );
 }
@@ -104,6 +123,7 @@ export function buildResolvedAttendanceTimeline<TUser extends {
   email: string;
   employeeId: string | number | null;
   department: string | null;
+  additionalDepartments?: string[];
   designation?: string | null;
   createdAt?: Date;
   dateOfJoining?: Date | null;
@@ -135,7 +155,9 @@ export function buildResolvedAttendanceTimeline<TUser extends {
     const userHolidays = holidays.filter(
       (holiday) =>
         holiday.departments.length === 0 ||
-        holiday.departments.includes(user.department ?? ""),
+        [user.department, ...(user.additionalDepartments ?? [])].some(
+          (department) => department !== null && holiday.departments.includes(department),
+        ),
     );
     const userLeaves = leaveRequests.filter((leave) => leave.userId === user.id);
 
@@ -160,11 +182,18 @@ export function buildResolvedAttendanceTimeline<TUser extends {
       if (isWorkedStatus) {
         timeline.push({
           ...actual,
-          ...(holiday ? { holidayName: holiday.name } : {}),
+          ...(holiday
+            ? {
+                holidayName: holiday.name,
+                holidayIsHalfDay: holiday.isHalfDay === true,
+              }
+            : {}),
           ...(leave
             ? {
                 leaveType: leave.type,
                 leaveRequestStatus: leave.status,
+                leaveIsHalfDay: leave.isHalfDay === true,
+                leaveHalfDayPeriod: leave.halfDayPeriod ?? null,
               }
             : {}),
         });
@@ -186,6 +215,40 @@ export function buildResolvedAttendanceTimeline<TUser extends {
         continue;
       }
 
+      if (holiday?.isHalfDay && !isWeekendDate(date, weekendDays)) {
+        timeline.push({
+          ...(actual ?? {}),
+          id: actual?.id ?? `half-day-holiday:${key}`,
+          userId: user.id,
+          user,
+          date,
+          status: leave
+            ? "ON_LEAVE"
+            : dateKey(date) === dateKey(cutoff) &&
+                dateKey(cutoff) === dateKey(today) &&
+                !actual
+              ? "AWAITING_ATTENDANCE"
+              : "HALF_DAY",
+          holidayName: holiday.name,
+          holidayIsHalfDay: true,
+          ...(leave
+            ? {
+                leaveType: leave.type,
+                leaveRequestStatus: leave.status,
+                leaveIsHalfDay: leave.isHalfDay === true,
+                leaveHalfDayPeriod: leave.halfDayPeriod ?? null,
+              }
+            : {}),
+          workMinutes: actual?.workMinutes ?? 0,
+          breakMinutes: actual?.breakMinutes ?? 0,
+          overtimeMinutes: actual?.overtimeMinutes ?? 0,
+          lateMinutes: actual?.lateMinutes ?? 0,
+          workMode: actual?.workMode ?? null,
+          isSynthetic: !actual,
+        });
+        continue;
+      }
+
       if (holiday) {
         timeline.push({
           ...(actual ?? {}),
@@ -195,6 +258,7 @@ export function buildResolvedAttendanceTimeline<TUser extends {
           date,
           status: "HOLIDAY",
           holidayName: holiday.name,
+          holidayIsHalfDay: false,
           workMinutes: actual?.workMinutes ?? 0,
           breakMinutes: actual?.breakMinutes ?? 0,
           overtimeMinutes: actual?.overtimeMinutes ?? 0,
@@ -215,6 +279,8 @@ export function buildResolvedAttendanceTimeline<TUser extends {
           status: "ON_LEAVE",
           leaveType: leave.type,
           leaveRequestStatus: leave.status,
+          leaveIsHalfDay: leave.isHalfDay === true,
+          leaveHalfDayPeriod: leave.halfDayPeriod ?? null,
           workMinutes: actual?.workMinutes ?? 0,
           breakMinutes: actual?.breakMinutes ?? 0,
           overtimeMinutes: actual?.overtimeMinutes ?? 0,

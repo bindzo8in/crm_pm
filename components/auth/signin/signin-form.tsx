@@ -2,7 +2,7 @@
 import { SigninSchema, signinSchema } from '@/lib/schemas/signin-schema'
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm, Controller } from "react-hook-form"
-import { Globe, Mail } from "lucide-react"
+import { Mail } from "lucide-react"
 import { Field, FieldGroup, FieldContent, FieldLabel, FieldError, FieldSeparator } from "@/components/ui/field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,12 +12,26 @@ import { useState } from "react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import Link from "next/link"
+import type { OAuthProviderId } from "@/lib/oauth-provider-config"
 
-const socialMediaButtons = [
-  { label: "Continue with Google", provider: "google" as const },
+const socialMediaButtons: {
+  label: string;
+  provider: OAuthProviderId;
+}[] = [
+  { label: "Google", provider: "google" },
+  { label: "Facebook", provider: "facebook" },
+  { label: "X", provider: "twitter" },
+  { label: "Microsoft", provider: "microsoft" },
+  { label: "LinkedIn", provider: "linkedin" },
 ]
 
-export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
+export function SigninForm({
+  callbackUrl = '/',
+  enabledProviders,
+}: {
+  callbackUrl: string;
+  enabledProviders: OAuthProviderId[];
+}) {
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
@@ -25,6 +39,7 @@ export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
     useState(false);
   const [needsVerification, setNeedsVerification] = useState(false);
   const [verificationMessage, setVerificationMessage] = useState<string | null>(null);
+  const [activeProvider, setActiveProvider] = useState<OAuthProviderId | null>(null);
   const form = useForm<SigninSchema>({
     resolver: zodResolver(signinSchema),
     defaultValues: {
@@ -68,14 +83,26 @@ export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
     }
   });
 
-  const continueWith = async ({ provider }: { provider: "google" }) => {
+  const continueWith = async (provider: OAuthProviderId) => {
     try {
-      await signIn.social({
+      setActiveProvider(provider);
+      setError(null);
+      setMessage(null);
+      const { error } = await signIn.social({
         provider,
         callbackURL: callbackUrl,
       })
-    } catch {
-      setMessage(`Sign in with ${provider} could not start. Please try again.`)
+      if (error) throw error;
+    } catch (error) {
+      setMessage(
+        typeof error === "object" &&
+        error !== null &&
+        "message" in error &&
+        typeof error.message === "string"
+          ? error.message
+          : `Sign in with ${providerLabel(provider)} could not start. Please try again.`,
+      )
+      setActiveProvider(null);
     }
   }
 
@@ -251,20 +278,30 @@ export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
               </Field>
             )}
           />
-          <FieldSeparator className="my-4 col-span-full">OR</FieldSeparator>
-          <div className="flex gap-3 justify-center w-full items-center flex-wrap pb-3 col-span-full">
-            {socialMediaButtons.map((o) => (
-              <Button key={o.label} variant="outline" type="button"
-                className="text-sm gap-2 px-2 h-10 grow "
-                onClick={() => {
-                  continueWith({ provider: o.provider });
-                }}
-              >
-                <Globe aria-hidden="true" className="size-4" />
-                {o.label}
-              </Button>
-            ))}
-          </div>
+          {enabledProviders.length > 0 && (
+            <>
+              <FieldSeparator className="my-4 col-span-full">Or sign in using</FieldSeparator>
+              <div className="flex gap-2 justify-center w-full items-center pb-3 col-span-full">
+                {socialMediaButtons
+                  .filter(({ provider }) => enabledProviders.includes(provider))
+                  .map(({ label, provider }) => (
+                    <Button
+                      key={provider}
+                      variant="ghost"
+                      size="icon"
+                      type="button"
+                      aria-label={`Continue with ${label}`}
+                      title={`Continue with ${label}`}
+                      className="size-10 rounded-md"
+                      disabled={activeProvider !== null}
+                      onClick={() => continueWith(provider)}
+                    >
+                      <OAuthProviderIcon provider={provider} />
+                    </Button>
+                  ))}
+              </div>
+            </>
+          )}
         </FieldGroup>
         <div className="flex justify-end items-center w-full">
           <Button className="h-11 w-full" disabled={isSubmitting}>
@@ -280,4 +317,52 @@ export function SigninForm({ callbackUrl = '/' }: { callbackUrl: string }) {
       </form>
     </>
   )
+}
+
+function providerLabel(provider: OAuthProviderId) {
+  return socialMediaButtons.find((button) => button.provider === provider)?.label ?? provider;
+}
+
+function OAuthProviderIcon({ provider }: { provider: OAuthProviderId }) {
+  switch (provider) {
+    case "google":
+      return (
+        <svg aria-hidden="true" viewBox="0 0 48 48" className="size-5">
+          <path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.9-3.6 6.1-8.8 6.1-15Z" />
+          <path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.8l-6.6-5.1c-1.8 1.2-4 2-6.9 2-5.3 0-9.8-3.6-11.4-8.4H5.8v5.3A20 20 0 0 0 24 44Z" />
+          <path fill="#FBBC05" d="M12.6 27.7a12 12 0 0 1 0-7.4V15H5.8a20 20 0 0 0 0 18Z" />
+          <path fill="#EA4335" d="M24 11.9c3 0 5.7 1 7.8 3.1l5.8-5.8C34.1 6 29.5 4 24 4A20 20 0 0 0 5.8 15l6.8 5.3c1.6-4.8 6.1-8.4 11.4-8.4Z" />
+        </svg>
+      );
+    case "facebook":
+      return (
+        <svg aria-hidden="true" viewBox="0 0 24 24" className="size-5">
+          <circle cx="12" cy="12" r="11" fill="#1877F2" />
+          <path fill="#fff" d="M13.5 20v-7.3H16l.4-2.8h-2.9V8.1c0-.8.2-1.3 1.4-1.3h1.6V4.3c-.3 0-1.3-.1-2.4-.1-2.4 0-4 1.5-4 4.1v1.6H7.5v2.8h2.7V20h3.3Z" />
+        </svg>
+      );
+    case "twitter":
+      return (
+        <svg aria-hidden="true" viewBox="0 0 24 24" className="size-5">
+          <circle cx="12" cy="12" r="11" fill="currentColor" />
+          <path d="m7.1 6.7 9.8 10.6h-1.9L5.2 6.7h1.9Zm-.9 10.6 5-5.7m1.7-1.9 2.8-3" fill="none" stroke="var(--background)" strokeWidth="1.7" />
+        </svg>
+      );
+    case "microsoft":
+      return (
+        <svg aria-hidden="true" viewBox="0 0 24 24" className="size-5">
+          <path fill="#F25022" d="M2 2h9.5v9.5H2z" />
+          <path fill="#7FBA00" d="M12.5 2H22v9.5h-9.5z" />
+          <path fill="#00A4EF" d="M2 12.5h9.5V22H2z" />
+          <path fill="#FFB900" d="M12.5 12.5H22V22h-9.5z" />
+        </svg>
+      );
+    case "linkedin":
+      return (
+        <svg aria-hidden="true" viewBox="0 0 24 24" className="size-5">
+          <rect x="1" y="1" width="22" height="22" rx="2" fill="#0A66C2" />
+          <path fill="#fff" d="M6.3 9.2h2.8v8.5H6.3V9.2Zm1.4-4.1a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2Zm3.1 4.1h2.7v1.2h.1c.4-.7 1.3-1.5 2.7-1.5 2.9 0 3.4 1.9 3.4 4.3v4.5h-2.8v-4c0-1 0-2.3-1.4-2.3s-1.7 1.1-1.7 2.2v4.1h-2.8V9.2Z" />
+        </svg>
+      );
+  }
 }

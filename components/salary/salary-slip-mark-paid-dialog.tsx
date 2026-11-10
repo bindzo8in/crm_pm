@@ -12,6 +12,7 @@ import {
   RefreshCwIcon,
 } from "lucide-react";
 import type { SalarySlipUpdate } from "./types";
+import { getAttendanceDate } from "@/lib/date";
 
 interface SalarySlipMarkPaidDialogProps {
   isOpen: boolean;
@@ -22,11 +23,7 @@ interface SalarySlipMarkPaidDialogProps {
 
 export function SalarySlipMarkPaidDialog({ isOpen, onClose, slipId, onSuccess }: SalarySlipMarkPaidDialogProps) {
   const [loading, setLoading] = useState(false);
-  const [paymentDate, setPaymentDate] = useState(() => {
-    const today = new Date();
-    const localToday = new Date(today.getTime() - today.getTimezoneOffset() * 60_000);
-    return localToday.toISOString().slice(0, 10);
-  });
+  const [paymentDate, setPaymentDate] = useState(getAttendanceDate);
   const [paymentMethod, setPaymentMethod] = useState("BANK_TRANSFER");
   const [referenceId, setReferenceId] = useState("");
   const [notes, setNotes] = useState("");

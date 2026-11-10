@@ -1,7 +1,7 @@
 "use client";
 
-import * as z from "zod";
 import { bankAccountSchema, BankAccountFormValues } from "@/lib/schemas/bank-account";
+import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Controller } from "react-hook-form";
 import {
@@ -16,13 +16,36 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CreateBankAccount, UpdateBankAccount } from "@/actions/bank-accounts";
 import { toast } from "sonner";
 import { ImageUpload } from "@/components/ui/image-upload";
-import { Switch } from "@/components/ui/switch";
+import type { CompanyBankAccount } from "@/app/generated/prisma/client";
 
-export function BankAccountForm({ defaultValues, onSuccess }: { defaultValues?: any, onSuccess: () => void }) {
+function getQrCodeImage(value: unknown): BankAccountFormValues["qrCodeImage"] {
+    if (
+        typeof value === "object" &&
+        value !== null &&
+        "url" in value &&
+        typeof value.url === "string" &&
+        "publicId" in value &&
+        typeof value.publicId === "string"
+    ) {
+        return { url: value.url, publicId: value.publicId };
+    }
+    return null;
+}
+
+export function BankAccountForm({
+    defaultValues,
+    onSuccess,
+}: {
+    defaultValues?: Omit<Partial<CompanyBankAccount>, "qrCodeImage"> & {
+        id?: string;
+        qrCodeImage?: BankAccountFormValues["qrCodeImage"] | CompanyBankAccount["qrCodeImage"];
+    };
+    onSuccess: (accountId?: string) => void;
+}) {
     const queryClient = useQueryClient();
     const isEdit = !!defaultValues?.id;
 
-    const form = useForm({
+    const form = useForm<z.input<typeof bankAccountSchema>, unknown, BankAccountFormValues>({
         resolver: zodResolver(bankAccountSchema),
         defaultValues: {
             accountName: defaultValues?.accountName || "",
@@ -33,7 +56,7 @@ export function BankAccountForm({ defaultValues, onSuccess }: { defaultValues?: 
             swiftCode: defaultValues?.swiftCode || "",
             accountType: defaultValues?.accountType || "",
             upiId: defaultValues?.upiId || "",
-            qrCodeImage: defaultValues?.qrCodeImage || null,
+            qrCodeImage: getQrCodeImage(defaultValues?.qrCodeImage),
             isDefault: defaultValues?.isDefault || false,
             isActive: defaultValues?.isActive !== undefined ? defaultValues.isActive : true,
             displayOrder: defaultValues?.displayOrder || 0,
@@ -48,15 +71,15 @@ export function BankAccountForm({ defaultValues, onSuccess }: { defaultValues?: 
             } else {
                 toast.success(ctx.message)
                 queryClient.invalidateQueries({ queryKey: ["bankAccounts"] })
-                onSuccess()
+                onSuccess("accountId" in ctx && typeof ctx.accountId === "string" ? ctx.accountId : undefined)
             }
         },
-        onError: (ctx: any) => {
-            toast.error(ctx.message || "An error occurred")
+        onError: (error: unknown) => {
+            toast.error(error instanceof Error ? error.message : "An error occurred")
         }
     })
 
-    const handleSubmit = form.handleSubmit((data: any) => {
+    const handleSubmit = form.handleSubmit((data) => {
         mutate(data)
     });
 
@@ -177,7 +200,7 @@ export function BankAccountForm({ defaultValues, onSuccess }: { defaultValues?: 
             </FieldGroup>
 
             <div className="flex justify-end gap-2 mt-4">
-                <Button type="button" variant="outline" onClick={onSuccess}>Cancel</Button>
+                <Button type="button" variant="outline" onClick={() => onSuccess()}>Cancel</Button>
                 <Button disabled={isPending}>
                     {isPending ? "Saving..." : isEdit ? "Update Account" : "Create Account"}
                 </Button>

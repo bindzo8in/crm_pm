@@ -1,6 +1,10 @@
 import { Metadata } from "next";
 import { SalaryDashboardHub } from "@/components/salary/salary-dashboard-hub";
-import { getSalarySlipsAction } from "@/actions/salary";
+import {
+  getSalaryManagementSummaryAction,
+  getSalaryRosterAction,
+  getSalarySlipsAction,
+} from "@/actions/salary";
 import { requirePageAccess } from "@/lib/auth-guard";
 import { UserRole } from "@/app/generated/prisma/enums";
 import prisma from "@/lib/prisma";
@@ -11,25 +15,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { hasSalaryPin, isSalaryPinSessionValid } from "@/lib/salary-pin";
 import { SalaryPinGate } from "@/components/salary/salary-pin-gate";
-import { salaryComponentsSchema } from "@/lib/schemas/salary-schema";
 
 export const metadata: Metadata = {
   title: "Salary Management | CRM",
 };
-
-type PayrollPaymentMethod = "BANK_TRANSFER" | "UPI" | "CHEQUE" | "CASH" | "OTHER";
-
-function getPayrollPaymentMethod(method: string): PayrollPaymentMethod {
-  switch (method) {
-    case "UPI":
-    case "CHEQUE":
-    case "CASH":
-    case "OTHER":
-      return method;
-    default:
-      return "BANK_TRANSFER";
-  }
-}
 
 export default async function SalaryDashboardPage() {
   const session = await requirePageAccess("/dashboard/salary");
@@ -61,83 +50,11 @@ export default async function SalaryDashboardPage() {
     );
   }
 
-  const users = isHrOrAdmin
-    ? (
-        await prisma.user.findMany({
-          where: { employmentStatus: "ACTIVE" },
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-            department: true,
-            employmentStatus: true,
-            includeInPayroll: true,
-            salaryStructure: {
-              select: {
-                id: true,
-                basicSalary: true,
-                hra: true,
-                conveyance: true,
-                medical: true,
-                specialAllowance: true,
-                customComponents: true,
-              },
-            },
-            designation: true,
-            dateOfJoining: true,
-            employmentType: true,
-            annualCtc: true,
-            bankName: true,
-            bankAccountNo: true,
-            bankIfsc: true,
-            bankAccountType: true,
-            panNo: true,
-            aadhaarNo: true,
-            costCenter: true,
-            uanNo: true,
-            pfNo: true,
-            esiNo: true,
-            pfEligible: true,
-            esiEligible: true,
-            taxRegime: true,
-            paymentMethod: true,
-          },
-          orderBy: { name: "asc" },
-        })
-      ).map(({ salaryStructure, ...employee }) => {
-        let grossSalary: string | null = null;
-        if (salaryStructure) {
-          const parsedComponents = salaryComponentsSchema.safeParse(
-            salaryStructure.customComponents ?? [],
-          );
-          if (!parsedComponents.success) {
-            throw new Error(
-              `Salary structure has invalid custom components for employee ${employee.id}.`,
-            );
-          }
-          const fixedEarnings =
-            Number(salaryStructure.basicSalary) +
-            Number(salaryStructure.hra) +
-            Number(salaryStructure.conveyance) +
-            Number(salaryStructure.medical) +
-            Number(salaryStructure.specialAllowance);
-          const additionalEarnings = parsedComponents.data
-            .filter((component) => component.type === "EARNING")
-            .reduce((total, component) => total + component.amount, 0);
-          grossSalary = (fixedEarnings + additionalEarnings).toString();
-        }
-
-        return {
-          ...employee,
-          hasSalaryStructure: salaryStructure !== null,
-          grossSalary,
-          annualCtc: employee.annualCtc?.toString() ?? null,
-          paymentMethod: getPayrollPaymentMethod(employee.paymentMethod),
-        };
-      })
-    : [];
-  const slipsRes = await getSalarySlipsAction({});
+  const [rosterRes, slipsRes, summaryRes] = await Promise.all([
+    getSalaryRosterAction({ page: 0, pageSize: 20, view: "included" }),
+    getSalarySlipsAction({ page: 0, pageSize: 20 }),
+    getSalaryManagementSummaryAction(),
+  ]);
   let staffProfile: {
     name: string;
     email: string;
@@ -186,13 +103,16 @@ export default async function SalaryDashboardPage() {
     }
   }
 
-  if (!slipsRes.success) {
+  if (!slipsRes.success || !rosterRes.success || !summaryRes.success) {
     return (
       <DashboardContainer title="Salary management">
         <Alert variant="destructive">
-          <AlertTitle>Salary slips could not be loaded</AlertTitle>
+          <AlertTitle>Salary management data could not be loaded</AlertTitle>
           <AlertDescription>
-            Refresh the page to try again. If the problem continues, contact an administrator.
+            {(!slipsRes.success && slipsRes.error) ||
+              (!rosterRes.success && rosterRes.error) ||
+              (!summaryRes.success && summaryRes.error) ||
+              "Refresh the page to try again. If the problem continues, contact an administrator."}
           </AlertDescription>
           <Button asChild className="mt-3" size="sm" variant="outline">
             <Link href="/dashboard/salary">Try again</Link>
@@ -218,8 +138,20 @@ export default async function SalaryDashboardPage() {
             </p>
           </div>
           <SalaryDashboardHub
-            users={users}
+            initialUsers={rosterRes.employees}
+            initialRoster={{
+              page: rosterRes.page,
+              pageSize: rosterRes.pageSize,
+              totalCount: rosterRes.totalCount,
+            }}
+            summary={summaryRes.summary}
             initialSlips={slipsRes.slips}
+            initialSlipPage={{
+              page: slipsRes.page,
+              pageSize: slipsRes.pageSize,
+              totalCount: slipsRes.totalCount,
+              paidYtd: slipsRes.paidYtd,
+            }}
             isHrOrAdmin={isHrOrAdmin}
             staffProfile={staffProfile}
             staffLeaveSummary={staffLeaveSummary}

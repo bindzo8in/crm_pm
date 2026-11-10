@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default async function WorkSchedulePage() {
   const { user, isAuthorized } = await requireAttendanceAccess();
-  if (!isAuthorized) redirect("/attendance");
+  if (!isAuthorized || !isAttendanceManager(user)) redirect("/attendance");
 
   const weekendDays = await getWeekendDays();
   return (
@@ -27,7 +27,7 @@ export default async function WorkSchedulePage() {
           </p>
         </header>
         <WeeklyScheduleSettings
-          isManager={isAttendanceManager(user)}
+          isManager
           weekendDays={weekendDays}
         />
       </div>

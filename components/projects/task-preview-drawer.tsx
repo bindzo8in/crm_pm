@@ -107,6 +107,15 @@ function displayDate(value: Date | string | null) {
   return value ? formatInIST(new Date(value), "d MMM yyyy") : "Not set";
 }
 
+function formatPersonField(value: string | null | undefined) {
+  if (!value) return null;
+  return value
+    .toLocaleLowerCase()
+    .split(/[\s_]+/)
+    .map((part) => part.charAt(0).toLocaleUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 export function TaskPreviewDrawer({
   taskId,
   open,
@@ -370,6 +379,12 @@ export function TaskPreviewDrawer({
     label: person.name,
     icon: "team",
   }));
+  const selectedAssignee = taskAssignees.find(({ id }) => id === draft?.assigneeId);
+  const selectedAssigneeDetails = selectedAssignee
+    ? [formatPersonField(selectedAssignee.role), formatPersonField(selectedAssignee.department)]
+        .filter((value): value is string => value !== null)
+        .join(" · ")
+    : null;
   const dependencyOptions: MultiSelectOption[] = task?.project.availableDependencies
     .filter((candidate) =>
       !task.dependencies.some(({ dependsOnTask }) => dependsOnTask.id === candidate.id)
@@ -444,9 +459,9 @@ export function TaskPreviewDrawer({
             )}
           </div>
         ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
             <form onSubmit={(event) => void saveTask(event)} className="space-y-0">
-              <div className="border-b px-5 py-4">
+              <div className="min-w-0 border-b px-4 py-4 sm:px-5">
                 <label htmlFor="task-preview-title" className="mb-1.5 block text-xs font-medium text-muted-foreground">
                   Task title
                 </label>
@@ -460,8 +475,8 @@ export function TaskPreviewDrawer({
                   className="h-10 text-base font-medium"
                 />
               </div>
-              <div className="space-y-0 px-5">
-                <div className="grid grid-cols-[116px_minmax(0,1fr)] items-center gap-x-3 border-b py-3">
+              <div className="min-w-0 space-y-0 px-4 sm:px-5">
+                <div className="grid min-w-0 grid-cols-1 items-start gap-y-2 border-b py-3 sm:grid-cols-[116px_minmax(0,1fr)] sm:items-center sm:gap-x-3">
                   <span className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Circle aria-hidden="true" className="size-4" /> Status
                   </span>
@@ -471,51 +486,57 @@ export function TaskPreviewDrawer({
                     disabled={!task.permissions.canUpdate || isPending}
                     onValueChange={(status) => setDraft((current) => current ? { ...current, status } : current)}
                     options={statusOptions}
-                    className="h-9 w-fit min-w-40"
+                    className="h-9 w-full min-w-0 sm:w-fit sm:min-w-40"
                   />
                 </div>
-                <div className="grid grid-cols-[116px_minmax(0,1fr)] items-center gap-x-3 border-b py-3">
+                <div className="grid min-w-0 grid-cols-1 items-start gap-y-2 border-b py-3 sm:grid-cols-[116px_minmax(0,1fr)] sm:items-center sm:gap-x-3">
                   <span className="flex items-center gap-2 text-sm text-muted-foreground">
                     <UserRound aria-hidden="true" className="size-4" /> Assignee
                   </span>
-                  <OptionSelect
-                    label="Task assignee"
-                    value={draft.assigneeId}
-                    disabled={!task.permissions.canUpdate || isPending}
-                    onValueChange={(assigneeId) => setDraft((current) => current ? { ...current, assigneeId } : current)}
-                    emptyLabel="Unassigned"
-                    options={assigneeOptions}
-                    className="h-9 w-fit min-w-40"
-                  />
-                </div>
-                <div className="grid grid-cols-[116px_minmax(0,1fr)] items-center gap-x-3 border-b py-3">
-                  <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <CalendarDays aria-hidden="true" className="size-4" /> Dates
-                  </span>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <label className="grid gap-1 text-xs text-muted-foreground">
-                      Start date
-                      <Input
-                        type="date"
-                        value={draft.startDate}
-                        disabled={!task.permissions.canUpdate || isPending}
-                        onChange={(event) => setDraft((current) => current ? { ...current, startDate: event.target.value } : current)}
-                        className="h-9 text-sm text-foreground"
-                      />
-                    </label>
-                    <label className="grid gap-1 text-xs text-muted-foreground">
-                      Due date
-                      <Input
-                        type="date"
-                        value={draft.dueDate}
-                        disabled={!task.permissions.canUpdate || isPending}
-                        onChange={(event) => setDraft((current) => current ? { ...current, dueDate: event.target.value } : current)}
-                        className="h-9 text-sm text-foreground"
-                      />
-                    </label>
+                  <div className="min-w-0">
+                    <OptionSelect
+                      label="Task assignee"
+                      value={draft.assigneeId}
+                      disabled={!task.permissions.canUpdate || isPending}
+                      onValueChange={(assigneeId) => setDraft((current) => current ? { ...current, assigneeId } : current)}
+                      emptyLabel="Unassigned"
+                      options={assigneeOptions}
+                      className="h-9 w-full min-w-0 sm:w-fit sm:min-w-40"
+                    />
+                    {selectedAssigneeDetails && (
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {selectedAssigneeDetails}
+                      </p>
+                    )}
                   </div>
                 </div>
-                <div className="grid grid-cols-[116px_minmax(0,1fr)] items-center gap-x-3 border-b py-3">
+                <div className="grid min-w-0 grid-cols-1 items-start gap-y-2 border-b py-3 sm:grid-cols-[116px_minmax(0,1fr)] sm:items-center sm:gap-x-3">
+                  <label htmlFor="task-start-date" className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <CalendarDays aria-hidden="true" className="size-4" /> Start date
+                  </label>
+                  <Input
+                    id="task-start-date"
+                    type="date"
+                    value={draft.startDate}
+                    disabled={!task.permissions.canUpdate || isPending}
+                    onChange={(event) => setDraft((current) => current ? { ...current, startDate: event.target.value } : current)}
+                    className="h-9 text-sm text-foreground"
+                  />
+                </div>
+                <div className="grid min-w-0 grid-cols-1 items-start gap-y-2 border-b py-3 sm:grid-cols-[116px_minmax(0,1fr)] sm:items-center sm:gap-x-3">
+                  <label htmlFor="task-due-date" className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <CalendarDays aria-hidden="true" className="size-4" /> Due date
+                  </label>
+                  <Input
+                    id="task-due-date"
+                    type="date"
+                    value={draft.dueDate}
+                    disabled={!task.permissions.canUpdate || isPending}
+                    onChange={(event) => setDraft((current) => current ? { ...current, dueDate: event.target.value } : current)}
+                    className="h-9 text-sm text-foreground"
+                  />
+                </div>
+                <div className="grid min-w-0 grid-cols-1 items-start gap-y-2 border-b py-3 sm:grid-cols-[116px_minmax(0,1fr)] sm:items-center sm:gap-x-3">
                   <label htmlFor="task-priority" className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Flag aria-hidden="true" className="size-4 text-amber-500" /> Priority
                   </label>
@@ -534,14 +555,14 @@ export function TaskPreviewDrawer({
                       { value: "HIGH", label: "High", icon: "flag" },
                       { value: "URGENT", label: "Urgent", icon: "overdue" },
                     ]}
-                    className="h-9 w-fit min-w-40"
+                    className="h-9 w-full min-w-0 sm:w-fit sm:min-w-40"
                   />
                 </div>
-                <div className="grid grid-cols-[116px_minmax(0,1fr)] items-center gap-x-3 border-b py-3">
+                <div className="grid min-w-0 grid-cols-1 items-start gap-y-2 border-b py-3 sm:grid-cols-[116px_minmax(0,1fr)] sm:items-center sm:gap-x-3">
                   <label htmlFor="task-estimate" className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Clock3 aria-hidden="true" className="size-4" /> Time estimate
                   </label>
-                  <div className="flex max-w-56 items-center gap-2">
+                  <div className="flex w-full min-w-0 max-w-56 items-center gap-2">
                     <Input
                       id="task-estimate"
                       type="number"
@@ -552,12 +573,12 @@ export function TaskPreviewDrawer({
                       disabled={!task.permissions.canUpdate || isPending}
                       onChange={(event) => setDraft((current) => current ? { ...current, estimateHours: event.target.value } : current)}
                       placeholder="Not set"
-                      className="h-9"
+                      className="h-9 min-w-0 flex-1"
                     />
                     <span className="text-sm text-muted-foreground">hours</span>
                   </div>
                 </div>
-                <div className="grid grid-cols-[116px_minmax(0,1fr)] items-center gap-x-3 border-b py-3">
+                <div className="grid min-w-0 grid-cols-1 items-start gap-y-2 border-b py-3 sm:grid-cols-[116px_minmax(0,1fr)] sm:items-center sm:gap-x-3">
                   <label htmlFor="task-points" className="flex items-center gap-2 text-sm text-muted-foreground">
                     <CheckSquare aria-hidden="true" className="size-4" /> Sprint points
                   </label>
@@ -571,11 +592,11 @@ export function TaskPreviewDrawer({
                     disabled={!task.permissions.canUpdate || isPending}
                     onChange={(event) => setDraft((current) => current ? { ...current, sprintPoints: event.target.value } : current)}
                     placeholder="Not set"
-                    className="h-9 max-w-40"
+                    className="h-9 w-full min-w-0 max-w-40"
                   />
                 </div>
                 {task.permissions.canTrackTime && (
-                  <div className="grid grid-cols-[116px_minmax(0,1fr)] items-center gap-x-3 border-b py-3">
+                    <div className="grid min-w-0 grid-cols-1 items-start gap-y-2 border-b py-3 sm:grid-cols-[116px_minmax(0,1fr)] sm:items-center sm:gap-x-3">
                     <span className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Clock3 aria-hidden="true" className="size-4" /> Track time
                     </span>
@@ -603,7 +624,7 @@ export function TaskPreviewDrawer({
                 )}
               </div>
 
-              <section className="space-y-2 border-b px-5 py-4">
+              <section className="min-w-0 space-y-2 border-b px-4 py-4 sm:px-5">
                 <h3 className="text-sm font-medium">Description</h3>
                 <Textarea
                   value={draft.description}
@@ -617,7 +638,7 @@ export function TaskPreviewDrawer({
               </section>
 
               {task.permissions.canUpdate && (
-                <div className="flex justify-end border-b px-5 py-3">
+                <div className="flex justify-end border-b px-4 py-3 sm:px-5">
                   <Button type="submit" size="sm" disabled={isPending || !draft.title.trim()}>
                     {isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Check className="size-4" />}
                     Save changes
@@ -626,7 +647,7 @@ export function TaskPreviewDrawer({
               )}
             </form>
 
-            <section className="border-b px-5 py-4">
+            <section className="min-w-0 border-b px-4 py-4 sm:px-5">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <h3 className="flex items-center gap-2 text-sm font-medium">
                   <ListChecks aria-hidden="true" className="size-4 text-muted-foreground" />

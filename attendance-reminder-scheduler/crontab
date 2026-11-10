@@ -1,0 +1,4 @@
+# Attendance reminders: every five minutes, India Standard Time.
+*/5 * * * * /usr/local/bin/send-reminders.sh
+# Monthly payroll: 02:30 on day 1, India Standard Time.
+30 2 1 * * /usr/local/bin/send-monthly-salary.sh

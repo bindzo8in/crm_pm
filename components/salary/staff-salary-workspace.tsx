@@ -1,13 +1,18 @@
 "use client";
 
+import { useState } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { CalendarDays, Download, Eye, FileText, IndianRupee, Palmtree, UserRound } from "lucide-react";
+import { CalendarDays, Download, Eye, FileText, IndianRupee, Palmtree } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/utils";
-import type { SalarySlipRecord } from "./types";
+import { requiresSalarySlipReview } from "@/lib/salary-review-policy";
+import { getSalarySlipsAction } from "@/actions/salary";
+import { PaginationControls } from "@/components/ui/pagination-controls";
+import type { SalarySlipPageInfo, SalarySlipRecord } from "./types";
 
 const months = [
   "January", "February", "March", "April", "May", "June",
@@ -30,18 +35,43 @@ type StaffLeaveSummary = {
 interface StaffSalaryWorkspaceProps {
   profile: StaffProfile;
   slips: SalarySlipRecord[];
+  slipPage: SalarySlipPageInfo;
   leaveSummary: StaffLeaveSummary;
 }
 
 export function StaffSalaryWorkspace({
   profile,
   slips,
+  slipPage,
   leaveSummary,
 }: StaffSalaryWorkspaceProps) {
+  const [page, setPage] = useState(slipPage.page);
+  const [pageSize, setPageSize] = useState(slipPage.pageSize);
+  const slipsQuery = useQuery({
+    queryKey: ["salary-slips", page, pageSize, "", "ALL"],
+    queryFn: async () => {
+      const result = await getSalarySlipsAction({ page, pageSize });
+      if (!result.success) throw new Error(result.error);
+      return result;
+    },
+    initialData:
+      page === slipPage.page && pageSize === slipPage.pageSize
+        ? {
+            success: true as const,
+            slips,
+            page: slipPage.page,
+            pageSize: slipPage.pageSize,
+            totalCount: slipPage.totalCount,
+            totalPages: Math.ceil(slipPage.totalCount / slipPage.pageSize),
+            paidYtd: slipPage.paidYtd,
+          }
+        : undefined,
+    placeholderData: keepPreviousData,
+  });
+  const displayedSlips = slipsQuery.data?.slips ?? slips;
+  const totalCount = slipsQuery.data?.totalCount ?? slipPage.totalCount;
   const currentYear = new Date().getFullYear();
-  const paidYtd = slips
-    .filter((slip) => slip.status === "PAID" && slip.year === currentYear)
-    .reduce((total, slip) => total + Number(slip.netSalary), 0);
+  const paidYtd = Number(slipPage.paidYtd);
   return (
     <div className="space-y-5">
       <section className="rounded-2xl border bg-card p-4 sm:p-5">
@@ -76,7 +106,7 @@ export function StaffSalaryWorkspace({
         <SummaryCard
           icon={<FileText className="size-4" />}
           label="Salary slips"
-          value={String(slips.length)}
+          value={String(totalCount)}
           detail="Available records"
         />
         <SummaryCard
@@ -105,7 +135,11 @@ export function StaffSalaryWorkspace({
           <p className="text-sm text-muted-foreground">View and download your payroll records.</p>
         </div>
 
-        {slips.length === 0 ? (
+        {slipsQuery.isError ? (
+          <Card role="alert" className="p-5 text-sm text-destructive">
+            {slipsQuery.error.message}
+          </Card>
+        ) : displayedSlips.length === 0 ? (
           <Card className="flex flex-col items-center px-6 py-12 text-center">
             <FileText className="size-6 text-muted-foreground" />
             <h3 className="mt-3 font-semibold">No salary slips yet</h3>
@@ -115,7 +149,7 @@ export function StaffSalaryWorkspace({
           </Card>
         ) : (
           <div className="grid gap-3">
-            {[...slips]
+            {[...displayedSlips]
               .sort((a, b) => b.year - a.year || b.month - a.month)
               .map((slip) => (
                 <Card key={slip.id} className="p-4 sm:p-5">
@@ -128,13 +162,7 @@ export function StaffSalaryWorkspace({
                         Attendance: {slip.paidDays} of {slip.totalDays} paid days
                       </p>
                     </div>
-                    <StatusBadge
-                      status={
-                        slip.status === "GENERATED" && slip.approvedAt
-                          ? "APPROVED"
-                          : slip.status
-                      }
-                    />
+                    <StatusBadge slip={slip} />
                   </div>
                   <div className="mt-5 flex items-end justify-between gap-3 border-t pt-4">
                     <div>
@@ -160,6 +188,18 @@ export function StaffSalaryWorkspace({
               ))}
           </div>
         )}
+        <div className="overflow-hidden rounded-xl border bg-card">
+          <PaginationControls
+            page={page}
+            pageSize={pageSize}
+            total={totalCount}
+            onPageChange={setPage}
+            onPageSizeChange={(nextPageSize) => {
+              setPageSize(nextPageSize);
+              setPage(0);
+            }}
+          />
+        </div>
       </section>
     </div>
   );
@@ -188,7 +228,22 @@ function SummaryCard({
   );
 }
 
-function StatusBadge({ status }: { status: SalarySlipRecord["status"] }) {
+function StatusBadge({ slip }: { slip: SalarySlipRecord }) {
+  const status =
+    slip.status === "GENERATED" && slip.approvedAt
+      ? "APPROVED"
+      : slip.status;
+  const label =
+    requiresSalarySlipReview(slip)
+      ? "Awaiting review"
+      : slip.status === "GENERATED" && slip.approvedAt
+        ? "Approved"
+      : slip.status === "GENERATED"
+        ? slip.emailSentAt
+          ? "Sent"
+          : "Generated"
+        : status;
+
   return (
     <Badge
       variant="outline"
@@ -202,7 +257,7 @@ function StatusBadge({ status }: { status: SalarySlipRecord["status"] }) {
             : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400"
       }
     >
-      {status === "GENERATED" ? "Awaiting review" : status === "APPROVED" ? "Approved" : status === "PAID" ? "Paid" : "Draft"}
+      {label}
     </Badge>
   );
 }

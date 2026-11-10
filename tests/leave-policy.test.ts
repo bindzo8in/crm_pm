@@ -5,6 +5,7 @@ import { isLeaveManager } from "../lib/leave-permissions";
 import { hasWorkspaceAccess } from "../lib/workspace-access";
 import {
   calculateLeaveDayBreakdown,
+  calculateHalfDayLeaveBreakdown,
   getAnnualLeaveMonthOverLimit,
   parseDateOnly,
   parseMonthlyLeaveBreakdown,
@@ -53,6 +54,27 @@ test("A Saturday holiday is excluded as a holiday while Saturdays are working da
   assert.equal(result.netLeaveDays, 0);
 });
 
+test("A half-day holiday reduces chargeable leave by half a day", () => {
+  const result = calculateLeaveDayBreakdown(
+    parseDateOnly("2026-08-03"),
+    parseDateOnly("2026-08-03"),
+    new Map([["2026-08-03", 0.5]]),
+  );
+
+  assert.equal(result.holidayCount, 0.5);
+  assert.equal(result.netLeaveDays, 0.5);
+  assert.deepEqual(result.monthlyBreakdown, { "2026-08": 0.5 });
+});
+
+test("A half-day leave request charges half a day and allocates half a month", () => {
+  const date = parseDateOnly("2026-08-03");
+  const fullDay = calculateLeaveDayBreakdown(date, date, new Set());
+  const result = calculateHalfDayLeaveBreakdown(fullDay, date);
+
+  assert.equal(result.netLeaveDays, 0.5);
+  assert.deepEqual(result.monthlyBreakdown, { "2026-08": 0.5 });
+});
+
 test("Configured Saturdays are excluded from chargeable leave days", () => {
   const result = calculateLeaveDayBreakdown(
     parseDateOnly("2026-08-01"),
@@ -97,11 +119,13 @@ test("Malformed saved month allocations do not consume entitlement", () => {
   assert.deepEqual(
     parseMonthlyLeaveBreakdown({
       "2026-08": 1,
+      "2026-10": 0.5,
       "2026-13": 5,
       "2026-09": -1,
+      "2026-11": 0.3,
       "invalid": 2,
     }),
-    { "2026-08": 1 },
+    { "2026-08": 1, "2026-10": 0.5 },
   );
 });
 

@@ -4,14 +4,71 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+interface TableProps extends React.ComponentProps<"table"> {
+  layout?: "cards" | "scroll";
+}
+
+function Table({
+  className,
+  layout = "cards",
+  ...props
+}: TableProps) {
+  const containerRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const updateLabels = () => {
+      const table = container.querySelector<HTMLTableElement>(
+        ":scope > table[data-responsive-layout='cards']",
+      )
+      const headerRows = table?.tHead?.rows
+      const headerRow = headerRows?.item(headerRows.length - 1)
+      if (!table || !headerRow) return
+
+      const labels: string[] = []
+      for (const header of Array.from(headerRow.cells)) {
+        const label = header.textContent?.replace(/\s+/g, " ").trim() ?? ""
+        for (let column = 0; column < header.colSpan; column += 1) {
+          labels.push(label)
+        }
+      }
+
+      for (const row of Array.from(table.tBodies).flatMap((body) =>
+        Array.from(body.rows),
+      )) {
+        let column = 0
+        for (const cell of Array.from(row.cells)) {
+          const label = cell.colSpan === 1 ? labels[column] ?? "" : ""
+          if (cell.dataset.label !== label) {
+            cell.dataset.label = label
+          }
+          column += cell.colSpan
+        }
+      }
+    }
+
+    updateLabels()
+    const observer = new MutationObserver(updateLabels)
+    observer.observe(container, {
+      characterData: true,
+      childList: true,
+      subtree: true,
+    })
+
+    return () => observer.disconnect()
+  }, [])
+
   return (
     <div
+      ref={containerRef}
       data-slot="table-container"
       className="relative w-full overflow-x-auto"
     >
       <table
         data-slot="table"
+        data-responsive-layout={layout}
         className={cn("w-full caption-bottom text-sm", className)}
         {...props}
       />

@@ -69,6 +69,7 @@ function formatDate(value: Date | string | null) {
     day: "numeric",
     month: "short",
     year: "numeric",
+    timeZone: "Asia/Kolkata",
   }).format(new Date(value));
 }
 
@@ -165,7 +166,7 @@ export default async function ProjectsPage({
         Track delivery, owners, and deadlines across your customer work.
       </p>
 
-      <section aria-label="Project summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <section aria-label="Project summary" className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 xl:grid-cols-5">
         {[
           { label: "All projects", value: summary.total, icon: FolderKanban },
           { label: "Active", value: summary.active, icon: CircleDot },
@@ -173,19 +174,19 @@ export default async function ProjectsPage({
           { label: "Completed", value: summary.completed, icon: CheckCircle2 },
           { label: "Overdue", value: summary.overdue, icon: CalendarDays },
         ].map(({ label, value, icon: SummaryIcon }) => (
-          <article key={label} className="rounded-lg border bg-card px-4 py-3">
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <SummaryIcon aria-hidden="true" className="size-4" />
-              {label}
+          <article key={label} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2.5 sm:px-4">
+            <p className="flex min-w-0 items-center gap-2 truncate text-xs text-muted-foreground sm:text-sm">
+              <SummaryIcon aria-hidden="true" className="size-4 shrink-0" />
+              <span className="truncate">{label}</span>
             </p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
+            <p className="shrink-0 text-lg font-semibold tabular-nums sm:text-xl">{value}</p>
           </article>
         ))}
       </section>
 
-      <form method="GET" className="grid gap-3 rounded-lg border bg-card p-4 sm:grid-cols-2 lg:grid-cols-4">
+      <form method="GET" className="grid grid-cols-2 gap-2 rounded-lg border bg-card p-3 sm:gap-3 sm:p-4 lg:grid-cols-4">
         <input type="hidden" name="view" value={rawFilters.view === "list" ? "list" : "grid"} />
-        <div className="relative min-w-0">
+        <div className="relative col-span-2 min-w-0 lg:col-span-1">
           <Search aria-hidden="true" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
             name="search"
@@ -258,7 +259,7 @@ export default async function ProjectsPage({
           Target date to
           <input name="dueTo" type="date" defaultValue={rawFilters.dueTo} className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground" />
         </label>
-        <div className="flex items-end gap-2 sm:col-span-2">
+        <div className="col-span-2 flex items-end gap-2 sm:col-span-2 lg:col-span-4">
           <Button type="submit">
             <Search aria-hidden="true" />
             Apply filters

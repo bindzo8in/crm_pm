@@ -35,3 +35,19 @@ export function calculateExpenseTotals(
       : enteredAmountCents + taxAmountCents,
   };
 }
+
+export function getExpenseEnteredAmountCents(
+  totalAmountCents: number,
+  taxRate: number | null | undefined,
+  taxInclusive: boolean,
+) {
+  if (taxInclusive) {
+    return totalAmountCents;
+  }
+
+  return calculateExpenseTotals(totalAmountCents, taxRate, true).baseAmountCents;
+}
+
+export function formatExpenseAmountCents(amountCents: number) {
+  return (amountCents / 100).toFixed(2);
+}

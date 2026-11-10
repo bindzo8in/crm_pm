@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import prisma from "./prisma";
 import { nextCookies } from "better-auth/next-js";
@@ -8,8 +9,14 @@ import { env } from "./env";
 import { EmploymentStatus, UserRole, WorkMode } from "@/app/generated/prisma/enums";
 import { ac, adminRole, staffRole, superAdminRole } from './permissions'
 import { expo } from "@better-auth/expo";
+import {
+    BOOTSTRAP_SIGNUP_HEADER,
+    isValidBootstrapSignupSignature,
+} from "./bootstrap-signup";
+import { getOAuthProviderConfigs } from "./oauth-provider-config";
 
 const canLog = process.env.NODE_ENV === "development"
+const oauthProviderConfigs = getOAuthProviderConfigs();
 export const auth = betterAuth({
     baseURL: env.BETTER_AUTH_URL,
     logger: {
@@ -36,7 +43,50 @@ export const auth = betterAuth({
     database: prismaAdapter(prisma, {
         provider: "postgresql"
     }),
+    hooks: {
+        before: createAuthMiddleware(async (ctx) => {
+            if (ctx.path !== "/sign-up/email") return;
+
+            const email =
+                typeof ctx.body.email === "string" ? ctx.body.email : "";
+            const signature =
+                ctx.headers?.get(BOOTSTRAP_SIGNUP_HEADER) ?? null;
+            if (
+                !isValidBootstrapSignupSignature(
+                    signature,
+                    email,
+                    env.BETTER_AUTH_SECRET,
+                )
+            ) {
+                throw new APIError("FORBIDDEN", {
+                    message: "Public account registration is disabled.",
+                });
+            }
+        }),
+    },
     databaseHooks: {
+        user: {
+            create: {
+                before: async (user, context) => {
+                    const isBootstrapSignup =
+                        context?.path === "/sign-up/email" &&
+                        isValidBootstrapSignupSignature(
+                            context.headers?.get(BOOTSTRAP_SIGNUP_HEADER) ?? null,
+                            user.email,
+                            env.BETTER_AUTH_SECRET,
+                        );
+
+                    return {
+                        data: {
+                            ...user,
+                            role: isBootstrapSignup
+                                ? UserRole.SUPER_ADMIN
+                                : UserRole.STAFF,
+                        },
+                    };
+                },
+            },
+        },
         session: {
             create: {
                 before: async (session) => {
@@ -135,10 +185,34 @@ export const auth = betterAuth({
     },
     socialProviders: {
         google: {
-            clientId: env.GOOGLE_CLIENT_ID,
-            clientSecret: env.GOOGLE_CLIENT_SECRET,
-            accessType: "offline"
-        }
+            ...oauthProviderConfigs.google,
+            accessType: "offline",
+            disableSignUp: true,
+        },
+        ...(oauthProviderConfigs.facebook && {
+            facebook: {
+                ...oauthProviderConfigs.facebook,
+                disableSignUp: true,
+            },
+        }),
+        ...(oauthProviderConfigs.twitter && {
+            twitter: {
+                ...oauthProviderConfigs.twitter,
+                disableSignUp: true,
+            },
+        }),
+        ...(oauthProviderConfigs.microsoft && {
+            microsoft: {
+                ...oauthProviderConfigs.microsoft,
+                disableSignUp: true,
+            },
+        }),
+        ...(oauthProviderConfigs.linkedin && {
+            linkedin: {
+                ...oauthProviderConfigs.linkedin,
+                disableSignUp: true,
+            },
+        }),
     },
     plugins: [
         admin({

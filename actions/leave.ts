@@ -35,6 +35,8 @@ const leaveRequestSchema = z
     type: z.enum(LeaveType),
     startDate: dateOnlySchema,
     endDate: dateOnlySchema,
+    isHalfDay: z.boolean().default(false),
+    halfDayPeriod: z.enum(["MORNING", "AFTERNOON"]).nullable().default(null),
     reason: z.string().trim().min(1, "Reason is required.").max(500),
   })
   .refine((value) => value.endDate >= value.startDate, {
@@ -44,7 +46,30 @@ const leaveRequestSchema = z
   .refine((value) => value.startDate >= parseDateOnly(getAttendanceDate()), {
     path: ["startDate"],
     message: "Start date cannot be before today.",
-  });
+  })
+  .refine(
+    (value) =>
+      !value.isHalfDay ||
+      value.startDate.getTime() === value.endDate.getTime(),
+    {
+      path: ["endDate"],
+      message: "Half-day leave must be requested for one date only.",
+    },
+  )
+  .refine(
+    (value) => !value.isHalfDay || value.halfDayPeriod !== null,
+    {
+      path: ["halfDayPeriod"],
+      message: "Choose morning or afternoon for a half-day request.",
+    },
+  )
+  .refine(
+    (value) => value.isHalfDay || value.halfDayPeriod === null,
+    {
+      path: ["halfDayPeriod"],
+      message: "A half-day period is only needed for a half-day request.",
+    },
+  );
 
 const paginationSchema = z.object({
   page: z.coerce.number().int().min(0).max(100_000).default(0),

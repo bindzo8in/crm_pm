@@ -29,6 +29,7 @@ import {
   Landmark,
   LayoutDashboardIcon,
   ListTodo,
+  MessageSquareWarning,
   Package,
   ReceiptText,
   ScrollText,
@@ -157,7 +158,7 @@ const data = {
       )
     },
     {
-      title: "Expences",
+      title: "Expenses",
       section: "Business",
       url: "/dashboard/finance",
       icon: <Banknote />
@@ -167,6 +168,12 @@ const data = {
       section: "Business",
       url: "/dashboard/reports",
       icon: <ChartNoAxesCombined />
+    },
+    {
+      title: "Issues & suggestions",
+      section: "Support",
+      url: "/dashboard/issues",
+      icon: <MessageSquareWarning />,
     }
   ],
   navSecondary: [
@@ -225,7 +232,7 @@ export function AppSidebar({
     userRole !== UserRole.STAFF || Boolean(department?.trim())
   const navMainItems = data.navMain.filter((item) => {
     if (item.url === "/dashboard") return true
-    if (!hasWorkspaceAccess) return false
+    if (!hasWorkspaceAccess && item.url !== "/dashboard/issues") return false
     if (item.url === "/dashboard/salary" && userRole === UserRole.STAFF && department !== "HR") {
       return canAccessRoute("/dashboard/my-salary", userRole, department)
     }
@@ -247,7 +254,15 @@ export function AppSidebar({
     : []
 
   if (isMobile) {
-    return <MobileBottomNav items={navMainItems} secondaryItems={navSecondaryItems} />
+    return (
+      <MobileBottomNav
+        items={navMainItems}
+        secondaryItems={navSecondaryItems}
+        user={user}
+        role={userRole}
+        department={department}
+      />
+    )
   }
 
   return (

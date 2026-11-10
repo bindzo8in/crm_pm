@@ -7,6 +7,7 @@ import DashboardContainer from "@/app/dashboard/dashboard-container";
 import { CreateInvoiceForm } from "@/components/invoice/create-invoice-form";
 import { requirePageAccess } from "@/lib/auth-guard";
 import { notFound } from "next/navigation";
+import { formatInIST } from "@/lib/date";
 
 interface EditInvoicePageProps {
   params: Promise<{ id: string }>;
@@ -26,7 +27,7 @@ export default async function EditInvoicePage({ params }: EditInvoicePageProps) 
 
   return (
     <DashboardContainer title={`Edit Invoice - INV-${String(invoice.invoiceNumber).padStart(4, "0")}`} hideHeaderOnMobile>
-      <CreateInvoiceForm initialData={invoice} />
+      <CreateInvoiceForm initialData={invoice} today={formatInIST(new Date(), "yyyy-MM-dd")} />
     </DashboardContainer>
   );
 }

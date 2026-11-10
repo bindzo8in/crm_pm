@@ -2,24 +2,16 @@
 import { signupSchema, SignupSchemaType } from '@/lib/schemas/signup-schema'
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm, Controller } from "react-hook-form"
-import { AlertCircle, Globe } from "lucide-react"
-import { Field, FieldGroup, FieldContent, FieldLabel, FieldError, FieldSeparator } from "@/components/ui/field"
+import { AlertCircle } from "lucide-react"
+import { Field, FieldGroup, FieldContent, FieldLabel, FieldError } from "@/components/ui/field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Password } from "@/components/password"
 import { Checkbox } from "@/components/ui/checkbox"
-import { signUp, signIn, sendVerificationEmail } from '@/lib/auth-client'
 import { useState } from 'react'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import Link from "next/link"
-
-const socialMediaButtons = [
-  { label: "Continue with Google", provider: "google" as const },
-]
-
-function shouldResendVerificationEmail(createdAt: Date | string): boolean {
-  return Date.now() - new Date(createdAt).getTime() > 10_000;
-}
+import { z } from "zod";
 
 export function SignupForm() {
   const [message, setMessage] = useState<string | null>(null);
@@ -42,30 +34,30 @@ export function SignupForm() {
       setError(null);
       setMessage(null);
 
-      const { data: signUpData, error: signUpError } = await signUp.email({
-        email: data.email,
-        password: data.password,
-        name: data.name,
-        callbackURL: window.location.origin
+      const response = await fetch("/api/bootstrap-signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: data.email,
+          password: data.password,
+          name: data.name,
+        }),
       });
-      if (signUpError) {
-        setError("We could not create your account. Please try again.");
+      const result = z
+        .object({ error: z.string().optional() })
+        .loose()
+        .safeParse(await response.json());
+      if (!response.ok) {
+        setError(
+          result.success
+            ? result.data.error ?? "We could not create your account. Please try again."
+            : "We could not create your account. Please try again.",
+        );
         return;
       }
 
-      if (signUpData?.user?.emailVerified === false) {
-        if (shouldResendVerificationEmail(signUpData.user.createdAt)) {
-          const { error: verifyError } = await sendVerificationEmail({ email: data.email })
-          if (verifyError) {
-            setError("We could not send a verification email. Try signing in to request another.");
-            return;
-          }
-        }
-      }
-
-
       setMessage(
-        `If this email is not already registered, an account has been created. Please check your inbox for verification.`
+        "Your administrator account has been created. Verify your email to continue to company and office setup.",
       );
 
       form.reset();
@@ -75,17 +67,6 @@ export function SignupForm() {
       setIsLoading(false);
     }
   });
-
-  const continueWith = async ({ provider }: { provider: "google" }) => {
-    try {
-      await signIn.social({
-        provider,
-        callbackURL: "/"
-      })
-    } catch {
-      setError(`Sign in with ${provider} could not start. Please try again.`)
-    }
-  }
 
   return (
     <>
@@ -110,7 +91,10 @@ export function SignupForm() {
       <form onSubmit={handleSubmit} className="w-full rounded-xl border bg-card p-5 shadow-sm sm:p-7">
         <FieldGroup className="mb-6 grid gap-4 md:grid-cols-6">
           <h1 className="col-span-full text-2xl font-semibold tracking-tight sm:text-3xl">Create an account</h1>
-          <p className="col-span-full text-sm text-muted-foreground">Register to get started.</p>
+          <p className="col-span-full text-sm text-muted-foreground">
+            Create the first account to become your company&apos;s administrator.
+            New public registrations close after setup.
+          </p>
 
           <Controller
             name="name"
@@ -121,8 +105,8 @@ export function SignupForm() {
                 <Input
                   {...field}
                   id="name"
-                  type="email"
-                  autoComplete="email"
+                  type="text"
+                  autoComplete="name"
                   onChange={(e) => {
                     field.onChange(e.target.value)
                   }}
@@ -198,18 +182,6 @@ export function SignupForm() {
                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
               </Field>
             )} />
-          <FieldSeparator className="my-4 col-span-full">OR</FieldSeparator>
-          <div className="flex gap-3 justify-center w-full items-center flex-wrap pb-3 col-span-full">
-            {socialMediaButtons.map((o) => (
-              <Button key={o.label} variant="outline" type="button"
-                className="text-sm gap-2 px-2 h-10 grow "
-                onClick={() => { continueWith({ provider: o.provider }) }}
-              >
-                <Globe aria-hidden="true" className="size-4" />
-                {o.label}
-              </Button>
-            ))}
-          </div>
           <Controller
             name="agree"
             control={form.control}

@@ -13,6 +13,29 @@ export function getAttendanceDate(date = new Date()) {
     );
 }
 
+export function getPreviousMonthInCompanyTimezone(date = new Date()) {
+    const [yearText, monthText] = getAttendanceDate(date).split("-");
+    const previousMonth = new Date(
+        Date.UTC(Number(yearText), Number(monthText) - 2, 1)
+    );
+
+    return {
+        month: previousMonth.getUTCMonth() + 1,
+        year: previousMonth.getUTCFullYear(),
+    };
+}
+
+export function dateOnlyAtCompanyMidnight(value: string): Date {
+    const localMidnight = parse(`${value}T00:00`, "yyyy-MM-dd'T'HH:mm", new Date());
+    return fromZonedTime(localMidnight, COMPANY_TIMEZONE);
+}
+
+export function shiftDateOnly(value: string, days: number): string {
+    const date = new Date(`${value}T00:00:00.000Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
+}
+
 /**
  * Convert a Date (UTC) to IST time
  */

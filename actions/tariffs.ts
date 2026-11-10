@@ -7,6 +7,12 @@ import { getErrorMessage } from "@/lib/schemas/prisma-utils";
 import { headers } from "next/headers";
 import { z } from "zod";
 
+const tariffGridQuerySchema = z.object({
+  page: z.number().int().min(0).default(0),
+  pageSize: z.number().int().min(1).max(100).default(20),
+  search: z.string().trim().max(120).default(""),
+});
+
 async function checkPermission(permission: "read" | "create" | "update" | "delete") {
   const session = await auth.api.getSession({
     headers: await headers(),
@@ -31,20 +37,46 @@ async function checkPermission(permission: "read" | "create" | "update" | "delet
   return { success: true, session };
 }
 
-export async function getTariffGrids() {
+export async function getTariffGrids(input: unknown = {}) {
   try {
     const perm = await checkPermission("read");
     if (!perm.success) return errorResponse(perm.error!);
 
-    const grids = await prisma.tariffGrid.findMany({
-      orderBy: { createdAt: "desc" },
-      include: {
-        _count: {
-          select: { packages: true }
+    const parsed = tariffGridQuerySchema.safeParse(input);
+    if (!parsed.success) {
+      return errorResponse("Invalid tariff grid filters", parsed.error.issues);
+    }
+
+    const { page, pageSize, search } = parsed.data;
+    const where = search
+      ? {
+          OR: [
+            { name: { contains: search, mode: "insensitive" as const } },
+            { description: { contains: search, mode: "insensitive" as const } },
+          ],
         }
-      }
+      : {};
+    const [items, totalCount] = await Promise.all([
+      prisma.tariffGrid.findMany({
+        where,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: page * pageSize,
+        take: pageSize,
+        include: {
+          _count: {
+            select: { packages: true },
+          },
+        },
+      }),
+      prisma.tariffGrid.count({ where }),
+    ]);
+    return successResponse("Fetched tariff grids", {
+      items,
+      page,
+      pageSize,
+      totalCount,
+      totalPages: Math.ceil(totalCount / pageSize),
     });
-    return successResponse("Fetched tariff grids", grids);
   } catch (error) {
     return errorResponse("Failed to fetch tariff grids", getErrorMessage(error));
   }

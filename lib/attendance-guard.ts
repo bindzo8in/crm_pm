@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { getInitialSetupStatus } from "@/lib/initial-setup";
 // import prisma from "@/lib/prisma";
 import { UserRole, Department } from "@/app/generated/prisma/enums";
 type Session = typeof auth.$Infer.Session
@@ -25,6 +26,12 @@ export async function requireAttendanceAccess(): Promise<AttendanceUserPermissio
     redirect("/signin");
   }
 
+  if (
+    session.user.role === UserRole.SUPER_ADMIN &&
+    !(await getInitialSetupStatus()).complete
+  ) {
+    redirect("/onboarding");
+  }
 
 //   const user = await prisma.user.findUnique({
 //     where: { id: session.user.id },

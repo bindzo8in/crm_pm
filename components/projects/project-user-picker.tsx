@@ -16,6 +16,7 @@ export type ProjectUserOption = {
   name: string;
   designation: string | null;
   department: string | null;
+  additionalDepartments?: string[];
 };
 
 type Props = {
@@ -28,9 +29,16 @@ type Props = {
 };
 
 function displayName(user: ProjectUserOption) {
+  const departments = [
+    user.department,
+    ...(user.additionalDepartments ?? []).filter(
+      (department) => department !== user.department,
+    ),
+  ].filter((department): department is string => Boolean(department));
   return [
     user.name,
-    user.designation ?? user.department,
+    user.designation,
+    departments.join(", "),
   ].filter(Boolean).join(" · ");
 }
 

@@ -57,59 +57,78 @@ enum Department {
   OPERATIONS
 }
 
+enum IssueReportType {
+  ISSUE
+  SUGGESTION
+}
+
+enum IssueReportStatus {
+  NEW
+  IN_REVIEW
+  RESOLVED
+  CLOSED
+}
+
 model User {
-  id                    String                  @id
-  name                  String
-  email                 String
-  emailVerified         Boolean                 @default(false)
-  image                 String?
-  createdAt             DateTime                @default(now())
-  updatedAt             DateTime                @updatedAt
-  role                  UserRole                @default(STAFF)
-  employmentStatus      EmploymentStatus        @default(ACTIVE)
-  employmentEndedAt     DateTime?
-  department            Department?
-  workMode              WorkMode                @default(OFFICE)
-  includeInAttendanceReports Boolean             @default(true) @map("include_in_attendance_reports")
-  includeInPayroll      Boolean                  @default(false) @map("include_in_payroll")
-  banned                Boolean?                @default(false)
-  banReason             String?
-  banExpires            DateTime?
-  sessions              Session[]
-  accounts              Account[]
-  assignedCustomers     Customer[]              @relation("AssignedCustomers")
-  createdCustomers      Customer[]              @relation("CreatedCustomers")
-  proposalActivities    ProposalActivity[]
-  proposals             Proposal[]
-  managedProjects       Project[]               @relation("ProjectManager")
-  createdProjects       Project[]               @relation("ProjectCreator")
-  projectMemberships    ProjectMember[]
-  projectActivities     ProjectActivity[]
-  assignedTasks         ProjectTask[]           @relation("ProjectTaskAssignee")
-  createdTasks          ProjectTask[]           @relation("ProjectTaskCreator")
-  taskTemplates         ProjectTaskStatusTemplate[] @relation("TaskStatusTemplateCreator")
-  taskTimeEntries       ProjectTaskTimeEntry[]  @relation("TaskTimeEntryUser")
-  taskAttachments       ProjectTaskAttachment[] @relation("TaskAttachmentUploader")
-  taskComments          ProjectTaskComment[]   @relation("TaskCommentAuthor")
-  createdInvoices       Invoice[]
-  invoiceActivities     InvoiceActivity[]
-  attendanceRecords     AttendanceRecord[]
-  leaveRequests         LeaveRequest[]
-  salaryStructure       SalaryStructure?
-  salarySlips           SalarySlip[]
-  approvedSalarySlips   SalarySlip[]               @relation("SalarySlipApprover")
-  emailedSalarySlips    SalarySlip[]               @relation("SalarySlipEmailSender")
-  salarySlipAdjustments SalarySlipAdjustment[]     @relation("SalarySlipAdjustmentCreator")
-  removedSalarySlipAdjustments SalarySlipAdjustment[] @relation("SalarySlipAdjustmentRemover")
-  salaryPin             SalaryPin?
-  salaryPinResetTokens  SalaryPinResetToken[]
-  expenses              Expense[]
-  notifications         Notification[]
-  webPushSubscriptions  WebPushSubscription[]
-  attendanceReminders   AttendanceReminder[]
-  employmentHistory     EmployeeStatusHistory[] @relation("EmployeeStatusHistory")
-  employmentChangesMade EmployeeStatusHistory[] @relation("EmployeeStatusChangedBy")
-  employeesReassigned   EmployeeStatusHistory[] @relation("EmployeeStatusReassignedTo")
+  id                           String                      @id
+  name                         String
+  email                        String
+  emailVerified                Boolean                     @default(false)
+  image                        String?
+  createdAt                    DateTime                    @default(now())
+  updatedAt                    DateTime                    @updatedAt
+  role                         UserRole                    @default(STAFF)
+  employmentStatus             EmploymentStatus            @default(ACTIVE)
+  employmentEndedAt            DateTime?
+  department                   Department?
+  additionalDepartments       Department[]                @default([]) @map("additional_departments")
+  workMode                    WorkMode                    @default(OFFICE)
+  includeInAttendanceReports   Boolean                     @default(true) @map("include_in_attendance_reports")
+  includeInPayroll             Boolean                     @default(false) @map("include_in_payroll")
+  banned                       Boolean?                    @default(false)
+  banReason                    String?
+  banExpires                   DateTime?
+  sessions                     Session[]
+  accounts                     Account[]
+  assignedCustomers            Customer[]                  @relation("AssignedCustomers")
+  createdCustomers             Customer[]                  @relation("CreatedCustomers")
+  proposalActivities           ProposalActivity[]
+  proposals                    Proposal[]
+  managedProjects              Project[]                   @relation("ProjectManager")
+  createdProjects              Project[]                   @relation("ProjectCreator")
+  projectMemberships           ProjectMember[]
+  projectActivities            ProjectActivity[]
+  assignedTasks                ProjectTask[]               @relation("ProjectTaskAssignee")
+  createdTasks                 ProjectTask[]               @relation("ProjectTaskCreator")
+  taskTemplates                ProjectTaskStatusTemplate[] @relation("TaskStatusTemplateCreator")
+  taskTimeEntries              ProjectTaskTimeEntry[]      @relation("TaskTimeEntryUser")
+  taskAttachments              ProjectTaskAttachment[]     @relation("TaskAttachmentUploader")
+  taskComments                 ProjectTaskComment[]        @relation("TaskCommentAuthor")
+  createdInvoices              Invoice[]
+  invoiceActivities            InvoiceActivity[]
+  attendanceRecords            AttendanceRecord[]
+  leaveRequests                LeaveRequest[]
+  salaryStructure              SalaryStructure?
+  salarySlips                  SalarySlip[]
+  approvedSalarySlips          SalarySlip[]                @relation("SalarySlipApprover")
+  emailedSalarySlips           SalarySlip[]                @relation("SalarySlipEmailSender")
+  salarySlipAdjustments        SalarySlipAdjustment[]      @relation("SalarySlipAdjustmentCreator")
+  removedSalarySlipAdjustments SalarySlipAdjustment[]      @relation("SalarySlipAdjustmentRemover")
+  salaryPin                    SalaryPin?
+  salaryPinResetTokens         SalaryPinResetToken[]
+  expenses                     Expense[]
+  expenseHistory               ExpenseHistory[]
+  notifications                Notification[]
+  webPushSubscriptions         WebPushSubscription[]
+  attendanceReminders          AttendanceReminder[]
+  employmentHistory            EmployeeStatusHistory[]     @relation("EmployeeStatusHistory")
+  employmentChangesMade        EmployeeStatusHistory[]     @relation("EmployeeStatusChangedBy")
+  employeesReassigned          EmployeeStatusHistory[]     @relation("EmployeeStatusReassignedTo")
+  conversationMemberships      ConversationMember[]
+  sentChatMessages             ChatMessage[]               @relation("ChatMessageSender")
+  chatMessageReactions         ChatMessageReaction[]
+  submittedIssueReports        IssueReport[]               @relation("IssueReportSubmitter")
+  reviewedIssueReports         IssueReport[]               @relation("IssueReportReviewer")
 
   // Payroll Details
   employeeId      Int              @unique @default(autoincrement())
@@ -695,11 +714,11 @@ model Company {
 
   financialAccounts FinancialAccount[]
 
-  displayName String
-  legalName   String
-  employeeIdPrefix String @default("EMP-") @map("employee_id_prefix")
-  tagline     String?
-  about       String?
+  displayName      String
+  legalName        String
+  employeeIdPrefix String  @default("EMP-") @map("employee_id_prefix")
+  tagline          String?
+  about            String?
 
   website        String?
   email          String
@@ -869,10 +888,11 @@ model Project {
   budgetAmount Decimal?        @db.Decimal(12, 2)
   currency     String          @default("INR")
 
-  members    ProjectMember[]
-  taskFolders ProjectTaskFolder[]
-  tasks      ProjectTask[]
-  activities ProjectActivity[]
+  members      ProjectMember[]
+  taskFolders  ProjectTaskFolder[]
+  tasks        ProjectTask[]
+  activities   ProjectActivity[]
+  conversation Conversation?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -912,38 +932,38 @@ model ProjectMember {
 }
 
 model ProjectTaskFolder {
-  id        String   @id @default(cuid())
+  id        String              @id @default(cuid())
   projectId String
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   name      String
   parentId  String?
   parent    ProjectTaskFolder?  @relation("ProjectTaskFolderTree", fields: [parentId], references: [id], onDelete: Restrict)
   children  ProjectTaskFolder[] @relation("ProjectTaskFolderTree")
   tasks     ProjectTask[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
 
   @@index([projectId, parentId, name])
 }
 
 model ProjectTask {
-  id        String  @id @default(cuid())
+  id        String            @id @default(cuid())
   projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   folderId  String
   folder    ProjectTaskFolder @relation(fields: [folderId], references: [id], onDelete: Restrict)
 
-  title       String
-  description String?
-  status      String                 @default("TODO")
-  statusGroup ProjectTaskStatusGroup @default(NOT_STARTED)
-  priority    ProjectPriority        @default(MEDIUM)
-  startDate   DateTime?
-  dueDate     DateTime?
+  title               String
+  description         String?
+  status              String                 @default("TODO")
+  statusGroup         ProjectTaskStatusGroup @default(NOT_STARTED)
+  priority            ProjectPriority        @default(MEDIUM)
+  startDate           DateTime?
+  dueDate             DateTime?
   timeEstimateMinutes Int?
-  sprintPoints Int?
-  timeTrackedSeconds Int               @default(0)
-  completedAt DateTime?
+  sprintPoints        Int?
+  timeTrackedSeconds  Int                    @default(0)
+  completedAt         DateTime?
 
   assigneeId  String?
   assignee    User?   @relation("ProjectTaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
@@ -951,10 +971,10 @@ model ProjectTask {
   createdBy   User?   @relation("ProjectTaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
   parentTaskId String?
-  parentTask   ProjectTask? @relation("TaskSubtasks", fields: [parentTaskId], references: [id], onDelete: SetNull)
-  subtasks     ProjectTask[] @relation("TaskSubtasks")
-  dependencies ProjectTaskDependency[] @relation("TaskDependencies")
-  blockedTasks ProjectTaskDependency[] @relation("TaskBlockedBy")
+  parentTask   ProjectTask?               @relation("TaskSubtasks", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  subtasks     ProjectTask[]              @relation("TaskSubtasks")
+  dependencies ProjectTaskDependency[]    @relation("TaskDependencies")
+  blockedTasks ProjectTaskDependency[]    @relation("TaskBlockedBy")
   checklist    ProjectTaskChecklistItem[]
   attachments  ProjectTaskAttachment[]
   comments     ProjectTaskComment[]
@@ -970,29 +990,129 @@ model ProjectTask {
 }
 
 model ProjectTaskDependency {
-  id              String      @id @default(cuid())
+  id              String                  @id @default(cuid())
   taskId          String
-  task            ProjectTask @relation("TaskDependencies", fields: [taskId], references: [id], onDelete: Cascade)
+  task            ProjectTask             @relation("TaskDependencies", fields: [taskId], references: [id], onDelete: Cascade)
   dependsOnTaskId String
-  dependsOnTask   ProjectTask @relation("TaskBlockedBy", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+  dependsOnTask   ProjectTask             @relation("TaskBlockedBy", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
   relationType    ProjectTaskRelationType @default(BLOCKED_BY)
-  createdAt       DateTime    @default(now())
+  createdAt       DateTime                @default(now())
 
   @@unique([taskId, dependsOnTaskId, relationType])
   @@index([dependsOnTaskId])
 }
 
 model ProjectTaskChecklistItem {
-  id        String      @id @default(cuid())
-  taskId    String
-  task      ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  title     String
-  isComplete Boolean    @default(false)
-  sortOrder Int         @default(0)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  id         String      @id @default(cuid())
+  taskId     String
+  task       ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  title      String
+  isComplete Boolean     @default(false)
+  sortOrder  Int         @default(0)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
 
   @@index([taskId, sortOrder])
+}
+
+enum ConversationType {
+  PROJECT
+  DIRECT
+}
+
+enum ChatAttachmentResourceType {
+  IMAGE
+  VIDEO
+  AUDIO
+  RAW
+}
+
+model Conversation {
+  id        String               @id @default(cuid())
+  type      ConversationType
+  projectId String?              @unique
+  project   Project?             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  directKey String?              @unique
+  deletedAt DateTime?
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  members   ConversationMember[]
+  messages  ChatMessage[]
+
+  @@index([type, updatedAt])
+  @@map("conversation")
+}
+
+model ConversationMember {
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadAt     DateTime?
+  muted          Boolean      @default(false)
+  joinedAt       DateTime     @default(now())
+
+  @@id([conversationId, userId])
+  @@index([userId, conversationId])
+  @@map("conversation_member")
+}
+
+model ChatMessage {
+  id             String                  @id @default(cuid())
+  conversationId String                  @map("conversation_id")
+  conversation   Conversation            @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String                  @map("sender_id")
+  sender         User                    @relation("ChatMessageSender", fields: [senderId], references: [id], onDelete: Restrict)
+  body           String                  @default("")
+  replyToId      String?
+  replyTo        ChatMessage?            @relation("ChatMessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies        ChatMessage[]           @relation("ChatMessageReplies")
+  editedAt       DateTime?               @map("edited_at")
+  deletedAt      DateTime?               @map("deleted_at")
+  createdAt      DateTime                @default(now()) @map("created_at")
+  attachments    ChatMessageAttachment[]
+  reactions      ChatMessageReaction[]
+
+  @@index([conversationId, createdAt])
+  @@index([senderId, createdAt])
+  @@index([replyToId])
+  @@map("chat_message")
+}
+
+model ChatMessageReaction {
+  messageId String      @map("message_id")
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String      @map("user_id")
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emoji     String
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  @@id([messageId, userId])
+  @@index([userId])
+  @@map("chat_message_reaction")
+}
+
+model ChatMessageAttachment {
+  id           String                     @id @default(cuid())
+  messageId    String                     @map("message_id")
+  message      ChatMessage                @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  url          String
+  publicId     String                     @map("public_id")
+  resourceType ChatAttachmentResourceType @map("resource_type")
+  mimeType     String                     @map("mime_type")
+  fileName     String                     @map("file_name")
+  fileSize     Int                        @map("file_size")
+  width        Int?
+  height       Int?
+  duration     Int?
+  thumbnailUrl String?                    @map("thumbnail_url")
+  thumbnailId  String?                    @map("thumbnail_id")
+  deletedAt    DateTime?                  @map("deleted_at")
+  createdAt    DateTime                   @default(now()) @map("created_at")
+
+  @@index([messageId, createdAt])
+  @@index([publicId])
+  @@map("chat_message_attachment")
 }
 
 model ProjectTaskAttachment {
@@ -1024,13 +1144,13 @@ model ProjectTaskComment {
 }
 
 model ProjectTaskTimeEntry {
-  id        String      @id @default(cuid())
-  taskId    String
-  task      ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User        @relation("TaskTimeEntryUser", fields: [userId], references: [id], onDelete: Cascade)
-  startedAt DateTime    @default(now())
-  endedAt   DateTime?
+  id              String      @id @default(cuid())
+  taskId          String
+  task            ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User        @relation("TaskTimeEntryUser", fields: [userId], references: [id], onDelete: Cascade)
+  startedAt       DateTime    @default(now())
+  endedAt         DateTime?
   durationSeconds Int?
 
   @@index([taskId, startedAt])
@@ -1240,9 +1360,10 @@ model Expense {
   createdById String
   createdBy   User   @relation(fields: [createdById], references: [id], onDelete: Restrict)
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
   deletedAt DateTime?
+  history   ExpenseHistory[]
 
   @@index([expenseDate])
   @@index([status])
@@ -1251,6 +1372,20 @@ model Expense {
   @@index([customerId])
   @@index([createdById])
   @@index([deletedAt])
+}
+
+model ExpenseHistory {
+  id        String   @id @default(cuid())
+  expenseId String
+  expense   Expense  @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  action    String
+  details   String?
+  createdAt DateTime @default(now())
+
+  @@index([expenseId])
+  @@index([createdAt])
 }
 
 model InvoicePayment {
@@ -1378,6 +1513,7 @@ model AttendanceRecord {
   regularizedBy        String?
   regularizationReason String?
   isAutoCheckedOut     Boolean              @default(false)
+  autoClosedAt         DateTime?
   isManuallyEdited     Boolean              @default(false)
   distanceFromOffice   Int?
   breaks               AttendanceBreak[]
@@ -1423,6 +1559,11 @@ enum LeaveStatus {
   CANCELLED
 }
 
+enum LeaveHalfDayPeriod {
+  MORNING
+  AFTERNOON
+}
+
 enum HolidayCategory {
   MANDATORY_GAZETTED
   RESTRICTED_OPTIONAL
@@ -1430,23 +1571,25 @@ enum HolidayCategory {
 }
 
 model LeaveRequest {
-  id             String      @id @default(cuid())
+  id             String              @id @default(cuid())
   userId         String
-  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   type           LeaveType
-  startDate      DateTime    @db.Date
-  endDate        DateTime    @db.Date
+  startDate      DateTime            @db.Date
+  endDate        DateTime            @db.Date
   reason         String
-  status         LeaveStatus @default(PENDING)
+  status         LeaveStatus         @default(PENDING)
   managerComment String?
+  isHalfDay      Boolean             @default(false) @map("is_half_day")
+  halfDayPeriod  LeaveHalfDayPeriod? @map("half_day_period")
 
   // New breakdown calculation tracking fields
-  totalDays           Int  @default(0) // Total calendar block size
-  netLeaveDays        Int  @default(0) // Actual chargeable work days
-  sundayCount         Int  @default(0) // Total Sundays skipped
-  weekendCount        Int  @default(0) // Total configured weekend days skipped
-  holidayCount        Int  @default(0) // Total Public Holidays skipped
-  monthlyDayBreakdown Json @default("{}")
+  totalDays           Int   @default(0) // Total calendar block size
+  netLeaveDays        Float @default(0) // Actual chargeable work days
+  sundayCount         Int   @default(0) // Total Sundays skipped
+  weekendCount        Int   @default(0) // Total configured weekend days skipped
+  holidayCount        Float @default(0) // Total Public Holidays skipped
+  monthlyDayBreakdown Json  @default("{}")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1462,6 +1605,7 @@ model Holiday {
   name        String
   date        DateTime        @db.Date
   category    HolidayCategory @default(MANDATORY_GAZETTED)
+  isHalfDay   Boolean         @default(false) @map("is_half_day")
   departments Department[]    @default([])
   notifyStaff Boolean         @default(false) @map("notify_staff")
   description String?
@@ -1471,6 +1615,26 @@ model Holiday {
   @@unique([date])
   @@index([eventId])
   @@map("holiday")
+}
+
+model IssueReport {
+  id           String            @id @default(cuid())
+  type         IssueReportType
+  title        String            @db.VarChar(160)
+  description  String            @db.VarChar(5000)
+  status       IssueReportStatus @default(NEW)
+  response     String?           @db.VarChar(2000)
+  createdById  String            @map("created_by_id")
+  createdBy    User              @relation("IssueReportSubmitter", fields: [createdById], references: [id], onDelete: Restrict)
+  reviewedById String?           @map("reviewed_by_id")
+  reviewedBy   User?             @relation("IssueReportReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime?         @map("reviewed_at")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  @@index([createdById, createdAt])
+  @@index([status, createdAt])
+  @@map("issue_report")
 }
 
 model Notification {
@@ -1503,12 +1667,12 @@ model WebPushSubscription {
 }
 
 model AttendanceReminder {
-  id           String    @id @default(cuid())
-  userId       String    @map("user_id")
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date         DateTime  @db.Date
-  pushSentAt   DateTime? @map("push_sent_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
+  id         String    @id @default(cuid())
+  userId     String    @map("user_id")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date       DateTime  @db.Date
+  pushSentAt DateTime? @map("push_sent_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
   @@unique([userId, date])
   @@map("attendance_reminder")
@@ -1526,10 +1690,10 @@ model AttendanceSettings {
   officeLongitude         Float?
   officeRadiusMeters      Int      @default(500)
   enforceOfficeGeofence   Boolean  @default(true)
-  weekendDays              Int[]    @default([0]) @map("weekend_days")
-  isConfigured             Boolean  @default(false) @map("is_configured")
-  attendanceReminderTime   String   @default("08:30") @map("attendance_reminder_time")
-  updatedAt                DateTime @updatedAt
+  weekendDays             Int[]    @default([0]) @map("weekend_days")
+  isConfigured            Boolean  @default(false) @map("is_configured")
+  attendanceReminderTime  String   @default("08:30") @map("attendance_reminder_time")
+  updatedAt               DateTime @updatedAt
 
   @@map("attendance_settings")
 }
@@ -1578,15 +1742,15 @@ model SalaryStructure {
 }
 
 model SalaryPin {
-  userId               String   @id @map("user_id")
-  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  pinHash              String   @map("pin_hash")
-  sessionVersion       Int      @default(0) @map("session_version")
-  failedAttempts       Int      @default(0) @map("failed_attempts")
+  userId               String    @id @map("user_id")
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pinHash              String    @map("pin_hash")
+  sessionVersion       Int       @default(0) @map("session_version")
+  failedAttempts       Int       @default(0) @map("failed_attempts")
   lockedUntil          DateTime? @map("locked_until")
   lastResetRequestedAt DateTime? @map("last_reset_requested_at")
-  createdAt            DateTime @default(now()) @map("created_at")
-  updatedAt            DateTime @updatedAt @map("updated_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
 
   @@map("salary_pin")
 }
@@ -1623,15 +1787,15 @@ model SalarySlip {
   month Int // 1 to 12
   year  Int
 
-  status SalarySlipStatus @default(DRAFT)
-  scheduledGeneration Boolean @default(false) @map("scheduled_generation")
-  approvedAt   DateTime?
-  approvedById String?
-  approvedBy   User?      @relation("SalarySlipApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  emailSentAt   DateTime?
-  emailSentById String?
-  emailSentBy   User?      @relation("SalarySlipEmailSender", fields: [emailSentById], references: [id], onDelete: SetNull)
-  adjustments   SalarySlipAdjustment[]
+  status              SalarySlipStatus       @default(DRAFT)
+  scheduledGeneration Boolean                @default(false) @map("scheduled_generation")
+  approvedAt          DateTime?
+  approvedById        String?
+  approvedBy          User?                  @relation("SalarySlipApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  emailSentAt         DateTime?
+  emailSentById       String?
+  emailSentBy         User?                  @relation("SalarySlipEmailSender", fields: [emailSentById], references: [id], onDelete: SetNull)
+  adjustments         SalarySlipAdjustment[]
 
   totalDays   Int
   paidDays    Int
@@ -1680,18 +1844,18 @@ model SalarySlip {
 }
 
 model SalarySlipAdjustment {
-  id          String                   @id @default(cuid())
-  salarySlipId String                  @map("salary_slip_id")
-  salarySlip  SalarySlip               @relation(fields: [salarySlipId], references: [id], onDelete: Cascade)
-  createdById String                   @map("created_by_id")
-  createdBy   User                     @relation("SalarySlipAdjustmentCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  removedAt   DateTime?                 @map("removed_at")
-  removedById String?                   @map("removed_by_id")
-  removedBy   User?                     @relation("SalarySlipAdjustmentRemover", fields: [removedById], references: [id], onDelete: SetNull)
-  type        SalarySlipAdjustmentType
-  description String
-  amount      Decimal                  @db.Decimal(12, 2)
-  createdAt   DateTime                 @default(now()) @map("created_at")
+  id           String                   @id @default(cuid())
+  salarySlipId String                   @map("salary_slip_id")
+  salarySlip   SalarySlip               @relation(fields: [salarySlipId], references: [id], onDelete: Cascade)
+  createdById  String                   @map("created_by_id")
+  createdBy    User                     @relation("SalarySlipAdjustmentCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  removedAt    DateTime?                @map("removed_at")
+  removedById  String?                  @map("removed_by_id")
+  removedBy    User?                    @relation("SalarySlipAdjustmentRemover", fields: [removedById], references: [id], onDelete: SetNull)
+  type         SalarySlipAdjustmentType
+  description  String
+  amount       Decimal                  @db.Decimal(12, 2)
+  createdAt    DateTime                 @default(now()) @map("created_at")
 
   @@index([salarySlipId])
   @@map("salary_slip_adjustment")

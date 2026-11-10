@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { UserRole } from "@/app/generated/prisma/enums";
+import { getInitialSetupStatus } from "@/lib/initial-setup";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
     const headersList = await headers();
@@ -17,10 +18,22 @@ export default async function DashboardLayout({ children }: { children: React.Re
         redirect("/signin");
     }
 
+    if (
+        session.user.role === UserRole.SUPER_ADMIN &&
+        !(await getInitialSetupStatus()).complete
+    ) {
+        redirect("/onboarding");
+    }
+
     const pathname = headersList.get("x-pathname") ?? "/dashboard";
     const isStaffWithoutDepartment =
         session.user.role === UserRole.STAFF && !session.user.department?.trim();
-    if (isStaffWithoutDepartment && pathname.replace(/\/+$/, "") !== "/dashboard") {
+    const normalizedPathname = pathname.replace(/\/+$/, "");
+    if (
+        isStaffWithoutDepartment &&
+        normalizedPathname !== "/dashboard" &&
+        normalizedPathname !== "/dashboard/issues"
+    ) {
         redirect("/dashboard");
     }
 

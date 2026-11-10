@@ -21,6 +21,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import Link from "next/link";
+import { formatInIST } from "@/lib/date";
 import {
   DndContext,
   closestCenter,
@@ -255,7 +256,7 @@ export function PricingBuilder({ entityId, pricingApi }: PricingBuilderProps) {
             {data.validUntil && (
               <div className="flex items-center gap-1.5">
                 <Calendar className="size-3.5" />
-                <span>Valid until {new Date(data.validUntil).toLocaleDateString()}</span>
+                <span>Valid until {formatInIST(new Date(data.validUntil), "d MMM yyyy")}</span>
               </div>
             )}
           </div>

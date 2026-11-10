@@ -8,6 +8,12 @@ import type { ReceivableAgeFilter } from "@/lib/reports/report-catalog";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
 import DashboardContainer from "./dashboard-container";
+import {
+  dateOnlyAtCompanyMidnight,
+  formatInIST,
+  getAttendanceDate,
+  shiftDateOnly,
+} from "@/lib/date";
 
 const chartFilterSchema = z.object({
   period: z.enum(["last6months", "thisFiscalYear", "previousFiscalYear", "custom"]).default("thisFiscalYear"),
@@ -28,39 +34,44 @@ const chartFilterSchema = z.object({
 
 type ChartPeriod = z.infer<typeof chartFilterSchema>["period"];
 
-function startOfMonth(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), 1);
-}
-
 function monthKey(date: Date) {
   return `${date.getUTCFullYear()}-${date.getUTCMonth()}`;
 }
 
-function getChartRange(period: ChartPeriod, now: Date, fromDate?: string, toDate?: string) {
-  const currentYear = now.getUTCFullYear();
-  const currentMonth = now.getUTCMonth();
+function monthKeyFromDateOnly(value: string) {
+  const [year, month] = value.split("-").map(Number);
+  return `${year}-${month - 1}`;
+}
+
+function getChartRange(period: ChartPeriod, today: string, fromDate?: string, toDate?: string) {
+  const [currentYear, oneBasedMonth] = today.split("-").map(Number);
+  const currentMonth = oneBasedMonth - 1;
   const fiscalYearStart = currentMonth >= 3 ? currentYear : currentYear - 1;
-  const endExclusive = new Date(Date.UTC(currentYear, currentMonth, now.getUTCDate() + 1));
+  const endExclusive = dateOnlyAtCompanyMidnight(shiftDateOnly(today, 1));
 
   switch (period) {
     case "thisFiscalYear":
-      return { start: new Date(Date.UTC(fiscalYearStart, 3, 1)), endExclusive };
+      return { start: dateOnlyAtCompanyMidnight(`${fiscalYearStart}-04-01`), endExclusive };
     case "previousFiscalYear":
       return {
-        start: new Date(Date.UTC(fiscalYearStart - 1, 3, 1)),
-        endExclusive: new Date(Date.UTC(fiscalYearStart, 3, 1)),
+        start: dateOnlyAtCompanyMidnight(`${fiscalYearStart - 1}-04-01`),
+        endExclusive: dateOnlyAtCompanyMidnight(`${fiscalYearStart}-04-01`),
       };
     case "custom": {
       if (!fromDate || !toDate) return null;
-      const customEndExclusive = new Date(`${toDate}T00:00:00.000Z`);
-      customEndExclusive.setUTCDate(customEndExclusive.getUTCDate() + 1);
-      return { start: new Date(`${fromDate}T00:00:00.000Z`), endExclusive: customEndExclusive };
-    }
-    default:
       return {
-        start: new Date(Date.UTC(currentYear, currentMonth - 5, 1)),
+        start: dateOnlyAtCompanyMidnight(fromDate),
+        endExclusive: dateOnlyAtCompanyMidnight(shiftDateOnly(toDate, 1)),
+      };
+    }
+    case "last6months": {
+      const firstMonth = new Date(Date.UTC(currentYear, currentMonth - 5, 1));
+      const firstMonthDate = `${firstMonth.getUTCFullYear()}-${String(firstMonth.getUTCMonth() + 1).padStart(2, "0")}-01`;
+      return {
+        start: dateOnlyAtCompanyMidnight(firstMonthDate),
         endExclusive,
       };
+    }
   }
 }
 
@@ -68,7 +79,7 @@ function getChartRangeLabel(period: ChartPeriod, range: { start: Date; endExclus
   if (period === "thisFiscalYear") return "This financial year";
   if (period === "previousFiscalYear") return "Previous financial year";
   if (period === "last6months") return "Last 6 months";
-  return `${new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(range.start)} – ${new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${toDate}T00:00:00.000Z`))}`;
+  return `${formatInIST(range.start, "d MMM yyyy")} – ${toDate ? formatInIST(dateOnlyAtCompanyMidnight(toDate), "d MMM yyyy") : ""}`;
 }
 
 function getGreeting(hour: number) {
@@ -98,8 +109,11 @@ export default async function Page({
   }
 
   const now = new Date();
-  const currentMonthStart = startOfMonth(now);
-  const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const today = getAttendanceDate(now);
+  const [todayYear, todayMonth] = today.split("-").map(Number);
+  const currentMonthStart = dateOnlyAtCompanyMidnight(`${todayYear}-${String(todayMonth).padStart(2, "0")}-01`);
+  const previousMonth = new Date(Date.UTC(todayYear, todayMonth - 2, 1));
+  const previousMonthKey = `${previousMonth.getUTCFullYear()}-${previousMonth.getUTCMonth()}`;
   const query = await searchParams;
   const first = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
   const rawPeriod = first(query.period) ?? "thisFiscalYear";
@@ -113,8 +127,8 @@ export default async function Page({
   const parsedPeriod = chartFilterSchema.shape.period.safeParse(rawPeriod);
   const chartPeriod: ChartPeriod = parsedPeriod.success ? parsedPeriod.data : "thisFiscalYear";
   const chartRange = parsedChartFilters.success
-    ? getChartRange(chartPeriod, now, parsedChartFilters.data.fromDate, parsedChartFilters.data.toDate)
-    : getChartRange(chartPeriod === "custom" ? "thisFiscalYear" : chartPeriod, now);
+    ? getChartRange(chartPeriod, today, parsedChartFilters.data.fromDate, parsedChartFilters.data.toDate)
+    : getChartRange(chartPeriod === "custom" ? "thisFiscalYear" : chartPeriod, today);
   const chartRangeError = parsedChartFilters.success
     ? null
     : parsedChartFilters.error.issues[0]?.message ?? "Invalid chart date range";
@@ -125,20 +139,21 @@ export default async function Page({
         parsedChartFilters.success ? parsedChartFilters.data.toDate : undefined,
       )
     : "Last 6 months";
-  const activeChartRange = chartRange ?? getChartRange("thisFiscalYear", now)!;
-  const chartStartDate = activeChartRange.start.toISOString().slice(0, 10);
-  const chartEndDate = new Date(activeChartRange.endExclusive.getTime() - 1).toISOString().slice(0, 10);
-  const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const tomorrowStart = new Date(todayStart);
-  tomorrowStart.setUTCDate(tomorrowStart.getUTCDate() + 1);
-  const weekStart = new Date(todayStart);
-  weekStart.setUTCDate(weekStart.getUTCDate() - ((weekStart.getUTCDay() + 6) % 7));
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const quarterStart = new Date(Date.UTC(now.getUTCFullYear(), Math.floor(now.getUTCMonth() / 3) * 3, 1));
-  const yearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
-  const fifteenDaysAgo = new Date(todayStart.getTime() - 15 * 24 * 60 * 60 * 1000);
-  const thirtyDaysAgo = new Date(todayStart.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const fortyFiveDaysAgo = new Date(todayStart.getTime() - 45 * 24 * 60 * 60 * 1000);
+  const activeChartRange = chartRange ?? getChartRange("thisFiscalYear", today)!;
+  const chartStartDate = formatInIST(activeChartRange.start, "yyyy-MM-dd");
+  const chartEndDate = formatInIST(new Date(activeChartRange.endExclusive.getTime() - 1), "yyyy-MM-dd");
+  const todayStart = dateOnlyAtCompanyMidnight(today);
+  const tomorrowStart = dateOnlyAtCompanyMidnight(shiftDateOnly(today, 1));
+  const todayUtc = new Date(`${today}T00:00:00.000Z`);
+  const weekStartDate = shiftDateOnly(today, -((todayUtc.getUTCDay() + 6) % 7));
+  const weekStart = dateOnlyAtCompanyMidnight(weekStartDate);
+  const monthStart = currentMonthStart;
+  const quarterMonth = Math.floor((todayMonth - 1) / 3) * 3 + 1;
+  const quarterStart = dateOnlyAtCompanyMidnight(`${todayYear}-${String(quarterMonth).padStart(2, "0")}-01`);
+  const yearStart = dateOnlyAtCompanyMidnight(`${todayYear}-01-01`);
+  const fifteenDaysAgo = dateOnlyAtCompanyMidnight(shiftDateOnly(today, -15));
+  const thirtyDaysAgo = dateOnlyAtCompanyMidnight(shiftDateOnly(today, -30));
+  const fortyFiveDaysAgo = dateOnlyAtCompanyMidnight(shiftDateOnly(today, -45));
 
   const salesReceiptsDuesPeriods = [
     { label: "Today", start: todayStart, end: tomorrowStart },
@@ -151,7 +166,7 @@ export default async function Page({
     await Promise.all([
       prisma.$queryRaw<Array<{ month: Date; amount: Prisma.Decimal }>>(Prisma.sql`
         SELECT
-          date_trunc('month', i."issueDate") AS "month",
+          date_trunc('month', i."issueDate" + INTERVAL '5 hours 30 minutes') AS "month",
           COALESCE(SUM(
             i."grandTotal" * CASE WHEN i."currency" = 'INR'
               THEN 1
@@ -163,12 +178,12 @@ export default async function Page({
           AND i."issueDate" < ${activeChartRange.endExclusive}
           AND i."deletedAt" IS NULL
           AND i."status" NOT IN ('DRAFT', 'VOID')
-        GROUP BY date_trunc('month', i."issueDate")
+        GROUP BY date_trunc('month', i."issueDate" + INTERVAL '5 hours 30 minutes')
         ORDER BY "month" ASC
       `),
       prisma.$queryRaw<Array<{ month: Date; amount: Prisma.Decimal }>>(Prisma.sql`
         SELECT
-          date_trunc('month', p."paymentDate") AS "month",
+          date_trunc('month', p."paymentDate" + INTERVAL '5 hours 30 minutes') AS "month",
           COALESCE(SUM(
             CASE WHEN i."currency" = 'INR'
               THEN p."amount"
@@ -181,19 +196,19 @@ export default async function Page({
           AND p."paymentDate" < ${activeChartRange.endExclusive}
           AND i."deletedAt" IS NULL
           AND i."status" <> 'VOID'
-        GROUP BY date_trunc('month', p."paymentDate")
+        GROUP BY date_trunc('month', p."paymentDate" + INTERVAL '5 hours 30 minutes')
         ORDER BY "month" ASC
       `),
       prisma.$queryRaw<Array<{ month: Date; amount: Prisma.Decimal }>>(Prisma.sql`
         SELECT
-          date_trunc('month', e."expenseDate") AS "month",
+          date_trunc('month', e."expenseDate" + INTERVAL '5 hours 30 minutes') AS "month",
           COALESCE(SUM(e."amount"), 0) AS "amount"
         FROM "Expense" e
         WHERE e."expenseDate" >= ${activeChartRange.start}
           AND e."expenseDate" < ${activeChartRange.endExclusive}
           AND e."deletedAt" IS NULL
           AND e."status" = 'COMPLETED'
-        GROUP BY date_trunc('month', e."expenseDate")
+        GROUP BY date_trunc('month', e."expenseDate" + INTERVAL '5 hours 30 minutes')
         ORDER BY "month" ASC
       `),
       prisma.customer.count({
@@ -349,12 +364,17 @@ export default async function Page({
     ]);
 
   const monthNames: Array<{ key: string; label: string }> = [];
+  const [chartStartYear, chartStartMonth] = chartStartDate.split("-").map(Number);
+  const [chartEndYear, chartEndMonth] = chartEndDate.split("-").map(Number);
   const monthCursor = new Date(Date.UTC(
-    activeChartRange.start.getUTCFullYear(),
-    activeChartRange.start.getUTCMonth(),
+    chartStartYear,
+    chartStartMonth - 1,
     1,
   ));
-  while (monthCursor < activeChartRange.endExclusive) {
+  while (
+    monthCursor.getUTCFullYear() < chartEndYear ||
+    (monthCursor.getUTCFullYear() === chartEndYear && monthCursor.getUTCMonth() <= chartEndMonth - 1)
+  ) {
     monthNames.push({
       key: `${monthCursor.getUTCFullYear()}-${monthCursor.getUTCMonth()}`,
       label: new Intl.DateTimeFormat("en", { month: "short", year: "numeric", timeZone: "UTC" }).format(monthCursor),
@@ -380,8 +400,8 @@ export default async function Page({
     receivedAmount: receivedMap.get(key) ?? 0,
     expenses: expensesMap.get(key) ?? 0,
   }));
-  const currentRevenue = receivedMap.get(monthKey(now)) ?? 0;
-  const previousRevenue = receivedMap.get(monthKey(previousMonthStart)) ?? 0;
+  const currentRevenue = receivedMap.get(monthKeyFromDateOnly(today)) ?? 0;
+  const previousRevenue = receivedMap.get(previousMonthKey) ?? 0;
   const revenueChange = previousRevenue > 0
     ? ((currentRevenue - previousRevenue) / previousRevenue) * 100
     : null;

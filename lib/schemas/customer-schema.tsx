@@ -46,14 +46,17 @@ export const customerSchema = z.object({
         ),
     currency: z.string().trim().min(3).max(3).default("INR"),
     customerLanguage: z.string().trim().min(1).max(40).default("English"),
-    gstTreatment: z.enum([
-        "REGISTERED_REGULAR",
-        "REGISTERED_COMPOSITION",
-        "UNREGISTERED",
-        "CONSUMER",
-        "OVERSEAS",
-        "SEZ",
-    ]).optional(),
+    gstTreatment: z.preprocess(
+        (value) => value === "" || value === null ? undefined : value,
+        z.enum([
+            "REGISTERED_REGULAR",
+            "REGISTERED_COMPOSITION",
+            "UNREGISTERED",
+            "CONSUMER",
+            "OVERSEAS",
+            "SEZ",
+        ]).optional(),
+    ),
     placeOfSupply: optionalText,
     taxPreference: z.enum(["TAXABLE", "TAX_EXEMPT"]).default("TAXABLE"),
     paymentTerms: z.enum([

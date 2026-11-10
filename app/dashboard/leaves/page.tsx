@@ -10,6 +10,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -20,11 +21,13 @@ import {
 } from "@/components/ui/table";
 import { formatInIST } from "@/lib/date";
 import { isLeaveManager, requireLeaveUser } from "@/lib/leave-access";
+import { formatDepartmentMemberships } from "@/lib/departments";
 import type { LeaveRequestRow, ManagerLeaveRequestRow } from "@/lib/types/leave";
 import { CancelLeaveButton } from "./cancel-leave-button";
 import { LeaveRequestForm } from "./leave-request-form";
 import { LeaveReviewDialog } from "./leave-review-dialog";
 import { LeaveManagerFilters } from "./leave-manager-filters";
+import { LeaveViewTabs } from "./leave-view-tabs";
 import DashboardContainer from "../dashboard-container";
 
 type SearchParameters = Record<string, string | string[] | undefined>;
@@ -69,20 +72,52 @@ function buildStatusHref(query: URLSearchParams, status?: LeaveStatus): string {
   return search ? `/dashboard/leaves?${search}` : "/dashboard/leaves";
 }
 
+function buildManagerMetricHref(
+  query: URLSearchParams,
+  status: LeaveStatus,
+  date?: string,
+): string {
+  const next = new URLSearchParams(query);
+  next.delete("search");
+  next.delete("department");
+  next.delete("type");
+  next.delete("page");
+  next.delete("fromDate");
+  next.delete("throughDate");
+  next.set("status", status);
+  next.set("view", "team-requests");
+  next.set("scroll", "table");
+  if (date) {
+    next.set("fromDate", date);
+    next.set("throughDate", date);
+  }
+  const search = next.toString();
+  return search ? `/dashboard/leaves?${search}` : "/dashboard/leaves";
+}
+
 function LeaveDays({
   totalDays,
   netLeaveDays,
   weekendCount,
   holidayCount,
+  isHalfDay,
+  halfDayPeriod,
 }: {
   totalDays: number;
   netLeaveDays: number;
   weekendCount: number;
   holidayCount: number;
+  isHalfDay: boolean;
+  halfDayPeriod: "MORNING" | "AFTERNOON" | null;
 }) {
   return (
     <div className="min-w-36 space-y-1 text-xs">
       <p><span className="font-medium">{netLeaveDays}</span> chargeable</p>
+      {isHalfDay && (
+        <p className="text-muted-foreground">
+          {halfDayPeriod === "AFTERNOON" ? "Afternoon" : "Morning"} half-day leave
+        </p>
+      )}
       <p className="text-muted-foreground">
         {weekendCount} weekend days · {holidayCount} holidays
       </p>
@@ -111,7 +146,7 @@ function LeaveTableRow({
       {managerUser && (
         <TableCell className="min-w-40">
           <p className="font-medium">{managerUser.name || managerUser.email}</p>
-          <p className="text-xs text-muted-foreground">{managerUser.department ?? "No department"}</p>
+          <p className="text-xs text-muted-foreground">{formatDepartmentMemberships(managerUser)}</p>
         </TableCell>
       )}
       <TableCell><Badge variant="outline">{leave.type}</Badge></TableCell>
@@ -125,6 +160,8 @@ function LeaveTableRow({
           netLeaveDays={leave.netLeaveDays}
           weekendCount={leave.weekendCount}
           holidayCount={leave.holidayCount}
+          isHalfDay={leave.isHalfDay}
+          halfDayPeriod={leave.halfDayPeriod}
         />
       </TableCell>
       <TableCell className="max-w-56 whitespace-normal">{leave.reason}</TableCell>
@@ -165,7 +202,7 @@ function LeaveRequestCard({
           {managerUser && (
             <div>
               <p className="font-medium">{managerUser.name || managerUser.email}</p>
-              <p className="text-xs text-muted-foreground">{managerUser.department ?? "No department"}</p>
+              <p className="text-xs text-muted-foreground">{formatDepartmentMemberships(managerUser)}</p>
             </div>
           )}
           <div className="flex flex-wrap items-center gap-2">
@@ -191,6 +228,8 @@ function LeaveRequestCard({
         netLeaveDays={leave.netLeaveDays}
         weekendCount={leave.weekendCount}
         holidayCount={leave.holidayCount}
+        isHalfDay={leave.isHalfDay}
+        halfDayPeriod={leave.halfDayPeriod}
       />
       <p className="break-words text-sm">{leave.reason}</p>
       <p className="break-words text-xs text-muted-foreground">
@@ -378,9 +417,11 @@ export default async function LeavesPage({
   })) {
     if (value) managerQuery.set(key, value);
   }
+  if (isManager && isStaff) managerQuery.set("view", "team-requests");
   const ownQuery = new URLSearchParams();
   if (isManager) {
     for (const [key, value] of managerQuery) ownQuery.set(key, value);
+    ownQuery.delete("view");
   }
   for (const [key, value] of Object.entries({
     mySearch,
@@ -394,17 +435,46 @@ export default async function LeavesPage({
     <DashboardContainer title="Leaves">
       <header className="space-y-1">
         <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-          {isManager ? "Leave Requests & Approvals" : "Leave management"}
+          {isManager && isStaff
+            ? "Leave management"
+            : isManager
+              ? "Leave Requests & Approvals"
+              : "Leave management"}
         </h2>
         <p className="text-sm text-muted-foreground">
-          {isManager
+          {isManager && isStaff
+            ? "Switch between your own leave and team request reviews."
+            : isManager
             ? "Review staff requests, track coverage, and apply leave policy consistently."
             : "Request time away and follow the status of your requests."}
         </p>
       </header>
 
+      <LeaveViewTabs
+        defaultValue={
+          isStaff && isManager && first(query.view) === "team-requests"
+            ? "team-requests"
+            : isStaff
+              ? "my-leave"
+              : "team-requests"
+        }
+        scrollOnMount={first(query.scroll) === "table"}
+      >
+        {isStaff && isManager && (
+          <TabsList className="grid h-auto w-full grid-cols-2 sm:inline-grid sm:w-auto">
+            <TabsTrigger value="my-leave" className="gap-2">
+              My leave
+              <Badge variant="secondary">{ownResult?.totalCount ?? 0}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="team-requests" className="gap-2">
+              Team requests
+              <Badge variant="secondary">{managerSummary?.pendingCount ?? 0}</Badge>
+            </TabsTrigger>
+          </TabsList>
+        )}
+
       {isStaff && (
-        <>
+        <TabsContent value="my-leave" className="mt-4 space-y-6">
           <section aria-label="Leave allowance" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <Card className="border-primary/20 bg-primary/[0.03] shadow-none">
               <CardContent className="p-5">
@@ -446,7 +516,7 @@ export default async function LeavesPage({
               <LeaveRequestForm today={formatInIST(new Date(), "yyyy-MM-dd")} />
             </CardContent>
           </Card>
-          <Card className="min-w-0 shadow-none">
+          <Card id="my-leave-results" className="min-w-0 scroll-mt-24 shadow-none">
             <CardHeader className="space-y-4">
               <div>
                 <CardTitle>My requests</CardTitle>
@@ -499,37 +569,44 @@ export default async function LeavesPage({
               )}
             </CardContent>
           </Card>
-        </>
+        </TabsContent>
       )}
 
       {isManager && managerResult && (
-        <>
+        <TabsContent value="team-requests" className="mt-4 space-y-6">
           <section aria-label="Leave request summary" className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
-              { label: "Awaiting review", value: managerSummary?.pendingCount ?? 0, icon: Clock3, tone: "text-primary", detail: "Requests needing a decision" },
-              { label: "On leave today", value: managerSummary?.onLeaveTodayCount ?? 0, icon: CalendarDays, tone: "text-sky-700 dark:text-sky-400", detail: "Approved staff absences" },
-              { label: "Approved requests", value: managerSummary?.approvedCount ?? 0, icon: CheckCheck, tone: "text-emerald-700 dark:text-emerald-400", detail: "Approved across the organization" },
-              { label: "Rejected requests", value: managerSummary?.rejectedCount ?? 0, icon: XCircle, tone: "text-destructive", detail: "Rejected across the organization" },
+              { label: "Awaiting review", value: managerSummary?.pendingCount ?? 0, icon: Clock3, tone: "text-primary", detail: "Requests needing a decision", status: LeaveStatus.PENDING },
+              { label: "On leave today", value: managerSummary?.onLeaveTodayCount ?? 0, icon: CalendarDays, tone: "text-sky-700 dark:text-sky-400", detail: "Approved staff absences", status: LeaveStatus.APPROVED, date: formatInIST(new Date(), "yyyy-MM-dd") },
+              { label: "Approved requests", value: managerSummary?.approvedCount ?? 0, icon: CheckCheck, tone: "text-emerald-700 dark:text-emerald-400", detail: "Approved across the organization", status: LeaveStatus.APPROVED },
+              { label: "Rejected requests", value: managerSummary?.rejectedCount ?? 0, icon: XCircle, tone: "text-destructive", detail: "Rejected across the organization", status: LeaveStatus.REJECTED },
             ].map((metric) => {
               const MetricIcon = metric.icon;
               return (
-                <Card key={metric.label} className="min-w-0 shadow-none">
-                  <CardContent className="flex items-start justify-between gap-3 px-4 py-4">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-muted-foreground">{metric.label}</p>
-                      <p className="mt-3 text-3xl font-semibold tabular-nums tracking-tight">{metric.value.toLocaleString("en-IN")}</p>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">{metric.detail}</p>
-                    </div>
-                    <span className={`rounded-lg bg-muted p-2.5 ${metric.tone}`}>
-                      <MetricIcon aria-hidden="true" className="size-5" />
-                    </span>
-                  </CardContent>
-                </Card>
+                <Link
+                  key={metric.label}
+                  href={buildManagerMetricHref(managerQuery, metric.status, metric.date)}
+                  aria-label={`Show ${metric.label.toLowerCase()} in the requests table`}
+                  className="group min-w-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Card className="min-w-0 shadow-none transition-colors group-hover:border-primary/40">
+                    <CardContent className="flex items-start justify-between gap-3 px-4 py-4">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-muted-foreground">{metric.label}</p>
+                        <p className="mt-3 text-3xl font-semibold tabular-nums tracking-tight">{metric.value.toLocaleString("en-IN")}</p>
+                        <p className="mt-1 truncate text-xs text-muted-foreground">{metric.detail}</p>
+                      </div>
+                      <span className={`rounded-lg bg-muted p-2.5 ${metric.tone}`}>
+                        <MetricIcon aria-hidden="true" className="size-5" />
+                      </span>
+                    </CardContent>
+                  </Card>
+                </Link>
               );
             })}
           </section>
 
-          <Card className="min-w-0 shadow-none">
+          <Card id="team-leave-results" className="min-w-0 scroll-mt-24 shadow-none">
             <CardHeader className="gap-4 border-b bg-muted/20 pb-4">
               <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                 <div className="min-w-0">
@@ -616,8 +693,9 @@ export default async function LeavesPage({
               </p>
             </div>
           </aside>
-        </>
+        </TabsContent>
       )}
+      </LeaveViewTabs>
     </DashboardContainer>
   );
 }

@@ -1,14 +1,29 @@
-import { Department, LeaveStatus, LeaveType } from "@/app/generated/prisma/enums";
+import {
+  Department,
+  EmploymentStatus,
+  LeaveStatus,
+  LeaveType,
+  UserRole,
+} from "@/app/generated/prisma/enums";
 import { Prisma } from "@/app/generated/prisma/client";
 import prisma from "@/lib/prisma";
+import { departmentMembershipWhere, getDepartmentMemberships } from "@/lib/departments";
 
 export type LeaveTransaction = Prisma.TransactionClient;
+
+export type LeaveNotificationRecipient = {
+  id: string;
+  name: string;
+  email: string;
+};
 
 export type LeaveRequestCreateData = {
   userId: string;
   type: LeaveType;
   startDate: Date;
   endDate: Date;
+  isHalfDay: boolean;
+  halfDayPeriod: "MORNING" | "AFTERNOON" | null;
   reason: string;
   totalDays: number;
   netLeaveDays: number;
@@ -37,6 +52,7 @@ export type ManagerLeaveRequestRecord = Prisma.LeaveRequestGetPayload<{
         name: true;
         email: true;
         department: true;
+        additionalDepartments: true;
         role: true;
       };
     };
@@ -73,31 +89,80 @@ export async function findHolidayDates(
   userId: string,
   startDate: Date,
   endDate: Date,
-): Promise<Date[]> {
+): Promise<Array<{ date: Date; isHalfDay: boolean }>> {
   const user = await transaction.user.findUnique({
     where: { id: userId },
-    select: { department: true },
+    select: { department: true, additionalDepartments: true },
   });
-  if (!user?.department) return [];
+  if (!user) return [];
+  const departments = getDepartmentMemberships(user);
+  if (departments.length === 0) return [];
 
   const holidays = await transaction.holiday.findMany({
     where: {
       date: { gte: startDate, lte: endDate },
       OR: [
         { departments: { isEmpty: true } },
-        { departments: { has: user.department } },
+        { departments: { hasSome: departments } },
       ],
     },
-    select: { date: true },
+    select: { date: true, isHalfDay: true },
   });
-  return holidays.map(({ date }) => date);
+  return holidays;
 }
 
 export function insertLeaveRequest(
   transaction: LeaveTransaction,
   data: LeaveRequestCreateData,
 ) {
-  return transaction.leaveRequest.create({ data });
+  return transaction.leaveRequest.create({
+    data,
+    include: { user: { select: { name: true, email: true } } },
+  });
+}
+
+export function findLeaveNotificationRecipients(
+  transaction: LeaveTransaction,
+  excludeUserId: string,
+): Promise<LeaveNotificationRecipient[]> {
+  return transaction.user.findMany({
+    where: {
+      id: { not: excludeUserId },
+      employmentStatus: EmploymentStatus.ACTIVE,
+      OR: [
+        { role: { in: [UserRole.SUPER_ADMIN, UserRole.ADMIN] } },
+        { department: Department.HR },
+      ],
+      AND: [{ OR: [{ banned: false }, { banned: null }] }],
+    },
+    select: { id: true, name: true, email: true },
+  });
+}
+
+export function createLeaveNotifications(
+  transaction: LeaveTransaction,
+  data: Prisma.NotificationCreateManyInput[],
+) {
+  if (data.length === 0) return Promise.resolve({ count: 0 });
+  return transaction.notification.createMany({ data });
+}
+
+export function listWebPushSubscriptionsForUsers(userIds: string[]) {
+  if (userIds.length === 0) return Promise.resolve([]);
+  return prisma.webPushSubscription.findMany({
+    where: { userId: { in: userIds } },
+    select: {
+      id: true,
+      userId: true,
+      endpoint: true,
+      p256dh: true,
+      auth: true,
+    },
+  });
+}
+
+export function deleteWebPushSubscription(id: string) {
+  return prisma.webPushSubscription.deleteMany({ where: { id } });
 }
 
 export async function listOwnLeaveRequests(
@@ -139,19 +204,22 @@ export async function listManagerLeaveRequests(
           endDate: filters.fromDate ? { gte: filters.fromDate } : undefined,
         }
       : {}),
-    ...(filters.search
+    ...(filters.search || filters.department
       ? {
           user: {
-            ...(filters.department ? { department: filters.department } : {}),
-            OR: [
-              { name: { contains: filters.search, mode: "insensitive" } },
-              { email: { contains: filters.search, mode: "insensitive" } },
-            ],
+            ...(filters.search
+              ? {
+                  OR: [
+                    { name: { contains: filters.search, mode: "insensitive" as const } },
+                    { email: { contains: filters.search, mode: "insensitive" as const } },
+                  ],
+                }
+              : {}),
+            ...(filters.department
+              ? { AND: [departmentMembershipWhere(filters.department)] }
+              : {}),
           },
         }
-      : {}),
-    ...(!filters.search && filters.department
-      ? { user: { department: filters.department } }
       : {}),
   };
 
@@ -160,7 +228,14 @@ export async function listManagerLeaveRequests(
       where,
       include: {
         user: {
-          select: { id: true, name: true, email: true, department: true, role: true },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            department: true,
+            additionalDepartments: true,
+            role: true,
+          },
         },
       },
       orderBy: { createdAt: "desc" },

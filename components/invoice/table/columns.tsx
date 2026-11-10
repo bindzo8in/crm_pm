@@ -18,6 +18,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { softDeleteInvoice, updateInvoiceStatus } from "@/actions/invoice";
 import { invoiceKeys } from "../util";
 import { InvoiceStatus } from "@/app/generated/prisma/client";
+import { formatInIST } from "@/lib/date";
 
 export type InvoiceRow = {
   id: string;
@@ -76,7 +77,7 @@ export const columns: ColumnDef<InvoiceRow>[] = [
     header: "Due Date",
     cell: ({ row }) =>
       row.original.dueDate
-        ? new Date(row.original.dueDate).toLocaleDateString("en-IN")
+        ? formatInIST(new Date(row.original.dueDate), "dd/MM/yyyy")
         : "—",
   },
   {

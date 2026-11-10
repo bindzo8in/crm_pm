@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { autoGenerateMonthlySalarySlipsAction } from "@/actions/salary";
 import { env } from "@/lib/env";
+import { getPreviousMonthInCompanyTimezone } from "@/lib/date";
 
 export const runtime = "nodejs";
 
@@ -38,14 +39,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const now = new Date();
-  const previousMonth = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1),
-  );
-
   const result = await autoGenerateMonthlySalarySlipsAction({
-    month: previousMonth.getUTCMonth() + 1,
-    year: previousMonth.getUTCFullYear(),
+    ...getPreviousMonthInCompanyTimezone(),
   });
 
   return NextResponse.json(result, { status: result.success ? 200 : 500 });

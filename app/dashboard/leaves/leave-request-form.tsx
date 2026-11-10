@@ -2,6 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
+import { format } from "date-fns";
 import { CalendarDays, CircleDollarSign, Clock3, Info, LoaderCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
@@ -11,10 +12,14 @@ import { submitLeaveRequestAction } from "@/actions/leave";
 import { LeaveType } from "@/app/generated/prisma/enums";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   calculateLeaveDayBreakdown,
+  calculateHalfDayLeaveBreakdown,
   parseDateOnly,
   toDateKey,
 } from "@/lib/leave-policy";
@@ -27,14 +32,28 @@ const requestSchema = z
     type: z.enum(LeaveType),
     startDate: z.string().min(1, "Choose a start date."),
     endDate: z.string().min(1, "Choose an end date."),
+    isHalfDay: z.boolean(),
+    halfDayPeriod: z.enum(["MORNING", "AFTERNOON"]).nullable(),
     reason: z.string().trim().min(1, "Add a reason for your request.").max(500),
   })
   .refine((value) => value.endDate >= value.startDate, {
     path: ["endDate"],
     message: "End date cannot be before start date.",
+  })
+  .refine((value) => !value.isHalfDay || value.startDate === value.endDate, {
+    path: ["endDate"],
+    message: "Half-day leave must be requested for one date only.",
+  })
+  .refine((value) => !value.isHalfDay || value.halfDayPeriod !== null, {
+    path: ["halfDayPeriod"],
+    message: "Choose morning or afternoon.",
+  })
+  .refine((value) => value.isHalfDay || value.halfDayPeriod === null, {
+    path: ["halfDayPeriod"],
+    message: "Choose a period only for a half-day request.",
   });
 
-type HolidayRecord = { date: Date | string };
+type HolidayRecord = { date: Date | string; isHalfDay: boolean };
 
 const leaveOptions = [
   { type: LeaveType.ANNUAL, label: "Annual", detail: "Paid leave, subject to monthly allowance.", icon: CircleDollarSign },
@@ -49,7 +68,7 @@ export function LeaveRequestForm({
   today: string;
 }) {
   const router = useRouter();
-  const [holidaysByYear, setHolidaysByYear] = useState<Record<number, string[]>>({});
+  const [holidaysByYear, setHolidaysByYear] = useState<Record<number, Record<string, number>>>({});
   const [weekendDays, setWeekendDays] = useState<number[]>([0]);
   const [holidayError, setHolidayError] = useState<string | null>(null);
   const form = useForm<LeaveFormValues>({
@@ -58,20 +77,29 @@ export function LeaveRequestForm({
       type: LeaveType.ANNUAL,
       startDate: "",
       endDate: "",
+      isHalfDay: false,
+      halfDayPeriod: null,
       reason: "",
     },
   });
   const startDate = useWatch({ control: form.control, name: "startDate" });
   const endDate = useWatch({ control: form.control, name: "endDate" });
   const selectedType = useWatch({ control: form.control, name: "type" });
+  const isHalfDay = useWatch({ control: form.control, name: "isHalfDay" });
+  const halfDayPeriod = useWatch({ control: form.control, name: "halfDayPeriod" });
   const reason = useWatch({ control: form.control, name: "reason" });
-  const startDateRegistration = form.register("startDate");
-  const endDateRegistration = form.register("endDate");
   const mutation = useMutation({
     mutationFn: (values: LeaveFormValues) => submitLeaveRequestAction(values),
     onSuccess: () => {
       toast.success("Leave request submitted.");
-      form.reset({ type: LeaveType.ANNUAL, startDate: "", endDate: "", reason: "" });
+      form.reset({
+        type: LeaveType.ANNUAL,
+        startDate: "",
+        endDate: "",
+        isHalfDay: false,
+        halfDayPeriod: null,
+        reason: "",
+      });
       router.refresh();
     },
     onError: (error: Error) => toast.error(error.message || "Unable to submit leave request."),
@@ -95,11 +123,12 @@ export function LeaveRequestForm({
         const result = await getHolidaysAction({ year });
         return [
           year,
-          result.holidays.map((holiday: HolidayRecord) =>
+          Object.fromEntries(result.holidays.map((holiday: HolidayRecord) => [
             typeof holiday.date === "string"
               ? holiday.date.slice(0, 10)
               : toDateKey(holiday.date),
-          ),
+            holiday.isHalfDay ? 0.5 : 1,
+          ])),
           result.weekendDays,
         ] as const;
       }),
@@ -109,7 +138,7 @@ export function LeaveRequestForm({
           setHolidayError(null);
           setHolidaysByYear((current) => ({
             ...current,
-            ...Object.fromEntries(entries.map(([year, dates]) => [year, dates])),
+            ...Object.fromEntries(entries.map(([year, holidays]) => [year, holidays])),
           }));
           const currentWeekendDays = entries[0]?.[2];
           if (currentWeekendDays) setWeekendDays(currentWeekendDays);
@@ -128,16 +157,23 @@ export function LeaveRequestForm({
     if (!startDate || !endDate || endDate < startDate || yearsToLoad.length === 0) return null;
     if (yearsToLoad.some((year) => !(year in holidaysByYear))) return null;
     try {
-      return calculateLeaveDayBreakdown(
+      const breakdown = calculateLeaveDayBreakdown(
         parseDateOnly(startDate),
         parseDateOnly(endDate),
-        new Set(yearsToLoad.flatMap((year) => holidaysByYear[year] ?? [])),
+        new Map(
+          yearsToLoad.flatMap((year) =>
+            Object.entries(holidaysByYear[year] ?? {}),
+          ),
+        ),
         new Set(weekendDays),
       );
+      return isHalfDay
+        ? calculateHalfDayLeaveBreakdown(breakdown, parseDateOnly(startDate))
+        : breakdown;
     } catch {
       return null;
     }
-  }, [endDate, holidaysByYear, startDate, weekendDays, yearsToLoad]);
+  }, [endDate, holidaysByYear, isHalfDay, startDate, weekendDays, yearsToLoad]);
 
   return (
     <form
@@ -179,39 +215,90 @@ export function LeaveRequestForm({
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,0.65fr)]">
         <div className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="space-y-2 text-sm font-medium">
-              Start date
-              <Input
-                type="date"
-                min={today}
-                {...startDateRegistration}
-                onChange={(event) => {
-                  setHolidayError(null);
-                  void startDateRegistration.onChange(event);
+          <div className="space-y-2">
+            <DateRangePicker
+              startDate={startDate}
+              endDate={endDate}
+              minDate={parseDateOnly(today)}
+              ariaLabel="Choose leave date range"
+              closeOnStart={isHalfDay}
+              label="Leave dates"
+              ariaInvalid={Boolean(form.formState.errors.startDate || form.formState.errors.endDate)}
+              onChange={(range) => {
+                setHolidayError(null);
+                const nextStartDate = range?.from ? format(range.from, "yyyy-MM-dd") : "";
+                const nextEndDate = isHalfDay
+                  ? nextStartDate
+                  : range?.to
+                    ? format(range.to, "yyyy-MM-dd")
+                    : "";
+                form.setValue("startDate", nextStartDate, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                });
+                form.setValue("endDate", nextEndDate, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                });
+              }}
+            />
+            {(form.formState.errors.startDate || form.formState.errors.endDate) && (
+              <p role="alert" className="text-xs text-destructive">
+                {form.formState.errors.startDate?.message ?? form.formState.errors.endDate?.message}
+              </p>
+            )}
+          </div>
+          <div className="space-y-4 rounded-lg border p-4">
+            <label className="flex cursor-pointer items-start gap-3">
+              <Checkbox
+                id="half-day-leave"
+                checked={isHalfDay}
+                onCheckedChange={(checked) => {
+                  const enabled = checked === true;
+                  form.setValue("isHalfDay", enabled, { shouldDirty: true, shouldValidate: true });
+                  if (enabled && startDate) {
+                    form.setValue("endDate", startDate, { shouldDirty: true, shouldValidate: true });
+                  }
+                  form.setValue(
+                    "halfDayPeriod",
+                    enabled ? halfDayPeriod ?? "MORNING" : null,
+                    { shouldDirty: true, shouldValidate: true },
+                  );
                 }}
-                aria-invalid={Boolean(form.formState.errors.startDate)}
               />
-              {form.formState.errors.startDate && (
-                <span className="block text-xs font-normal text-destructive">{form.formState.errors.startDate.message}</span>
-              )}
+              <span className="space-y-1">
+                <Label htmlFor="half-day-leave" className="cursor-pointer">Request half-day leave</Label>
+                <span className="block text-xs leading-5 text-muted-foreground">
+                  Half-day requests cover one date and count as 0.5 leave day when the date is chargeable.
+                </span>
+              </span>
             </label>
-            <label className="space-y-2 text-sm font-medium">
-              End date
-              <Input
-                type="date"
-                min={startDate || today}
-                {...endDateRegistration}
-                onChange={(event) => {
-                  setHolidayError(null);
-                  void endDateRegistration.onChange(event);
-                }}
-                aria-invalid={Boolean(form.formState.errors.endDate)}
-              />
-              {form.formState.errors.endDate && (
-                <span className="block text-xs font-normal text-destructive">{form.formState.errors.endDate.message}</span>
-              )}
-            </label>
+            {isHalfDay && (
+              <div className="max-w-xs space-y-2 pl-7">
+                <Label htmlFor="half-day-period">Which half of the day?</Label>
+                <Select
+                  value={halfDayPeriod ?? ""}
+                  onValueChange={(value) => {
+                    if (value === "MORNING" || value === "AFTERNOON") {
+                      form.setValue("halfDayPeriod", value, { shouldDirty: true, shouldValidate: true });
+                    }
+                  }}
+                >
+                  <SelectTrigger id="half-day-period" aria-invalid={Boolean(form.formState.errors.halfDayPeriod)}>
+                    <SelectValue placeholder="Choose morning or afternoon" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="MORNING">Morning</SelectItem>
+                    <SelectItem value="AFTERNOON">Afternoon</SelectItem>
+                  </SelectContent>
+                </Select>
+                {form.formState.errors.halfDayPeriod && (
+                  <p role="alert" className="text-xs text-destructive">
+                    {form.formState.errors.halfDayPeriod.message}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
           <label className="block space-y-2 text-sm font-medium">
             Reason for leave
@@ -241,7 +328,11 @@ export function LeaveRequestForm({
               <p className="mt-4 text-3xl font-semibold tabular-nums">{dayBreakdown.netLeaveDays}</p>
               <p className="text-sm text-muted-foreground">chargeable day(s)</p>
               <div className="mt-4 space-y-2 border-t pt-3 text-sm">
-                <div className="flex justify-between gap-3"><span>Calendar days</span><span className="tabular-nums">{dayBreakdown.totalDays}</span></div>
+                {isHalfDay ? (
+                  <div className="flex justify-between gap-3"><span>Requested portion</span><span>{halfDayPeriod === "AFTERNOON" ? "Afternoon" : "Morning"}</span></div>
+                ) : (
+                  <div className="flex justify-between gap-3"><span>Calendar days</span><span className="tabular-nums">{dayBreakdown.totalDays}</span></div>
+                )}
                 <div className="flex justify-between gap-3"><span>Weekend days excluded</span><span className="tabular-nums">{dayBreakdown.weekendCount}</span></div>
                 <div className="flex justify-between gap-3"><span>Holidays excluded</span><span className="tabular-nums">{dayBreakdown.holidayCount}</span></div>
               </div>

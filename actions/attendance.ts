@@ -42,8 +42,9 @@ import {
 import { getWeekendDays } from "@/services/attendance-settings-service";
 import { getCompanyEmployeeIdPrefix } from "@/services/company-service";
 import { formatEmployeeId } from "@/lib/employee-id";
-import { DEFAULT_WEEKEND_DAYS } from "@/lib/weekend-policy";
+import { DEFAULT_WEEKEND_DAYS, isWeekendDate } from "@/lib/weekend-policy";
 import { parseDateOnly } from "@/lib/leave-policy";
+import { getDepartmentMemberships } from "@/lib/departments";
 
 function isAttendanceManager(user: { role?: UserRole | string | null; department?: Department | string | null }): boolean {
   if (!user) return false;
@@ -224,15 +225,15 @@ async function processOrphanedSessions(userId: string, settingsInput?: any) {
     });
 
     for (const record of orphanedRecords) {
-      const autoClockOut = new Date(record.clockIn.getTime() + maxHours * 60 * 60 * 1000);
-      const totalShiftMinutes = maxHours * 60;
+      const autoClosedAt = new Date();
 
       await prisma.attendanceRecord.update({
         where: { id: record.id },
         data: {
-          clockOut: autoClockOut,
           isAutoCheckedOut: true,
-          workMinutes: totalShiftMinutes,
+          autoClosedAt,
+          workMinutes: 0,
+          overtimeMinutes: 0,
           notes: `${record.notes ? record.notes + " | " : ""}Auto checked-out after ${maxHours} hours cap.`,
         },
       });
@@ -243,7 +244,7 @@ async function processOrphanedSessions(userId: string, settingsInput?: any) {
           userId,
           action: "AUTO_CHECKOUT",
           oldValues: JSON.stringify({ clockOut: null, isAutoCheckedOut: false }),
-          newValues: JSON.stringify({ clockOut: autoClockOut, isAutoCheckedOut: true }),
+          newValues: JSON.stringify({ clockOut: null, isAutoCheckedOut: true, autoClosedAt }),
           reason: `System automatically closed session after reaching ${maxHours}-hour shift cap.`,
         },
       });
@@ -282,11 +283,31 @@ export async function clockInAction(input: ClockInInput) {
 
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { department: true, workMode: true },
+      select: {
+        department: true,
+        additionalDepartments: true,
+        workMode: true,
+      },
     });
 
     if (!user) {
       return { success: false, error: "User not found." };
+    }
+
+    const dayStatus = await getAttendanceDayStatus(
+      new Date(),
+      getDepartmentMemberships(user),
+    );
+    if (dayStatus.isWeekend || dayStatus.holidayName) {
+      const dayName = formatInIST(new Date(), "EEEE");
+      const dayDescription = [
+        dayStatus.isWeekend ? `scheduled non-working day (${dayName})` : null,
+        dayStatus.holidayName ? `holiday: ${dayStatus.holidayName}` : null,
+      ].filter(Boolean).join(" and ");
+      return {
+        success: false,
+        error: `Clock-in is unavailable today because it is a ${dayDescription}.`,
+      };
     }
 
     const rawUserAgent = reqHeaders.get("user-agent") || undefined;
@@ -668,10 +689,20 @@ export async function getTodayAttendanceAction() {
 
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { workMode: true },
+      select: {
+        workMode: true,
+        department: true,
+        additionalDepartments: true,
+      },
     });
 
-    const settings = await getAttendanceSettings();
+    const [settings, dayStatus] = await Promise.all([
+      getAttendanceSettings(),
+      getAttendanceDayStatus(
+        new Date(),
+        user ? getDepartmentMemberships(user) : [],
+      ),
+    ]);
 
     return {
       success: true,
@@ -679,6 +710,7 @@ export async function getTodayAttendanceAction() {
       settings: settings ? JSON.parse(JSON.stringify(settings)) : null,
       userRole: (session.user.role as UserRole) || UserRole.STAFF,
       userWorkMode: user?.workMode || WorkMode.OFFICE,
+      dayStatus,
     };
   } catch (error: any) {
     console.error("Error in getTodayAttendanceAction:", error);
@@ -687,9 +719,38 @@ export async function getTodayAttendanceAction() {
       record: null,
       settings: null,
       userRole: "STAFF",
+      dayStatus: null,
       error: error.message || "Failed to load today's attendance record",
     };
   }
+}
+
+async function getAttendanceDayStatus(
+  date: Date,
+  departments: readonly Department[] = [],
+) {
+  const dateKey = formatInIST(date, "yyyy-MM-dd");
+  const dateOnly = parseDateOnly(dateKey);
+  const [weekendDays, holiday] = await Promise.all([
+    getWeekendDays(),
+    prisma.holiday.findFirst({
+      where: {
+        date: dateOnly,
+        OR: [
+          { departments: { isEmpty: true } },
+          ...(departments.length
+            ? [{ departments: { hasSome: [...departments] } }]
+            : []),
+        ],
+      },
+      select: { name: true },
+    }),
+  ]);
+  return {
+    isWeekend: isWeekendDate(dateOnly, weekendDays),
+    weekday: formatInIST(date, "EEEE"),
+    holidayName: holiday?.name ?? null,
+  };
 }
 
 export async function getAttendanceLogsAction(input: Partial<AttendanceFilterInput>) {
@@ -721,7 +782,14 @@ export async function getAttendanceLogsAction(input: Partial<AttendanceFilterInp
     if (parsed.department) {
       whereClause.OR = [
         { department: parsed.department },
-        { user: { department: parsed.department } },
+        {
+          user: {
+            OR: [
+              { department: parsed.department },
+              { additionalDepartments: { has: parsed.department } },
+            ],
+          },
+        },
       ];
     }
 
@@ -743,6 +811,7 @@ export async function getAttendanceLogsAction(input: Partial<AttendanceFilterInp
               email: true,
               image: true,
               department: true,
+              additionalDepartments: true,
               employeeId: true,
               designation: true,
             },
@@ -779,8 +848,10 @@ export async function getAttendanceLogsAction(input: Partial<AttendanceFilterInp
 export async function getAttendanceAnalyticsAction(filters: {
   startDate?: string;
   endDate?: string;
-  department?: string;
-  userId?: string;
+  department?: string[];
+  userId?: string[];
+  status?: AttendanceStatus[];
+  workMode?: WorkMode[];
 }) {
   try {
     const { session } = await getAuthenticatedUser("analytics-scope");
@@ -789,23 +860,46 @@ export async function getAttendanceAnalyticsAction(filters: {
       select: { id: true, role: true, department: true },
     });
     const effectiveUser = dbUser || session.user;
+    if (
+      effectiveUser.role !== UserRole.SUPER_ADMIN &&
+      effectiveUser.role !== UserRole.ADMIN
+    ) {
+      throw new Error("Unauthorized: Only Admins and Super Admins can view attendance analytics.");
+    }
     const isManager = isAttendanceManager(effectiveUser);
 
     const conditions: any[] = [{ user: { includeInAttendanceReports: true } }];
 
     if (!isManager) {
       conditions.push({ userId: effectiveUser.id });
-    } else if (filters.userId && filters.userId !== "ALL") {
-      conditions.push({ userId: filters.userId });
+    } else if (filters.userId?.length) {
+      conditions.push({ userId: { in: filters.userId } });
     }
 
-    if (filters.department && filters.department !== "ALL") {
+    if (filters.department?.length) {
       conditions.push({
         OR: [
-          { department: filters.department as Department },
-          { user: { department: filters.department as Department } },
+          { department: { in: filters.department as Department[] } },
+          {
+            user: {
+              OR: [
+                { department: { in: filters.department as Department[] } },
+                {
+                  additionalDepartments: {
+                    hasSome: filters.department as Department[],
+                  },
+                },
+              ],
+            },
+          },
         ],
       });
+    }
+    if (filters.status?.length) {
+      conditions.push({ status: { in: filters.status } });
+    }
+    if (filters.workMode?.length) {
+      conditions.push({ workMode: { in: filters.workMode } });
     }
 
     const dateFilter = parseDateRangeFilter(filters.startDate, filters.endDate);
@@ -825,6 +919,7 @@ export async function getAttendanceAnalyticsAction(filters: {
             name: true,
             email: true,
             department: true,
+            additionalDepartments: true,
             image: true,
           },
         },
@@ -1092,6 +1187,8 @@ export async function regularizeAttendanceAction(input: RegularizeAttendanceInpu
         regularized: true,
         regularizedBy: session.user.id,
         regularizationReason: validated.reason,
+        isAutoCheckedOut: false,
+        autoClosedAt: null,
         notes: `${record.notes ? record.notes + " | " : ""}Regularized: ${validated.reason}`,
       },
     });
@@ -1262,6 +1359,7 @@ export async function getAttendanceEntryEmployeesAction() {
         email: true,
         employeeId: true,
         department: true,
+        additionalDepartments: true,
         workMode: true,
       },
       orderBy: { name: "asc" },
@@ -1402,31 +1500,50 @@ export async function createManualAttendanceAction(input: CreateManualAttendance
 function buildAdvancedAttendanceWhereClause(sessionUser: any, parsed: AdvancedAttendanceReportInput) {
   const isManager = isAttendanceManager(sessionUser);
   const conditions: any[] = [{ user: { includeInAttendanceReports: true } }];
+  const departmentFilters = parsed.department
+    ? Array.isArray(parsed.department) ? parsed.department : [parsed.department]
+    : [];
+  const userFilters = parsed.userId
+    ? Array.isArray(parsed.userId) ? parsed.userId : [parsed.userId]
+    : [];
+  const statusFilters = parsed.status
+    ? Array.isArray(parsed.status) ? parsed.status : [parsed.status]
+    : [];
+  const workModeFilters = parsed.workMode
+    ? Array.isArray(parsed.workMode) ? parsed.workMode : [parsed.workMode]
+    : [];
 
   if (!isManager) {
     conditions.push({ userId: sessionUser.id });
-  } else if (parsed.userId && parsed.userId !== "ALL") {
-    conditions.push({ userId: parsed.userId });
+  } else if (userFilters.length) {
+    conditions.push({ userId: { in: userFilters } });
   }
 
-  if (parsed.department && (parsed.department as string) !== "ALL") {
+  if (departmentFilters.length) {
     conditions.push({
       OR: [
-        { department: parsed.department },
-        { user: { department: parsed.department } },
+        { department: { in: departmentFilters } },
+        {
+          user: {
+            OR: [
+              { department: { in: departmentFilters } },
+              { additionalDepartments: { hasSome: departmentFilters } },
+            ],
+          },
+        },
       ],
     });
   }
 
-  if (parsed.workMode && (parsed.workMode as string) !== "ALL") {
-    conditions.push({ workMode: parsed.workMode });
+  if (workModeFilters.length) {
+    conditions.push({ workMode: { in: workModeFilters } });
   }
 
-  if (
-    parsed.status &&
-    Object.values(AttendanceStatus).includes(parsed.status as AttendanceStatus)
-  ) {
-    conditions.push({ status: parsed.status });
+  const recordStatuses = statusFilters.filter((status) =>
+    Object.values(AttendanceStatus).includes(status as AttendanceStatus),
+  ) as AttendanceStatus[];
+  if (recordStatuses.length) {
+    conditions.push({ status: { in: recordStatuses } });
   }
 
   const dateFilter = parseDateRangeFilter(parsed.startDate, parsed.endDate);
@@ -1512,6 +1629,7 @@ export async function getAttendanceEmployeesListAction() {
         name: true,
         email: true,
         department: true,
+        additionalDepartments: true,
         designation: true,
         workMode: true,
       },
@@ -1564,7 +1682,13 @@ async function getResolvedAttendanceTimeline(
   const users = await prisma.user.findMany({
     where: {
       includeInAttendanceReports: true,
-      ...(parsed.userId ? { id: parsed.userId } : {}),
+      ...(parsed.userId
+        ? {
+            id: Array.isArray(parsed.userId)
+              ? { in: parsed.userId }
+              : parsed.userId,
+          }
+        : {}),
     },
     select: {
       id: true,
@@ -1573,6 +1697,7 @@ async function getResolvedAttendanceTimeline(
       email: true,
       image: true,
       department: true,
+      additionalDepartments: true,
       designation: true,
       createdAt: true,
       dateOfJoining: true,
@@ -1600,6 +1725,7 @@ async function getResolvedAttendanceTimeline(
             email: true,
             image: true,
             department: true,
+            additionalDepartments: true,
             designation: true,
           },
         },
@@ -1621,11 +1747,13 @@ async function getResolvedAttendanceTimeline(
         endDate: true,
         status: true,
         type: true,
+        isHalfDay: true,
+        halfDayPeriod: true,
       },
     }),
     prisma.holiday.findMany({
       where: { date: { gte: start, lte: endOfRange } },
-      select: { date: true, name: true, departments: true },
+      select: { date: true, name: true, departments: true, isHalfDay: true },
     }),
     getWeekendDays(),
   ]);
@@ -1634,6 +1762,8 @@ async function getResolvedAttendanceTimeline(
     ...leave,
     status: "APPROVED" as const,
     type: String(leave.type),
+    isHalfDay: leave.isHalfDay,
+    halfDayPeriod: leave.halfDayPeriod,
   }));
   const timeline = buildResolvedAttendanceTimeline(
     users,
@@ -1651,23 +1781,32 @@ async function getResolvedAttendanceTimeline(
   const employeeIdPrefix = await getCompanyEmployeeIdPrefix();
 
   const filteredTimeline = timeline.filter((record) => {
+    const departmentFilters = parsed.department
+      ? Array.isArray(parsed.department) ? parsed.department : [parsed.department]
+      : [];
+    const statusFilters = parsed.status
+      ? Array.isArray(parsed.status) ? parsed.status : [parsed.status]
+      : [];
+    const workModeFilters = parsed.workMode
+      ? Array.isArray(parsed.workMode) ? parsed.workMode : [parsed.workMode]
+      : [];
     if (
-      parsed.department &&
-      record.department !== parsed.department &&
-      record.user?.department !== parsed.department
+      departmentFilters.length > 0 &&
+      !departmentFilters.includes(record.department as Department) &&
+      ![record.user?.department, ...(record.user?.additionalDepartments ?? [])].some(
+        (department) => departmentFilters.includes(department as Department),
+      )
     ) {
       return false;
     }
-    if (
-      parsed.status &&
-      (parsed.status === "HOLIDAY"
-        ? record.status !== "HOLIDAY" &&
-          !("holidayName" in record && record.holidayName)
-        : record.status !== parsed.status)
-    ) {
+    if (statusFilters.length > 0 && !statusFilters.some((status) =>
+      status === "HOLIDAY"
+        ? record.status === "HOLIDAY" || Boolean("holidayName" in record && record.holidayName)
+        : record.status === status,
+    )) {
       return false;
     }
-    if (parsed.workMode && record.workMode !== parsed.workMode) return false;
+    if (workModeFilters.length > 0 && !workModeFilters.includes(record.workMode as WorkMode)) return false;
     if (parsed.onlyLate && !((record.lateMinutes ?? 0) > (parsed.minLateMinutes ?? 0))) {
       return false;
     }
@@ -1755,7 +1894,13 @@ async function getResolvedAttendanceTimeline(
         "isSynthetic" in record ? record.isSynthetic ?? false : false,
       holidayName:
         "holidayName" in record ? record.holidayName : undefined,
+      holidayIsHalfDay:
+        "holidayIsHalfDay" in record ? record.holidayIsHalfDay : undefined,
       leaveType: "leaveType" in record ? record.leaveType : undefined,
+      leaveIsHalfDay:
+        "leaveIsHalfDay" in record ? record.leaveIsHalfDay : undefined,
+      leaveHalfDayPeriod:
+        "leaveHalfDayPeriod" in record ? record.leaveHalfDayPeriod : undefined,
       leaveRequestStatus:
         "leaveRequestStatus" in record ? record.leaveRequestStatus : undefined,
     };
@@ -1853,6 +1998,8 @@ export async function getDetailedAttendanceReportAction(input: Partial<AdvancedA
         status: record.status,
         holidayName:
           "holidayName" in record ? record.holidayName : undefined,
+        holidayIsHalfDay:
+          "holidayIsHalfDay" in record ? record.holidayIsHalfDay : undefined,
       }, weekendDays),
     ).length;
     const workedDays = allMatchingRecords.filter((record) =>
@@ -1938,6 +2085,7 @@ export async function exportAttendanceToExcelAction(input: Partial<AdvancedAtten
             name: true,
             email: true,
             department: true,
+            additionalDepartments: true,
             designation: true,
           },
         },
@@ -1971,13 +2119,13 @@ export async function exportAttendanceToExcelAction(input: Partial<AdvancedAtten
             lte: lastRecordDate,
           },
         },
-        select: { date: true, departments: true },
+        select: { date: true, departments: true, isHalfDay: true },
       }),
     ]);
     const holidayByDate = new Map(
       holidays.map((holiday) => [
         holiday.date.toISOString().slice(0, 10),
-        holiday.departments,
+        { departments: holiday.departments, isHalfDay: holiday.isHalfDay },
       ]),
     );
 
@@ -2082,7 +2230,7 @@ export async function exportAttendanceToExcelAction(input: Partial<AdvancedAtten
           : rec.clockOut
             ? formatInIST(new Date(rec.clockOut), "hh:mm a")
             : rec.isAutoCheckedOut
-              ? "Auto-Closed"
+              ? "Not clocked out"
               : "Active";
       const grossMins = rec.clockIn && rec.clockOut ? Math.max(0, Math.round((new Date(rec.clockOut).getTime() - new Date(rec.clockIn).getTime()) / (1000 * 60))) : 0;
       const netHoursStr = rec.workMinutes > 0 ? `${Math.floor(rec.workMinutes / 60)}h ${rec.workMinutes % 60}m` : "-";
@@ -2091,7 +2239,7 @@ export async function exportAttendanceToExcelAction(input: Partial<AdvancedAtten
       const resolvedEmpNo = formatEmployeeId(rec.user?.employeeId, employeeIdPrefix) ?? "N/A";
       const attendanceContext =
         "holidayName" in rec && rec.holidayName
-        ? `Holiday: ${rec.holidayName}`
+        ? `${"holidayIsHalfDay" in rec && rec.holidayIsHalfDay ? "Half-day holiday" : "Holiday"}: ${rec.holidayName}`
         : "leaveType" in rec && rec.leaveType
           ? `Leave: ${rec.leaveType}${"leaveRequestStatus" in rec && rec.leaveRequestStatus ? ` (${rec.leaveRequestStatus})` : ""}`
           : rec.status === "ABSENT"
@@ -2295,8 +2443,8 @@ export async function exportAttendanceToExcelAction(input: Partial<AdvancedAtten
       const department = rec.department || rec.user?.department || "";
       const isHoliday =
         holidayDepartments !== undefined &&
-        (holidayDepartments.length === 0 ||
-          holidayDepartments.some((holidayDepartment) =>
+        (holidayDepartments.departments.length === 0 ||
+          holidayDepartments.departments.some((holidayDepartment) =>
             String(holidayDepartment) === department,
           ));
       emp.totalShifts += isScheduledAttendanceShift(
@@ -2305,6 +2453,10 @@ export async function exportAttendanceToExcelAction(input: Partial<AdvancedAtten
           status: String(rec.status),
           holidayName:
             "holidayName" in rec ? rec.holidayName : undefined,
+          holidayIsHalfDay:
+            "holidayIsHalfDay" in rec
+              ? rec.holidayIsHalfDay
+              : isHoliday && holidayDepartments.isHalfDay,
         },
         weekendDays,
         isHoliday,

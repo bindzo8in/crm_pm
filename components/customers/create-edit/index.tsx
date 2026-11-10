@@ -268,19 +268,33 @@ export function CustomerForm({
     const watchedCompanyName = form.watch("companyName") ?? "";
     const watchedContactName = form.watch("primaryContactName") ?? "";
     const watchedDisplayName = form.watch("displayName") ?? "";
+    const watchedCustomerType = form.watch("customerType");
     const displayNameContact = presentation === "dialog"
         ? [contactFirstName, contactLastName].filter(Boolean).join(" ")
         : watchedContactName;
+    const isCreating = !defaultValues?.id;
     const displayNameOptions = React.useMemo(
         () => getDisplayNameOptions(displayNameContact, watchedCompanyName),
         [displayNameContact, watchedCompanyName]
     );
-    const autoDisplayName = form.watch("customerType") === CustomerType.INDIVIDUAL
-        ? displayNameOptions.find((option) => option === displayNameContact.trim()) ?? displayNameOptions[0] ?? ""
-        : watchedCompanyName.trim() || displayNameOptions[0] || "";
+    const autoDisplayName = isCreating
+        ? (watchedCustomerType === CustomerType.BUSINESS ? watchedCompanyName : displayNameContact).trim()
+        : watchedCustomerType === CustomerType.INDIVIDUAL
+            ? displayNameOptions.find((option) => option === displayNameContact.trim()) ?? displayNameOptions[0] ?? ""
+            : watchedCompanyName.trim() || displayNameOptions[0] || "";
+    const nameSourceLabel = watchedCustomerType === CustomerType.BUSINESS ? "Company name" : "Primary contact name";
+    const nameSourceMessage = isCreating
+        ? displayNameCheck.status === "duplicate" || displayNameCheck.status === "error"
+            ? displayNameCheck.message
+            : form.formState.errors.displayName
+                ? `${nameSourceLabel} is required.`
+                : undefined
+        : undefined;
+    const isNameSourceInvalid = Boolean(nameSourceMessage);
+    const requiredMark = <span className="text-destructive">*</span>;
 
     React.useEffect(() => {
-        if (defaultValues?.id || displayNameWasManuallyEdited.current) return;
+        if (defaultValues?.id || (displayNameWasManuallyEdited.current && !isCreating)) return;
 
         const currentDisplayName = form.getValues("displayName");
         if (!currentDisplayName || currentDisplayName === previousGeneratedDisplayName.current) {
@@ -289,7 +303,7 @@ export function CustomerForm({
             });
         }
         previousGeneratedDisplayName.current = autoDisplayName;
-    }, [autoDisplayName, defaultValues?.id, form, form.formState.isSubmitted]);
+    }, [autoDisplayName, defaultValues?.id, form, form.formState.isSubmitted, isCreating]);
 
     React.useEffect(() => {
         const displayName = watchedDisplayName.trim().replace(/\s+/g, " ");
@@ -439,10 +453,10 @@ export function CustomerForm({
     }
 
     if (presentation === "dialog") {
-        const detailsClass = "h-8 w-full min-w-0 rounded border border-input bg-background px-2 text-xs text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40";
-        const rowClass = "grid grid-cols-1 items-start gap-x-2.5 gap-y-1.5 sm:grid-cols-[6.25rem_minmax(0,1fr)] sm:items-center";
-        const fieldLabelClass = "flex items-center gap-1 text-[10px] font-normal text-foreground";
-        const requiredMark = <span className="text-destructive">*</span>;
+        const detailsClass = "h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40";
+        const rowClass = "grid grid-cols-1 items-start gap-x-3 gap-y-1.5 sm:grid-cols-[7.5rem_minmax(0,1fr)] sm:items-center";
+        const fieldLabelClass = "flex items-center gap-1 text-xs font-medium text-foreground";
+        const addressFieldClass = "grid min-w-0 gap-1.5";
         const infoTip = (text: string) => (
             <Tooltip>
                 <TooltipTrigger type="button" aria-label="More information" className="text-muted-foreground">
@@ -455,7 +469,7 @@ export function CustomerForm({
 
         return (
             <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3 py-3.5 sm:px-4">
+                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
                     {error && (
                         <div role="alert" className="rounded border border-destructive/40 bg-destructive/5 px-2.5 py-2 text-xs text-destructive">
                             {error}
@@ -481,7 +495,17 @@ export function CustomerForm({
                                                 name={field.name}
                                                 value={value}
                                                 checked={field.value === value}
-                                                onChange={() => field.onChange(value)}
+                                                onChange={() => {
+                                                    field.onChange(value);
+                                                    if (isCreating) {
+                                                        const sourceName = value === CustomerType.BUSINESS
+                                                            ? form.getValues("companyName")
+                                                            : form.getValues("primaryContactName");
+                                                        form.setValue("displayName", sourceName ?? "", {
+                                                            shouldValidate: form.formState.isSubmitted,
+                                                        });
+                                                    }
+                                                }}
                                                 className="size-3 accent-primary"
                                             />
                                             {label}
@@ -494,7 +518,7 @@ export function CustomerForm({
 
                     <div className={rowClass}>
                         <Label className={fieldLabelClass}>
-                            Primary Contact {infoTip("Main contact for this customer.")}
+                            Primary Contact{isCreating && watchedCustomerType === CustomerType.INDIVIDUAL && requiredMark} {infoTip("Main contact for this customer.")}
                         </Label>
                         <div className="grid min-w-0 grid-cols-2 gap-1.5 sm:grid-cols-[0.9fr_1fr_1fr]">
                             <select
@@ -510,10 +534,15 @@ export function CustomerForm({
                                 placeholder="First Name"
                                 value={contactFirstName}
                                 className={detailsClass}
+                                aria-invalid={isCreating && watchedCustomerType === CustomerType.INDIVIDUAL && isNameSourceInvalid}
                                 onChange={(event) => {
                                     const next = event.target.value;
                                     setContactFirstName(next);
-                                    form.setValue("primaryContactName", [next, contactLastName].filter(Boolean).join(" "), { shouldValidate: true });
+                                    const nextName = [next, contactLastName].filter(Boolean).join(" ");
+                                    form.setValue("primaryContactName", nextName, { shouldValidate: true });
+                                    if (isCreating && watchedCustomerType === CustomerType.INDIVIDUAL) {
+                                        form.setValue("displayName", nextName, { shouldValidate: form.formState.isSubmitted });
+                                    }
                                 }}
                             />
                             <Input
@@ -521,23 +550,71 @@ export function CustomerForm({
                                 placeholder="Last Name"
                                 value={contactLastName}
                                 className={detailsClass}
+                                aria-invalid={isCreating && watchedCustomerType === CustomerType.INDIVIDUAL && isNameSourceInvalid}
                                 onChange={(event) => {
                                     const next = event.target.value;
                                     setContactLastName(next);
-                                    form.setValue("primaryContactName", [contactFirstName, next].filter(Boolean).join(" "), { shouldValidate: true });
+                                    const nextName = [contactFirstName, next].filter(Boolean).join(" ");
+                                    form.setValue("primaryContactName", nextName, { shouldValidate: true });
+                                    if (isCreating && watchedCustomerType === CustomerType.INDIVIDUAL) {
+                                        form.setValue("displayName", nextName, { shouldValidate: form.formState.isSubmitted });
+                                    }
                                 }}
                             />
+                        </div>
+                        {isCreating && watchedCustomerType === CustomerType.INDIVIDUAL && nameSourceMessage && (
+                            <p role="alert" className="text-xs text-destructive sm:col-start-2">{nameSourceMessage}</p>
+                        )}
+                        {isCreating && watchedCustomerType === CustomerType.INDIVIDUAL && !nameSourceMessage && (
+                            <p aria-live="polite" className="text-xs text-muted-foreground sm:col-start-2">
+                                {displayNameCheck.status === "checking" ? "Checking name availability..." : "Used as the customer name on invoices and proposals."}
+                            </p>
+                        )}
+                    </div>
+
+                    <div className={rowClass}>
+                        <Label htmlFor="dialog-company-name" className={fieldLabelClass}>
+                            Company Name{isCreating && watchedCustomerType === CustomerType.BUSINESS && requiredMark}
+                        </Label>
+                        <div>
+                            <Input
+                                id="dialog-company-name"
+                                placeholder="Company Name"
+                                className={detailsClass}
+                                aria-invalid={isCreating && watchedCustomerType === CustomerType.BUSINESS && isNameSourceInvalid}
+                                {...form.register("companyName", {
+                                    onChange: (event) => {
+                                        if (isCreating && watchedCustomerType === CustomerType.BUSINESS) {
+                                            form.setValue("displayName", event.target.value, { shouldValidate: form.formState.isSubmitted });
+                                        }
+                                    },
+                                })}
+                            />
+                            {isCreating && watchedCustomerType === CustomerType.BUSINESS && nameSourceMessage && (
+                                <p role="alert" className="mt-1 text-xs text-destructive">{nameSourceMessage}</p>
+                            )}
+                            {isCreating && watchedCustomerType === CustomerType.BUSINESS && !nameSourceMessage && (
+                                <p aria-live="polite" className="mt-1 text-xs text-muted-foreground">
+                                    {displayNameCheck.status === "checking" ? "Checking name availability..." : "Used as the customer name on invoices and proposals."}
+                                </p>
+                            )}
                         </div>
                     </div>
 
                     <div className={rowClass}>
-                        <Label htmlFor="dialog-company-name" className={fieldLabelClass}>Company Name</Label>
-                        <Input id="dialog-company-name" placeholder="Company Name" className={detailsClass} {...form.register("companyName")} />
+                        <Label htmlFor="dialog-website" className={fieldLabelClass}>Website</Label>
+                        <Input
+                            id="dialog-website"
+                            type="url"
+                            placeholder="https://example.com"
+                            className={detailsClass}
+                            {...form.register("website")}
+                        />
                     </div>
 
                     <div className={rowClass}>
                         <Label htmlFor="dialog-display-name" className={fieldLabelClass}>
-                            Display Name{requiredMark} {infoTip("This name appears in invoices, proposals, and customer lists.")}
+                            Display Name{defaultValues?.id && requiredMark} {infoTip("This name appears in invoices, proposals, and customer lists.")}
                         </Label>
                         <div>
                             <DisplayNameCombobox
@@ -556,19 +633,29 @@ export function CustomerForm({
                                     displayNameWasManuallyEdited.current = true;
                                 }}
                             />
-                            {form.formState.errors.displayName && (
+                            {defaultValues?.id && form.formState.errors.displayName && (
                                 <p role="alert" className="mt-1 text-[10px] text-destructive">{form.formState.errors.displayName.message}</p>
                             )}
-                            {displayNameCheck.status === "duplicate" && !form.formState.errors.displayName && (
+                            {defaultValues?.id && displayNameCheck.status === "duplicate" && !form.formState.errors.displayName && (
                                 <p role="alert" className="mt-1 text-[10px] text-destructive">{displayNameCheck.message}</p>
                             )}
-                            {displayNameCheck.status === "checking" && (
+                            {defaultValues?.id && displayNameCheck.status === "checking" && (
                                 <p aria-live="polite" className="mt-1 text-[10px] text-muted-foreground">Checking for an existing customer...</p>
                             )}
-                            {displayNameCheck.status === "error" && (
+                            {defaultValues?.id && displayNameCheck.status === "error" && (
                                 <p role="alert" className="mt-1 text-[10px] text-destructive">{displayNameCheck.message}</p>
                             )}
                         </div>
+                    </div>
+
+                    <div className={rowClass}>
+                        <Label htmlFor="dialog-gst-number" className={fieldLabelClass}>GST Number</Label>
+                        <Input
+                            id="dialog-gst-number"
+                            placeholder="15-digit GSTIN"
+                            className={detailsClass}
+                            {...form.register("gstNumber")}
+                        />
                     </div>
 
                     <div className={rowClass}>
@@ -591,17 +678,19 @@ export function CustomerForm({
                         <Input id="dialog-email" type="email" placeholder="Email Address" className={detailsClass} {...form.register("primaryContactEmail")} />
                     </div>
 
-                    <div className={rowClass}>
-                        <Label className={fieldLabelClass}>
-                            Customer Number{requiredMark} {infoTip("Generated automatically when the customer is saved.")}
-                        </Label>
-                        <Input
-                            readOnly
-                            aria-label="Customer number"
-                            value={defaultValues?.customerNumber ? `CUS-${String(defaultValues.customerNumber).padStart(5, "0")}` : "Assigned when saved"}
-                            className={`${detailsClass} bg-muted/50`}
-                        />
-                    </div>
+                    {defaultValues?.id && (
+                        <div className={rowClass}>
+                            <Label className={fieldLabelClass}>
+                                Customer Number {infoTip("Assigned automatically when this customer was created.")}
+                            </Label>
+                            <Input
+                                readOnly
+                                aria-label="Customer number"
+                                value={defaultValues.customerNumber ? `CUS-${String(defaultValues.customerNumber).padStart(5, "0")}` : ""}
+                                className={`${detailsClass} bg-muted/50`}
+                            />
+                        </div>
+                    )}
 
                     <div className={rowClass}>
                         <Label htmlFor="dialog-phone" className={fieldLabelClass}>Phone {infoTip("Enter a phone number with its country code.")}</Label>
@@ -647,16 +736,15 @@ export function CustomerForm({
                     </div>
 
                     <Tabs value={activeDialogTab} onValueChange={setActiveDialogTab} className="mt-3 min-h-0">
-                        <TabsList variant="line" className="h-8 w-full justify-start gap-2 overflow-x-auto rounded-none border-b p-0">
-                            <TabsTrigger value="other-details" className="flex-none px-2 text-[10px]">Other Details</TabsTrigger>
-                            <TabsTrigger value="address" className="flex-none px-2 text-[10px]">Address</TabsTrigger>
-                            <TabsTrigger value="custom-fields" className="flex-none px-2 text-[10px]">Custom Fields</TabsTrigger>
-                            <TabsTrigger value="remarks" className="flex-none px-2 text-[10px]">Remarks</TabsTrigger>
+                        <TabsList variant="line" className="h-10 w-full justify-start gap-2 overflow-x-auto rounded-none border-b p-0">
+                            <TabsTrigger value="other-details" className="flex-none px-2 text-xs">Other Details</TabsTrigger>
+                            <TabsTrigger value="address" className="flex-none px-2 text-xs">Address</TabsTrigger>
+                            <TabsTrigger value="remarks" className="flex-none px-2 text-xs">Remarks</TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="other-details" className="mt-3 space-y-2.5">
                             <div className={rowClass}>
-                                <Label htmlFor="dialog-gst-treatment" className={fieldLabelClass}>GST Treatment{requiredMark}</Label>
+                                <Label htmlFor="dialog-gst-treatment" className={fieldLabelClass}>GST Treatment</Label>
                                 <select id="dialog-gst-treatment" className={detailsClass} {...form.register("gstTreatment")}>
                                     <option value="">Select a GST treatment</option>
                                     {[
@@ -670,7 +758,7 @@ export function CustomerForm({
                                 </select>
                             </div>
                             <div className={rowClass}>
-                                <Label htmlFor="dialog-place-of-supply" className={fieldLabelClass}>Place of Supply{requiredMark}</Label>
+                                <Label htmlFor="dialog-place-of-supply" className={fieldLabelClass}>Place of Supply</Label>
                                 <select id="dialog-place-of-supply" className={detailsClass} {...form.register("placeOfSupply")}>
                                     <option value="">Select a state</option>
                                     {[
@@ -691,7 +779,7 @@ export function CustomerForm({
                                 <Input id="dialog-pan" placeholder="PAN" className={detailsClass} {...form.register("panNumber")} />
                             </div>
                             <div className={rowClass}>
-                                <Label className={fieldLabelClass}>Tax Preference{requiredMark}</Label>
+                                <Label className={fieldLabelClass}>Tax Preference</Label>
                                 <Controller
                                     name="taxPreference"
                                     control={form.control}
@@ -741,26 +829,68 @@ export function CustomerForm({
                             </div>
                         </TabsContent>
 
-                        <TabsContent value="address" className="mt-3 space-y-2.5">
-                            {([
-                                ["addressLine1", "Address"],
-                                ["addressLine2", "Address line 2"],
-                                ["city", "City"],
-                                ["state", "State / Province"],
-                                ["country", "Country"],
-                                ["postalCode", "Postal Code"],
-                            ] as const).map(([name, label]) => (
-                                <div className={rowClass} key={name}>
-                                    <Label htmlFor={`dialog-${name}`} className={fieldLabelClass}>{label}</Label>
-                                    <Input id={`dialog-${name}`} className={detailsClass} {...form.register(name)} />
+                        <TabsContent value="address" className="mt-3 space-y-4">
+                            <section className="space-y-3 rounded-lg border p-3 sm:p-4">
+                                <div>
+                                    <h3 className="text-sm font-semibold">Primary address</h3>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">The customer’s main business or contact address.</p>
                                 </div>
-                            ))}
-                        </TabsContent>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    {([
+                                        ["addressLine1", "Address line 1"],
+                                        ["addressLine2", "Address line 2"],
+                                        ["city", "City"],
+                                        ["state", "State / Province"],
+                                        ["country", "Country"],
+                                        ["postalCode", "Postal code"],
+                                    ] as const).map(([name, label], index) => (
+                                        <div
+                                            className={`${addressFieldClass} ${index < 2 ? "sm:col-span-2" : ""}`}
+                                            key={name}
+                                        >
+                                            <Label htmlFor={`dialog-${name}`} className={fieldLabelClass}>{label}</Label>
+                                            <Input id={`dialog-${name}`} className={detailsClass} {...form.register(name)} />
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
 
-                        <TabsContent value="custom-fields" className="mt-3">
-                            <p className="py-4 text-center text-xs text-muted-foreground">
-                                No custom fields have been configured.
-                            </p>
+                            <section className="space-y-3 rounded-lg border p-3 sm:p-4">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                    <div>
+                                        <h3 className="text-sm font-semibold">Billing address</h3>
+                                        <p className="mt-0.5 text-xs text-muted-foreground">Where invoices and billing documents should be sent.</p>
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="min-h-9 w-full sm:w-auto"
+                                        onClick={() => copyAddressToBilling(form)}
+                                    >
+                                        <Copy className="size-4" />
+                                        Copy primary address
+                                    </Button>
+                                </div>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    {([
+                                        ["billingAddressLine1", "Address line 1"],
+                                        ["billingAddressLine2", "Address line 2"],
+                                        ["billingCity", "City"],
+                                        ["billingState", "State / Province"],
+                                        ["billingCountry", "Country"],
+                                        ["billingPostalCode", "Postal code"],
+                                    ] as const).map(([name, label], index) => (
+                                        <div
+                                            className={`${addressFieldClass} ${index < 2 ? "sm:col-span-2" : ""}`}
+                                            key={name}
+                                        >
+                                            <Label htmlFor={`dialog-${name}`} className={fieldLabelClass}>{label}</Label>
+                                            <Input id={`dialog-${name}`} className={detailsClass} {...form.register(name)} />
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
                         </TabsContent>
 
                         <TabsContent value="remarks" className="mt-3 space-y-2">
@@ -779,7 +909,7 @@ export function CustomerForm({
                         size="sm"
                         disabled={isPending || displayNameCheck.status === "duplicate" || displayNameCheck.status === "checking"}
                     >
-                        {isPending ? "Saving…" : "Save"}
+                        {isPending ? "Saving…" : defaultValues?.id ? "Save changes" : "Create customer"}
                     </Button>
                     {onCancel && (
                         <Button type="button" size="sm" variant="outline" onClick={onCancel}>
@@ -905,7 +1035,17 @@ export function CustomerForm({
                                             type="button"
                                             variant={isSelected ? "outline" : "ghost"}
                                             aria-pressed={isSelected}
-                                            onClick={() => field.onChange(option.value)}
+                                            onClick={() => {
+                                                field.onChange(option.value);
+                                                if (isCreating) {
+                                                    const sourceName = option.value === CustomerType.BUSINESS
+                                                        ? form.getValues("companyName")
+                                                        : form.getValues("primaryContactName");
+                                                    form.setValue("displayName", sourceName ?? "", {
+                                                        shouldValidate: form.formState.isSubmitted,
+                                                    });
+                                                }
+                                            }}
                                             className={isSelected ? "bg-background shadow-sm" : "text-muted-foreground"}
                                         >
                                             {option.icon}
@@ -924,22 +1064,35 @@ export function CustomerForm({
                     control={form.control}
                     render={({ field, fieldState }) => (
                         <Field
-                            data-invalid={fieldState.invalid}
+                            data-invalid={fieldState.invalid || (watchedCustomerType === CustomerType.BUSINESS && isNameSourceInvalid)}
                             className="gap-1"
                         >
-                            <FieldLabel htmlFor="companyName">Company Name </FieldLabel>
+                            <FieldLabel htmlFor="companyName">
+                                Company Name {isCreating && watchedCustomerType === CustomerType.BUSINESS && requiredMark}
+                            </FieldLabel>
                             <Input
                                 {...field}
                                 id="companyName"
                                 type="text"
                                 onChange={(e) => {
                                     field.onChange(e.target.value);
+                                    if (isCreating && watchedCustomerType === CustomerType.BUSINESS) {
+                                        form.setValue("displayName", e.target.value, { shouldValidate: form.formState.isSubmitted });
+                                    }
                                 }}
-                                aria-invalid={fieldState.invalid}
+                                aria-invalid={fieldState.invalid || (watchedCustomerType === CustomerType.BUSINESS && isNameSourceInvalid)}
                                 placeholder="Enter company name"
                             />
 
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                            {isCreating && watchedCustomerType === CustomerType.BUSINESS && nameSourceMessage && (
+                                <p role="alert" className="text-sm text-destructive">{nameSourceMessage}</p>
+                            )}
+                            {isCreating && watchedCustomerType === CustomerType.BUSINESS && !nameSourceMessage && (
+                                <p aria-live="polite" className="text-xs text-muted-foreground">
+                                    {displayNameCheck.status === "checking" ? "Checking name availability..." : "Used as the customer name on invoices and proposals."}
+                                </p>
+                            )}
                         </Field>
                     )}
                 />
@@ -949,11 +1102,11 @@ export function CustomerForm({
                     control={form.control}
                     render={({ field, fieldState }) => (
                         <Field
-                            data-invalid={fieldState.invalid}
+                            data-invalid={fieldState.invalid || (watchedCustomerType === CustomerType.INDIVIDUAL && isNameSourceInvalid)}
                             className="gap-1"
                         >
                             <FieldLabel htmlFor="primaryContactName">
-                                Primary Contact Name{" "}
+                                Primary Contact Name {isCreating && watchedCustomerType === CustomerType.INDIVIDUAL && requiredMark}
                             </FieldLabel>
                             <Input
                                 {...field}
@@ -961,17 +1114,28 @@ export function CustomerForm({
                                 type="text"
                                 onChange={(e) => {
                                     field.onChange(e.target.value);
+                                    if (isCreating && watchedCustomerType === CustomerType.INDIVIDUAL) {
+                                        form.setValue("displayName", e.target.value, { shouldValidate: form.formState.isSubmitted });
+                                    }
                                 }}
-                                aria-invalid={fieldState.invalid}
+                                aria-invalid={fieldState.invalid || (watchedCustomerType === CustomerType.INDIVIDUAL && isNameSourceInvalid)}
                                 placeholder="Enter primary contact name"
                             />
 
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                            {isCreating && watchedCustomerType === CustomerType.INDIVIDUAL && nameSourceMessage && (
+                                <p role="alert" className="text-sm text-destructive">{nameSourceMessage}</p>
+                            )}
+                            {isCreating && watchedCustomerType === CustomerType.INDIVIDUAL && !nameSourceMessage && (
+                                <p aria-live="polite" className="text-xs text-muted-foreground">
+                                    {displayNameCheck.status === "checking" ? "Checking name availability..." : "Used as the customer name on invoices and proposals."}
+                                </p>
+                            )}
                         </Field>
                     )}
                 />
 
-                <Controller
+                {defaultValues?.id && <Controller
                     name="displayName"
                     control={form.control}
                     render={({ field, fieldState }) => (
@@ -1009,7 +1173,7 @@ export function CustomerForm({
                             )}
                         </Field>
                     )}
-                />
+                />}
 
                 <Controller
                     name="primaryContactEmail"

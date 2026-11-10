@@ -11,8 +11,7 @@ export const metadata = {
 
 export default async function TariffsPage() {
   await requirePageAccess("/dashboard/tariffs");
-  const result = await getTariffGrids();
-  const grids = result.success && result.data ? result.data : [];
+  const result = await getTariffGrids({ page: 0, pageSize: 20 });
 
   return (
     <DashboardContainer
@@ -33,7 +32,22 @@ export default async function TariffsPage() {
           <AlertDescription>{result.message}</AlertDescription>
         </Alert>
       ) : (
-        <TariffGridList grids={grids} />
+        result.data ? (
+          <TariffGridList
+            initialGrids={result.data.items}
+            initialPage={{
+              page: result.data.page,
+              pageSize: result.data.pageSize,
+              totalCount: result.data.totalCount,
+            }}
+          />
+        ) : (
+          <Alert variant="destructive">
+            <CircleAlert />
+            <AlertTitle>Tariffs could not be loaded</AlertTitle>
+            <AlertDescription>The tariff query returned no data.</AlertDescription>
+          </Alert>
+        )
       )}
     </DashboardContainer>
   );

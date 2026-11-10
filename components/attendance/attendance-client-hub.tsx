@@ -7,7 +7,6 @@ import { AttendanceAnalytics } from "./attendance-analytics";
 import { AttendanceReportView } from "./attendance-report-view";
 import { MobileAttendanceNav, AttendanceTab } from "./mobile-attendance-nav";
 import { AttendanceSettingsDialog } from "./attendance-settings-dialog";
-import { AttendanceBrowserReminders } from "./attendance-browser-reminders";
 import { Button } from "@/components/ui/button";
 import {
   ClockIcon,
@@ -23,19 +22,24 @@ import { WorkMode } from "@/app/generated/prisma/enums";
 interface AttendanceClientHubProps {
   initialRecord: any;
   settings: any;
+  dayStatus: {
+    isWeekend: boolean;
+    weekday: string;
+    holidayName: string | null;
+  } | null;
   userRole: string;
   userDepartment: string;
   workMode: WorkMode;
 }
 
-export function AttendanceClientHub({ initialRecord, settings, userRole, userDepartment, workMode }: AttendanceClientHubProps) {
+export function AttendanceClientHub({ initialRecord, settings, dayStatus, userRole, userDepartment, workMode }: AttendanceClientHubProps) {
   const [activeTab, setActiveTab] = useState<AttendanceTab>("kiosk");
-  const [record, setRecord] = useState(initialRecord);
+  const record = initialRecord;
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const isAdmin = userRole === "SUPER_ADMIN" || userRole === "ADMIN";
   const isHrStaff = userRole === "STAFF" && userDepartment === "HR";
-  const isManager = isAdmin || userDepartment === "HR";
+  const canViewReports = isAdmin || isHrStaff;
   const canManageShiftRules = isAdmin || isHrStaff;
   const needsShiftSetup = !settings?.isConfigured;
 
@@ -46,7 +50,7 @@ export function AttendanceClientHub({ initialRecord, settings, userRole, userDep
   return (
     <div className="w-full min-h-screen space-y-6">
       {/* Top Header Bar with Navigation Tabs & Admin Controls */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="flex w-full items-center justify-between gap-3">
         {/* Desktop Navigation Tabs */}
         <div className="hidden md:flex items-center gap-2 p-1.5 bg-muted/50 rounded-2xl w-fit border border-border/60 shadow-sm">
           <button
@@ -77,21 +81,23 @@ export function AttendanceClientHub({ initialRecord, settings, userRole, userDep
             Attendance Logs
           </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("analytics")}
-            className={cn(
-              "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all",
-              activeTab === "analytics"
-                ? "bg-background text-foreground shadow-md"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <BarChart3Icon className="w-4 h-4 text-primary" />
-            Analytics Overview
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setActiveTab("analytics")}
+              className={cn(
+                "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all",
+                activeTab === "analytics"
+                  ? "bg-background text-foreground shadow-md"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <BarChart3Icon className="w-4 h-4 text-primary" />
+              Analytics Overview
+            </button>
+          )}
 
-          {canManageShiftRules && (
+          {canViewReports && (
             <button
               type="button"
               onClick={() => setActiveTab("reports")}
@@ -107,19 +113,17 @@ export function AttendanceClientHub({ initialRecord, settings, userRole, userDep
             </button>
           )}
         </div>
-
-        {/* Admin Shift Rules Settings Button */}
-        {isManager && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsSettingsOpen(true)}
-            className="rounded-2xl border-border/80 text-xs font-semibold shadow-sm"
-          >
-            <Settings2Icon className="w-4 h-4 mr-1.5 text-primary" />
-            {needsShiftSetup ? "Set up shift rules" : "Shift Rules"}
-          </Button>
-        )}
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-lg"
+          aria-label="Open attendance settings"
+          title="Attendance settings"
+          className="size-11 shrink-0 rounded-xl"
+          onClick={() => setIsSettingsOpen(true)}
+        >
+          <Settings2Icon aria-hidden="true" className="size-5 text-primary" />
+        </Button>
       </div>
 
       {canManageShiftRules && needsShiftSetup && (
@@ -142,12 +146,10 @@ export function AttendanceClientHub({ initialRecord, settings, userRole, userDep
             onClick={() => setIsSettingsOpen(true)}
             className="shrink-0"
           >
-            Fill shift rules
+            Open attendance settings
           </Button>
         </section>
       )}
-
-      <AttendanceBrowserReminders />
 
       {/* Main Active Tab Content */}
       <div className="w-full">
@@ -155,6 +157,7 @@ export function AttendanceClientHub({ initialRecord, settings, userRole, userDep
           <PunchClockView
             initialRecord={record}
             settings={settings}
+            dayStatus={dayStatus}
             onRefresh={handleRefresh}
             workMode={workMode}
           />
@@ -164,28 +167,31 @@ export function AttendanceClientHub({ initialRecord, settings, userRole, userDep
           <AttendanceTable userRole={userRole} userDepartment={userDepartment} />
         )}
 
-        {activeTab === "analytics" && (
+        {activeTab === "analytics" && isAdmin && (
           <AttendanceAnalytics />
         )}
 
-        {activeTab === "reports" && isManager && (
+        {activeTab === "reports" && canViewReports && (
           <AttendanceReportView userRole={userRole} userDepartment={userDepartment} />
         )}
       </div>
 
       {/* Mobile Bottom Sticky Navigation */}
-      <MobileAttendanceNav activeTab={activeTab} onSelectTab={(tab) => setActiveTab(tab)} isManager={isManager} />
+      <MobileAttendanceNav
+        activeTab={activeTab}
+        onSelectTab={(tab) => setActiveTab(tab)}
+        canViewReports={canViewReports}
+        canViewAnalytics={isAdmin}
+      />
 
-      {/* Admin Settings Dialog */}
-      {canManageShiftRules && (
-        <AttendanceSettingsDialog
-          isOpen={isSettingsOpen}
-          onClose={() => setIsSettingsOpen(false)}
-          settings={settings}
-          canManageReminderTime={isAdmin}
-          onSuccess={handleRefresh}
-        />
-      )}
+      <AttendanceSettingsDialog
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        settings={settings}
+        canManageShiftRules={canManageShiftRules}
+        canManageReminderTime={isAdmin}
+        onSuccess={handleRefresh}
+      />
     </div>
   );
 }

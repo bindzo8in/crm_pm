@@ -1,12 +1,13 @@
 "use client";
 
-import { deleteTariffGrid } from "@/actions/tariffs";
+import { deleteTariffGrid, getTariffGrids } from "@/actions/tariffs";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { format } from "date-fns";
+import { formatInIST } from "@/lib/date";
 import { MoreHorizontal, ExternalLink, Pencil, Trash2, Share2, Copy, Send, Tags, Search, Package } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import {
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import type { Prisma } from "@/app/generated/prisma/client";
 import {
   Select,
@@ -37,7 +39,19 @@ type TariffGrid = Prisma.TariffGridGetPayload<{
   include: { _count: { select: { packages: true } } };
 }>;
 
-export function TariffGridList({ grids }: { grids: TariffGrid[] }) {
+interface TariffGridPageInfo {
+  page: number;
+  pageSize: number;
+  totalCount: number;
+}
+
+export function TariffGridList({
+  initialGrids,
+  initialPage,
+}: {
+  initialGrids: TariffGrid[];
+  initialPage: TariffGridPageInfo;
+}) {
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [confirmDeleteGrid, setConfirmDeleteGrid] = useState<TariffGrid | null>(null);
   const [shareGrid, setShareGrid] = useState<TariffGrid | null>(null);
@@ -45,16 +59,49 @@ export function TariffGridList({ grids }: { grids: TariffGrid[] }) {
   const [currency, setCurrency] = useState("inr");
   const [shareOrigin, setShareOrigin] = useState("");
   const [search, setSearch] = useState("");
-  
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(initialPage.page);
+  const [pageSize, setPageSize] = useState(initialPage.pageSize);
   const router = useRouter();
-  const filteredGrids = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase();
-    if (!query) return grids;
+  const queryClient = useQueryClient();
 
-    return grids.filter((grid) =>
-      `${grid.name} ${grid.description ?? ""}`.toLocaleLowerCase().includes(query)
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setDebouncedSearch(search.trim()),
+      300,
     );
-  }, [grids, search]);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  const gridsQuery = useQuery({
+    queryKey: ["tariff-grids", page, pageSize, debouncedSearch],
+    queryFn: async () => {
+      const result = await getTariffGrids({
+        page,
+        pageSize,
+        search: debouncedSearch,
+      });
+      if (!result.success || !result.data) {
+        throw new Error(result.success ? "Tariff grid data is missing." : result.message);
+      }
+      return result.data;
+    },
+    initialData:
+      page === initialPage.page &&
+      pageSize === initialPage.pageSize &&
+      debouncedSearch === ""
+        ? {
+            items: initialGrids,
+            page: initialPage.page,
+            pageSize: initialPage.pageSize,
+            totalCount: initialPage.totalCount,
+            totalPages: Math.ceil(initialPage.totalCount / initialPage.pageSize),
+          }
+        : undefined,
+    placeholderData: keepPreviousData,
+  });
+  const grids = gridsQuery.data?.items ?? initialGrids;
+  const totalCount = gridsQuery.data?.totalCount ?? initialPage.totalCount;
 
   const shareUrl = shareGrid && shareOrigin
     ? (() => {
@@ -71,6 +118,8 @@ export function TariffGridList({ grids }: { grids: TariffGrid[] }) {
       const result = await deleteTariffGrid(id);
       if (result.success) {
         toast.success("Grid deleted successfully");
+        setPage(0);
+        await queryClient.invalidateQueries({ queryKey: ["tariff-grids"] });
         router.refresh();
       } else {
         toast.error(String(result.error));
@@ -105,7 +154,15 @@ export function TariffGridList({ grids }: { grids: TariffGrid[] }) {
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
   };
 
-  if (grids.length === 0) {
+  if (gridsQuery.isError) {
+    return (
+      <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 px-5 py-6 text-sm text-destructive">
+        {gridsQuery.error.message}
+      </div>
+    );
+  }
+
+  if (totalCount === 0 && !debouncedSearch) {
     return (
       <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed bg-muted/10 px-5 py-10 text-center">
         <div className="mb-4 flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -126,7 +183,7 @@ export function TariffGridList({ grids }: { grids: TariffGrid[] }) {
     <>
       <div className="mb-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">
-          {grids.length} {grids.length === 1 ? "comparison" : "comparisons"}
+          {totalCount} {totalCount === 1 ? "comparison" : "comparisons"}
         </p>
         <div className="relative w-full sm:max-w-xs">
           <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -134,13 +191,16 @@ export function TariffGridList({ grids }: { grids: TariffGrid[] }) {
             aria-label="Search tariff grids"
             placeholder="Search tariff grids"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              setPage(0);
+              setSearch(event.target.value);
+            }}
             className="h-10 pl-9"
           />
         </div>
       </div>
 
-      {filteredGrids.length === 0 ? (
+      {grids.length === 0 ? (
         <div className="rounded-xl border border-dashed px-5 py-10 text-center">
           <h3 className="font-medium">No matching tariff grids</h3>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -149,7 +209,7 @@ export function TariffGridList({ grids }: { grids: TariffGrid[] }) {
         </div>
       ) : (
         <div className="grid min-w-0 gap-3 lg:grid-cols-2 xl:grid-cols-3">
-          {filteredGrids.map((grid) => (
+          {grids.map((grid) => (
             <article key={grid.id} className="group relative flex min-w-0 flex-col rounded-xl border bg-card p-4 transition-colors hover:border-primary/30 sm:p-5">
               <div className="flex min-w-0 items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -218,7 +278,7 @@ export function TariffGridList({ grids }: { grids: TariffGrid[] }) {
                   <Package aria-hidden="true" className="size-3.5" />
                   {grid._count.packages} {grid._count.packages === 1 ? "package" : "packages"}
                 </span>
-                <span>Updated {format(new Date(grid.updatedAt), "MMM d, yyyy")}</span>
+                <span>Updated {formatInIST(new Date(grid.updatedAt), "MMM d, yyyy")}</span>
               </div>
 
               <Button asChild variant="secondary" className="mt-4 min-h-10 w-full">
@@ -228,6 +288,19 @@ export function TariffGridList({ grids }: { grids: TariffGrid[] }) {
           ))}
         </div>
       )}
+
+      <div className="mt-4 overflow-hidden rounded-xl border bg-card">
+        <PaginationControls
+          page={page}
+          pageSize={pageSize}
+          total={totalCount}
+          onPageChange={setPage}
+          onPageSizeChange={(nextPageSize) => {
+            setPageSize(nextPageSize);
+            setPage(0);
+          }}
+        />
+      </div>
 
       <ConfirmDialog
         open={Boolean(confirmDeleteGrid)}

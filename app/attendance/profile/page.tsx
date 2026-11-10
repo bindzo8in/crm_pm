@@ -4,11 +4,9 @@ import Link from "next/link";
 import { LayoutDashboardIcon, ClockIcon, AlertCircleIcon, ShieldAlertIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AttendanceBrand } from "@/components/attendance/attendance-brand";
-import {
-  AttendanceProfileOverviewCard,
-  AttendanceProfileForm,
-  AttendancePasswordForm,
-} from "@/components/attendance/attendance-profile-form";
+import { LogoutConfirmButton } from "@/components/auth/logout-confirm-button";
+import { ProfileWorkspace } from "@/components/settings/profile-workspace";
+import prisma from "@/lib/prisma";
 
 export const metadata: Metadata = {
   title: "My Attendance Profile | CRM",
@@ -61,48 +59,55 @@ export default async function AttendanceProfilePage() {
     );
   }
 
+  const departmentMemberships = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { department: true, additionalDepartments: true },
+  });
+  if (!departmentMemberships) {
+    throw new Error("Account profile could not be loaded.");
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans">
       {/* Standalone Header */}
-      <header className="w-full border-b border-border/60 bg-card/80 backdrop-blur px-4 md:px-8 py-3 flex items-center justify-between sticky top-0 z-40 shadow-sm">
-        <AttendanceBrand subtitle="Attendance Profile" />
+      <header className="sticky top-0 z-40 flex w-full items-center justify-between gap-2 border-b border-border/60 bg-card/95 px-3 py-2.5 shadow-sm backdrop-blur sm:px-4 sm:py-3 md:px-8">
+        <AttendanceBrand subtitle="Attendance Profile" hideSubtitleOnMobile />
 
-        <div className="flex items-center gap-2 sm:gap-3">
-          <Button asChild variant="default" size="sm" className="rounded-2xl text-xs font-semibold shadow-sm">
-            <Link href="/attendance">
-              <ClockIcon className="w-4 h-4 mr-1.5" /> Punch Clock
+        <nav aria-label="Profile navigation" className="flex shrink-0 items-center gap-1 sm:gap-2">
+          <Button asChild variant="default" size="icon" className="size-9 rounded-xl shadow-sm sm:w-auto sm:px-3">
+            <Link href="/attendance" aria-label="Punch clock" title="Punch clock">
+              <ClockIcon className="size-4 shrink-0 sm:mr-1.5" />
+              <span className="hidden sm:inline">Punch Clock</span>
             </Link>
           </Button>
 
-          <Button asChild variant="outline" size="sm" className="rounded-2xl text-xs font-semibold shadow-sm">
-            <Link href="/dashboard">
-              <LayoutDashboardIcon className="w-4 h-4 mr-1.5 text-primary" /> Dashboard
+          <Button asChild variant="outline" size="icon" className="size-9 rounded-xl shadow-sm sm:w-auto sm:px-3">
+            <Link href="/dashboard" aria-label="Dashboard" title="Dashboard">
+              <LayoutDashboardIcon className="size-4 shrink-0 text-primary sm:mr-1.5" />
+              <span className="hidden sm:inline">Dashboard</span>
             </Link>
           </Button>
-        </div>
+
+          <LogoutConfirmButton />
+        </nav>
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 p-4 md:p-8 max-w-5xl w-full mx-auto space-y-6 pb-16">
-        <AttendanceProfileOverviewCard user={{
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          image: user.image ?? null,
-          role: user.role ?? "",
-          department: user.department ?? null,
-          createdAt: user.createdAt,
-        }} />
-        <AttendanceProfileForm user={{
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          image: user.image ?? null,
-          role: user.role ?? "",
-          department: user.department ?? null,
-          createdAt: user.createdAt,
-        }} />
-        <AttendancePasswordForm />
+      <main className="w-full flex-1 p-4 pb-16 md:p-8">
+        <ProfileWorkspace
+          showAttendanceAccess
+          showLogoutButton={false}
+          user={{
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            image: user.image ?? null,
+            role: user.role ?? "",
+            department: departmentMemberships.department,
+            additionalDepartments: departmentMemberships.additionalDepartments,
+            createdAt: user.createdAt,
+          }}
+        />
       </main>
     </div>
   );

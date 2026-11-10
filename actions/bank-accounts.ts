@@ -2,10 +2,10 @@
 
 import { auth } from "@/lib/auth"
 import prisma from "@/lib/prisma"
-import { bankAccountSchema, BankAccountFormValues } from "@/lib/schemas/bank-account"
+import { bankAccountListSchema, bankAccountSchema, BankAccountFormValues } from "@/lib/schemas/bank-account"
 import { headers } from "next/headers"
 
-export async function GetBankAccounts() {
+export async function GetBankAccounts(input: unknown = {}) {
   try {
     const hasPermission = await auth.api.userHasPermission({
       headers: await headers(),
@@ -20,10 +20,39 @@ export async function GetBankAccounts() {
       return { error: "Unauthorized", message: "You do not have permission to read settings" }
     }
 
-    const accounts = await prisma.companyBankAccount.findMany({
-      orderBy: { displayOrder: "asc" }
-    })
-    return { success: true, data: accounts }
+    const parsed = bankAccountListSchema.safeParse(input);
+    if (!parsed.success) {
+      return { error: "Invalid filters", message: "Invalid bank account filters" };
+    }
+
+    const { page, pageSize, search } = parsed.data;
+    const where = search
+      ? {
+          OR: [
+            { accountName: { contains: search, mode: "insensitive" as const } },
+            { bankName: { contains: search, mode: "insensitive" as const } },
+          ],
+        }
+      : {};
+    const [accounts, totalCount] = await Promise.all([
+      prisma.companyBankAccount.findMany({
+        where,
+        orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
+        skip: page * pageSize,
+        take: pageSize,
+      }),
+      prisma.companyBankAccount.count({ where }),
+    ]);
+    return {
+      success: true,
+      data: accounts,
+      pagination: {
+        page,
+        pageSize,
+        totalCount,
+        totalPages: Math.ceil(totalCount / pageSize),
+      },
+    }
   } catch (error) {
     if (process.env.NODE_ENV === 'development') console.log(error)
     return { error: "Internal Server Error", message: "An error occurred while fetching bank accounts" }
@@ -68,15 +97,30 @@ export async function CreateBankAccount(data: BankAccountFormValues) {
         qrCodeImage: validatedData.data.qrCodeImage ? JSON.parse(JSON.stringify(validatedData.data.qrCodeImage)) : null,
     }
 
-    await prisma.companyBankAccount.create({
+    const account = await prisma.companyBankAccount.create({
       data: payload
     })
 
-    return { success: true, message: "Bank account created successfully" }
+    return {
+      success: true,
+      message: "Bank account created successfully",
+      accountId: account.id,
+    }
   } catch (error) {
     if (process.env.NODE_ENV === 'development') console.log(error)
     return { error: "Internal Server Error", message: "An error occurred while creating the bank account" }
   }
+}
+
+export async function CanCreateBankAccount() {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) return false;
+
+  const permission = await auth.api.userHasPermission({
+    headers: await headers(),
+    body: { permissions: { bankAccounts: ["create"] } },
+  });
+  return permission.success;
 }
 
 export async function UpdateBankAccount(id: string, data: BankAccountFormValues) {

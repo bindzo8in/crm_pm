@@ -244,6 +244,58 @@ export async function sendInvoiceLinkEmail({ email, appName, invoiceUrl, invoice
     }
 }
 
+export async function sendLeaveNotificationEmail({
+    email,
+    name,
+    subject,
+    message,
+    actionLabel,
+}: {
+    email: string;
+    name: string;
+    subject: string;
+    message: string;
+    actionLabel: string;
+}): Promise<void> {
+    const escapeHtml = (value: string) =>
+        value.replace(/[&<>"']/g, (character) => {
+            const entities: Record<string, string> = {
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#39;",
+            };
+            return entities[character] ?? character;
+        });
+    const leaveUrl = new URL("/dashboard/leaves", env.NEXT_PUBLIC_SITE_URL).toString();
+
+    try {
+        const { error } = await resend.emails.send({
+            from: env.MAIL_FROM,
+            to: email,
+            subject,
+            html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #202124;">
+                    <p>Hello ${escapeHtml(name)},</p>
+                    <p>${escapeHtml(message)}</p>
+                    <p style="margin: 28px 0;">
+                        <a href="${escapeHtml(leaveUrl)}" style="background-color: #4f46e5; color: #fff; padding: 11px 18px; text-decoration: none; border-radius: 6px; font-weight: 600;">${escapeHtml(actionLabel)}</a>
+                    </p>
+                    <p style="color: #666; font-size: 13px;">${escapeHtml(env.NEXT_PUBLIC_APP_NAME)}</p>
+                </div>
+            `,
+            tags: [{ name: "type", value: "leave-notification" }],
+        });
+        if (error) throw error;
+    } catch (error) {
+        console.error("Failed to send leave notification email.", {
+            errorName: error instanceof Error ? error.name : "UnknownError",
+        });
+        throw error;
+    }
+}
+
 export async function sendExistingUserSignupEmail({
     email,
     appName,
@@ -287,6 +339,7 @@ export async function sendHolidayAnnouncementEmails({
     endDate,
     category,
     departments,
+    isHalfDay,
 }: {
     recipients: { email: string }[];
     name: string;
@@ -294,6 +347,7 @@ export async function sendHolidayAnnouncementEmails({
     endDate: Date;
     category: HolidayCategory;
     departments: Department[];
+    isHalfDay: boolean;
 }): Promise<{ sent: number; failed: number }> {
     const escapeHtml = (value: string) =>
         value.replace(/[&<>"']/g, (character) => {
@@ -309,6 +363,9 @@ export async function sendHolidayAnnouncementEmails({
     const dateLabel = formatHolidayDateRange(startDate, endDate);
     const categoryLabel = HOLIDAY_CATEGORY_LABELS[category];
     const departmentLabel = formatHolidayDepartmentScope(departments);
+    const workScheduleNote = isHalfDay
+        ? "Holiday applies for half the day; employees are expected to work the other half."
+        : "";
     const safeName = escapeHtml(name);
     const safeDate = escapeHtml(dateLabel);
     const safeCategory = escapeHtml(categoryLabel);
@@ -331,11 +388,12 @@ export async function sendHolidayAnnouncementEmails({
                             <p><strong>Date:</strong> ${safeDate}</p>
                             <p><strong>Category:</strong> ${safeCategory}</p>
                             <p><strong>Applies to:</strong> ${safeDepartments}</p>
+                            ${workScheduleNote ? `<p><strong>Schedule:</strong> ${escapeHtml(workScheduleNote)}</p>` : ""}
                             <p><a href="${appUrl}">View the holiday calendar</a></p>
                             <p style="color: #666; font-size: 13px;">Sent by ${escapeHtml(env.NEXT_PUBLIC_APP_NAME)}.</p>
                         </div>
                     `,
-                    text: `${name}\nDate: ${dateLabel}\nCategory: ${categoryLabel}\nApplies to: ${departmentLabel}\nHoliday calendar: ${appUrl}`,
+                    text: `${name}\nDate: ${dateLabel}\nCategory: ${categoryLabel}\nApplies to: ${departmentLabel}${workScheduleNote ? `\nSchedule: ${workScheduleNote}` : ""}\nHoliday calendar: ${appUrl}`,
                     tags: [{ name: "type", value: "holiday-announcement" }],
                 });
                 if (error) throw error;

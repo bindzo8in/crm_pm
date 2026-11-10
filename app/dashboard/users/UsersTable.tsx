@@ -274,7 +274,7 @@ export default function UsersTable() {
           </div>
 
           <div className="min-w-0 space-y-1.5">
-            <label htmlFor="user-department-filter" className="text-xs font-medium text-muted-foreground">Department</label>
+            <label htmlFor="user-department-filter" className="text-xs font-medium text-muted-foreground">Department membership</label>
             <Select
               value={filters.department}
               onValueChange={(value) => {

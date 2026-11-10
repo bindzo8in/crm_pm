@@ -7,7 +7,7 @@ import { assignInvoicePaymentAccount, getInvoiceById, getInvoicePaymentAccounts,
 import { invoiceKeys } from "@/components/invoice/util";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -29,11 +29,10 @@ import {
 import { ArrowLeftIcon, CreditCardIcon, CheckCircle2Icon, Loader2Icon, DownloadIcon, MailIcon, MessageCircleIcon, PencilIcon, Trash2Icon, HistoryIcon, LandmarkIcon, MoreHorizontalIcon } from "lucide-react";
 import Link from "next/link";
 import { PaymentMethodType } from "@/lib/schemas/invoice-schema";
+import { formatInIST, getAttendanceDate } from "@/lib/date";
 
 function getLocalDateInputValue() {
-  const date = new Date();
-  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-  return date.toISOString().slice(0, 10);
+  return getAttendanceDate();
 }
 
 function getImageUrl(field: any): string | null {
@@ -140,7 +139,7 @@ export function InvoiceDetailView({
         financialAccountId,
         amount: Number(amount),
         paymentMethod: method,
-        paymentDate: new Date(`${paymentDate}T12:00:00`),
+        paymentDate: new Date(`${paymentDate}T00:00:00.000Z`),
         referenceId: refId,
         notes,
       }),
@@ -232,7 +231,8 @@ export function InvoiceDetailView({
     );
   }
 
-  const balance = (invoice?.grandTotal || 0) - (invoice?.amountPaid || 0);
+  const balance = Math.max(0, (invoice?.grandTotal || 0) - (invoice?.amountPaid || 0));
+  const isFullyPaid = invoice.grandTotal > 0 && invoice.amountPaid >= invoice.grandTotal;
 
   // Indian GST Tax Split Logic (Intra-State vs Inter-State)
   const isUSD = invoice?.currency === "USD";
@@ -389,7 +389,7 @@ export function InvoiceDetailView({
                 <h1 className="text-xl font-bold tracking-tight text-gray-900 whitespace-nowrap md:text-2xl">
                   INV-{String(invoice.invoiceNumber).padStart(4, "0")}
                 </h1>
-                <Badge variant={invoice.status === "PAID" ? "default" : invoice.status === "DRAFT" ? "secondary" : "outline"} className="text-xs font-semibold px-2 py-0.5">
+                <Badge variant="outline" className="border-gray-900 bg-white px-2 py-0.5 text-xs font-semibold text-gray-900">
                   {invoice.status.replace("_", " ")}
                 </Badge>
               </div>
@@ -652,16 +652,36 @@ export function InvoiceDetailView({
               #INV-{String(invoice.invoiceNumber).padStart(4, "0")}
             </p>
             <p className="text-[11px] text-gray-800">
-              Issued: {new Date(invoice.createdAt).toLocaleDateString("en-IN")}
+              Issued: {formatInIST(new Date(invoice.issueDate), "dd/MM/yyyy")}
             </p>
             {invoice.dueDate && (
               <p className="text-[11px] text-gray-800">
-                Due: {new Date(invoice.dueDate).toLocaleDateString("en-IN")}
+                Due: {formatInIST(new Date(invoice.dueDate), "dd/MM/yyyy")}
               </p>
             )}
             <p className="text-[11px] font-semibold text-gray-900">
               Terms: {invoice.terms || "Due on Receipt"}
             </p>
+            <div className="ml-auto mt-2 w-full max-w-56 text-gray-900">
+              {invoice.status === "VOID" ? (
+                <p className="text-xs font-bold tracking-wide">VOID</p>
+              ) : isFullyPaid ? (
+                <p className="text-xs font-bold tracking-wide">PAID</p>
+              ) : (
+                <div className="space-y-1">
+                  {invoice.amountPaid > 0 && (
+                    <div className="flex items-center justify-between gap-3 text-[10px] font-semibold">
+                      <span>PAID TO DATE</span>
+                      <span>{symbol}{invoice.amountPaid.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between gap-3 text-xs font-bold">
+                    <span>BALANCE DUE</span>
+                    <span>{symbol}{balance.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className={`col-span-2 mt-1 min-w-0 whitespace-nowrap font-mono font-medium text-gray-800 ${isPdfMode ? "text-[10px]" : "text-[9px] md:text-[10px]"}`}>
@@ -858,15 +878,6 @@ export function InvoiceDetailView({
               </div>
             )}
 
-            <div className="flex justify-between text-gray-900 font-bold pt-1.5 border-t border-gray-300">
-              <span>Paid</span>
-              <span>{symbol}{invoice.amountPaid.toLocaleString("en-IN")}</span>
-            </div>
-            <div className="flex justify-between font-bold text-gray-900 pt-1 border-t border-gray-300">
-              <span>Balance Due</span>
-              <span>{symbol}{Math.max(0, balance).toLocaleString("en-IN")}</span>
-            </div>
-
             {invoice.currency === "USD" && (
               <div className="pt-1 border-t border-dashed border-gray-400 text-[8px] text-gray-800 font-medium italic text-right whitespace-nowrap">
                 * Supply meant for export under LUT without payment of Integrated Tax
@@ -944,7 +955,7 @@ export function InvoiceDetailView({
                   </div>
                   <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                     <span className="text-muted-foreground">
-                      {new Date(p.paymentDate).toLocaleDateString("en-IN")}
+                      {formatInIST(new Date(p.paymentDate), "dd/MM/yyyy")}
                     </span>
                     {!p.financialAccountId && paymentAccounts.length > 0 && (
                       <>
@@ -1007,10 +1018,7 @@ export function InvoiceDetailView({
                     )}
                   </div>
                   <div className="text-muted-foreground sm:whitespace-nowrap">
-                    {new Date(act.createdAt).toLocaleString("en-IN", {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    })}
+                    {formatInIST(new Date(act.createdAt), "d MMM yyyy, h:mm a")}
                   </div>
                 </div>
               ))}

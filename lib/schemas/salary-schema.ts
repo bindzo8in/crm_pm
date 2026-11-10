@@ -32,6 +32,21 @@ export const salarySlipsQuerySchema = z.object({
   userId: z.string().min(1).optional(),
   month: z.number().int().min(1).max(12).optional(),
   year: z.number().int().min(2000).max(2100).optional(),
+  page: z.number().int().min(0).default(0),
+  pageSize: z.number().int().min(1).max(100).default(20),
+  search: z.string().trim().max(120).default(""),
+  status: z.enum(["ALL", "DRAFT", "GENERATED", "APPROVED", "PAID"]).default("ALL"),
+});
+
+export const salaryRosterQuerySchema = z.object({
+  page: z.number().int().min(0).default(0),
+  pageSize: z.number().int().min(1).max(100).default(20),
+  search: z.string().trim().max(120).default(""),
+  view: z.enum(["included", "excluded"]).default("included"),
+});
+
+export const salaryEmployeeSearchSchema = z.object({
+  search: z.string().trim().max(120).default(""),
 });
 
 export const generateSalarySlipSchema = z.object({

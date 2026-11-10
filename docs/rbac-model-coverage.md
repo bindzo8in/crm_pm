@@ -23,11 +23,14 @@ role boundaries.
 | `salary` | `SalaryStructure`, `SalarySlip` |
 
 Staff receive leave self-service, holiday read access, and read-only reference
-data. Salary access is limited to Admin, Super Admin, and HR-department staff;
+data. Salary access is limited to Admin, Super Admin, and staff whose primary
+department is HR;
 ordinary staff cannot access the salary page or salary actions. HR staff use the
 existing department checks for manager access because Better Auth roles do not
 distinguish HR from other staff. Attendance actions check the attendance
 resource, then retain their own-record or HR/Admin/Super Admin scope checks.
+Additional department memberships count for department matching and visibility,
+but do not grant department-specific authorization.
 Company and bank-account administration remain Super Admin-only; invoices and
 proposals use their own resource permissions when reading associated company
 or bank details. Tariff pages and actions are limited to Admin and Super Admin.

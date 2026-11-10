@@ -80,6 +80,14 @@ test("salary management route excludes non-HR staff", () => {
   assert.equal(canAccessRoute("/dashboard/salary", UserRole.SUPER_ADMIN), true);
 });
 
+test("work schedule is restricted to HR staff and administrators", () => {
+  assert.equal(canAccessRoute("/dashboard/attendance/schedule", UserRole.STAFF, "HR"), true);
+  assert.equal(canAccessRoute("/dashboard/attendance/schedule", UserRole.STAFF, "DEVELOPMENT"), false);
+  assert.equal(canAccessRoute("/dashboard/attendance/schedule", UserRole.STAFF, null), false);
+  assert.equal(canAccessRoute("/dashboard/attendance/schedule", UserRole.ADMIN), true);
+  assert.equal(canAccessRoute("/dashboard/attendance/schedule", UserRole.SUPER_ADMIN), true);
+});
+
 test("customer, proposal, and invoice routes are limited to admins and HR/Sales staff", () => {
   for (const path of [
     "/dashboard/customers",

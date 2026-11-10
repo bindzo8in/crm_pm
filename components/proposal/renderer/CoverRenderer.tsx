@@ -1,6 +1,7 @@
 import React from "react";
 import "./proposal-renderer.css";
 import { User, Calendar, Clock, Target, BarChart3, Users, ShieldCheck, Award, Phone, Mail, Globe, MapPin } from "lucide-react";
+import { dateOnlyAtCompanyMidnight, formatInIST } from "@/lib/date";
 
 interface CoverBlockContent {
   subtitle?: string;
@@ -24,16 +25,13 @@ interface CoverRendererProps {
 
 function formatCoverDate(value: string) {
   const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  const date = dateOnlyMatch
-    ? new Date(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3]))
-    : new Date(value);
-
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("en-IN", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  if (dateOnlyMatch) {
+    return formatInIST(dateOnlyAtCompanyMidnight(value), "d MMMM yyyy");
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : formatInIST(date, "d MMMM yyyy");
 }
 
 export function CoverRenderer({ block, proposal, company }: CoverRendererProps) {
@@ -43,11 +41,7 @@ export function CoverRenderer({ block, proposal, company }: CoverRendererProps) 
     preparedFor = proposal.customerCompanyName || proposal.customerDisplayName || "Client",
     preparedBy = proposal.preparedByName || "Sales Executive",
     date = proposal.createdAt
-      ? new Date(proposal.createdAt).toLocaleDateString("en-IN", {
-          year: "numeric",
-          month: "short",
-          day: "2-digit",
-        })
+      ? formatInIST(new Date(proposal.createdAt), "yyyy-MM-dd")
       : "",
     layoutStyle = "MODERN",
     showProposalTitle = true,
@@ -55,7 +49,12 @@ export function CoverRenderer({ block, proposal, company }: CoverRendererProps) 
   } = content;
   const formattedDate = formatCoverDate(date);
 
-  const validUntilDate = proposal.validUntil ? new Date(proposal.validUntil).toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "2-digit" }) : null;
+  const validUntilDate = proposal.validUntil
+    ? formatInIST(new Date(proposal.validUntil), "dd MMM yyyy")
+    : null;
+  const validUntilLongDate = proposal.validUntil
+    ? formatInIST(new Date(proposal.validUntil), "d MMMM yyyy")
+    : null;
 
   const proposalNumber = `QUOT-${proposal.proposalNumber || '1'}`;
 
@@ -87,7 +86,7 @@ export function CoverRenderer({ block, proposal, company }: CoverRendererProps) 
         <div className="mt-auto pt-16 pb-8 flex flex-col items-center gap-1">
           <p className="text-sm font-semibold text-black">{formattedDate}</p>
           {proposal.validUntil && (
-            <p className="text-xs font-medium text-black">Valid Until: {new Date(proposal.validUntil).toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" })}</p>
+            <p className="text-xs font-medium text-black">Valid Until: {validUntilLongDate}</p>
           )}
         </div>
       </div>
@@ -119,7 +118,7 @@ export function CoverRenderer({ block, proposal, company }: CoverRendererProps) 
         <div className="mt-auto pt-16 flex flex-col gap-1">
           <p className="text-base font-semibold text-black">Date of Submission: {formattedDate}</p>
           {proposal.validUntil && (
-            <p className="text-sm font-medium text-black">Valid Until: {new Date(proposal.validUntil).toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" })}</p>
+            <p className="text-sm font-medium text-black">Valid Until: {validUntilLongDate}</p>
           )}
         </div>
       </div>

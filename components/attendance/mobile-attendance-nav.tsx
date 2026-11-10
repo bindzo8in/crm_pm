@@ -10,15 +10,23 @@ export type AttendanceTab = "kiosk" | "history" | "analytics" | "reports";
 interface MobileAttendanceNavProps {
   activeTab: AttendanceTab;
   onSelectTab: (tab: AttendanceTab) => void;
-  isManager?: boolean;
+  canViewReports?: boolean;
+  canViewAnalytics?: boolean;
 }
 
-export function MobileAttendanceNav({ activeTab, onSelectTab, isManager }: MobileAttendanceNavProps) {
+export function MobileAttendanceNav({
+  activeTab,
+  onSelectTab,
+  canViewReports,
+  canViewAnalytics,
+}: MobileAttendanceNavProps) {
   const tabs = [
     { id: "kiosk" as AttendanceTab, label: "Punch", icon: ClockIcon },
     { id: "history" as AttendanceTab, label: "History", icon: HistoryIcon },
-    { id: "analytics" as AttendanceTab, label: "Analytics", icon: BarChart3Icon },
-    ...(isManager
+    ...(canViewAnalytics
+      ? [{ id: "analytics" as AttendanceTab, label: "Analytics", icon: BarChart3Icon }]
+      : []),
+    ...(canViewReports
       ? [{ id: "reports" as AttendanceTab, label: "Reports", icon: FileSpreadsheetIcon }]
       : []),
   ];

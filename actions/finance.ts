@@ -8,6 +8,7 @@ import {
   MAX_EXPENSE_TOTAL_CENTS,
   parseExpenseAmountCents,
 } from "@/lib/expense-tax";
+import { dateOnlyAtCompanyMidnight, formatInIST, getAttendanceDate, shiftDateOnly } from "@/lib/date";
 import prisma from "@/lib/prisma";
 import {
   expenseCategoryPageSchema,
@@ -81,36 +82,28 @@ function numberValue(value: number | string | { toNumber: () => number } | null 
 
 function buildDateRange(period: string, startDate?: string | null, endDate?: string | null) {
   const now = new Date();
-  const safeEnd = endDate ? new Date(`${endDate}T23:59:59.000Z`) : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
+  const today = getAttendanceDate(now);
+  const safeEndExclusive = dateOnlyAtCompanyMidnight(shiftDateOnly(endDate ?? today, 1));
+  const safeEnd = new Date(safeEndExclusive.getTime() - 1);
 
   const safeStart = (() => {
-    if (startDate) return new Date(`${startDate}T00:00:00.000Z`);
+    if (startDate) return dateOnlyAtCompanyMidnight(startDate);
 
     switch (period) {
       case "day": {
-        const d = new Date(now);
-        d.setUTCHours(0, 0, 0, 0);
-        return d;
+        return dateOnlyAtCompanyMidnight(today);
       }
       case "week": {
-        const d = new Date(now);
-        d.setUTCDate(d.getUTCDate() - 6);
-        d.setUTCHours(0, 0, 0, 0);
-        return d;
+        return dateOnlyAtCompanyMidnight(shiftDateOnly(today, -6));
       }
       case "month": {
-        const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
-        return d;
+        return dateOnlyAtCompanyMidnight(`${today.slice(0, 7)}-01`);
       }
       case "year": {
-        const d = new Date(Date.UTC(now.getUTCFullYear(), 0, 1, 0, 0, 0, 0));
-        return d;
+        return dateOnlyAtCompanyMidnight(`${today.slice(0, 4)}-01-01`);
       }
       default: {
-        const d = new Date(now);
-        d.setUTCDate(d.getUTCDate() - 30);
-        d.setUTCHours(0, 0, 0, 0);
-        return d;
+        return dateOnlyAtCompanyMidnight(shiftDateOnly(today, -30));
       }
     }
   })();
@@ -249,6 +242,57 @@ export async function getFinancialAccounts() {
   }
 }
 
+export async function getFinanceSetupStatus() {
+  try {
+    const user = await getSessionUser();
+    if (!user) {
+      return errorResponse("Unauthorized");
+    }
+
+    if (!(await checkFinancePermission("read"))) {
+      return errorResponse("You do not have permission to view finance setup");
+    }
+
+    const company = await prisma.company.findFirst({
+      select: {
+        displayName: true,
+        legalName: true,
+        email: true,
+        phone: true,
+        address: true,
+        city: true,
+        state: true,
+        country: true,
+      },
+    });
+
+    const requiredCompanyFields = [
+      ["displayName", "Company name"],
+      ["legalName", "Legal business name"],
+      ["email", "Email"],
+      ["phone", "Phone"],
+      ["address", "Address"],
+      ["city", "City"],
+      ["state", "State"],
+      ["country", "Country"],
+    ] as const;
+
+    const missingCompanyFields = company
+      ? requiredCompanyFields
+          .filter(([field]) => !company[field].trim())
+          .map(([, label]) => label)
+      : [];
+
+    return successResponse("Finance setup status retrieved successfully", {
+      companyProfileExists: Boolean(company),
+      missingCompanyFields,
+    });
+  } catch (error) {
+    console.error("Failed to load finance setup status:", error);
+    return errorResponse("Could not load finance setup status", error);
+  }
+}
+
 export async function getExpenseCategories() {
   try {
     const user = await getSessionUser();
@@ -349,6 +393,7 @@ export async function listRecentInvoicePayments(limit = 5) {
         referenceId: true,
         invoice: {
           select: {
+            id: true,
             invoiceNumber: true,
             customerDisplayName: true,
           },
@@ -408,6 +453,7 @@ type FinanceReportRow = {
   creator: string | null;
   reference_detail: string | null;
   attachment_url: string | null;
+  detail_url: string;
 };
 
 export async function getFinanceReport(input: unknown = {}) {
@@ -424,13 +470,13 @@ export async function getFinanceReport(input: unknown = {}) {
     }
 
     const filters = parsed.data;
-    const today = new Date();
+    const today = getAttendanceDate();
     const startDate = filters.startDate
-      ? new Date(`${filters.startDate}T00:00:00.000Z`)
-      : new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+      ? dateOnlyAtCompanyMidnight(filters.startDate)
+      : dateOnlyAtCompanyMidnight(`${today.slice(0, 7)}-01`);
     const endExclusive = filters.endDate
-      ? new Date(`${filters.endDate}T00:00:00.000Z`)
-      : new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + 1));
+      ? dateOnlyAtCompanyMidnight(shiftDateOnly(filters.endDate, 1))
+      : dateOnlyAtCompanyMidnight(shiftDateOnly(today, 1));
 
     if (filters.startDate && Number.isNaN(startDate.getTime())) {
       return errorResponse("Start date is invalid");
@@ -438,7 +484,6 @@ export async function getFinanceReport(input: unknown = {}) {
     if (filters.endDate && Number.isNaN(endExclusive.getTime())) {
       return errorResponse("End date is invalid");
     }
-    if (filters.endDate) endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
     if (endExclusive <= startDate) {
       return errorResponse("End date must be on or after the start date");
     }
@@ -498,7 +543,8 @@ export async function getFinanceReport(input: unknown = {}) {
         i."createdById" AS "creator_id",
         u."name" AS "creator",
         p."referenceId" AS "reference_detail",
-        NULL::text AS "attachment_url"
+        NULL::text AS "attachment_url",
+        ('/dashboard/invoices/' || i."id") AS "detail_url"
       FROM "InvoicePayment" p
       INNER JOIN "Invoice" i ON i."id" = p."invoiceId"
       LEFT JOIN "FinancialAccount" fa
@@ -525,7 +571,8 @@ export async function getFinanceReport(input: unknown = {}) {
         e."createdById" AS "creator_id",
         u."name" AS "creator",
         e."referenceNumber" AS "reference_detail",
-        e."receiptUrl" AS "attachment_url"
+        e."receiptUrl" AS "attachment_url",
+        ('/dashboard/finance/expenses/' || e."id") AS "detail_url"
       FROM "Expense" e
       INNER JOIN "FinancialAccount" fa ON fa."id" = e."financialAccountId"
       INNER JOIN "ExpenseCategory" c ON c."id" = e."categoryId"
@@ -580,8 +627,8 @@ export async function getFinanceReport(input: unknown = {}) {
       income,
       expenses,
       netCashFlow: income - expenses,
-      startDate: startDate.toISOString().slice(0, 10),
-      endDate: new Date(endExclusive.getTime() - 86400000).toISOString().slice(0, 10),
+      startDate: formatInIST(startDate, "yyyy-MM-dd"),
+      endDate: formatInIST(new Date(endExclusive.getTime() - 1), "yyyy-MM-dd"),
     });
   } catch (error) {
     console.error("Failed to fetch finance report:", error);
@@ -748,8 +795,8 @@ export async function getFinanceOverview(period: string = "month", startDate?: s
 
     return successResponse("Finance overview retrieved successfully", {
       period,
-      startDate: startDate ?? transactionRange.gte.toISOString().slice(0, 10),
-      endDate: endDate ?? transactionRange.lte.toISOString().slice(0, 10),
+      startDate: startDate ?? formatInIST(transactionRange.gte, "yyyy-MM-dd"),
+      endDate: endDate ?? formatInIST(transactionRange.lte, "yyyy-MM-dd"),
       receivedIncome: totalReceivedIncome,
       completedExpenses: totalCompletedExpenses,
       netCashFlow: totalReceivedIncome - totalCompletedExpenses,
@@ -887,15 +934,20 @@ export async function createExpense(input: unknown) {
       return errorResponse("Total expense amount including tax exceeds the maximum allowed amount");
     }
 
+    const company = await prisma.company.findFirst({ select: { id: true } });
+    if (!company) {
+      return errorResponse("Create the company profile before recording expenses");
+    }
+
     const category = await prisma.expenseCategory.findUnique({ where: { id: payload.categoryId } });
     if (!category || !category.isActive) {
       return errorResponse("Selected expense category is unavailable");
     }
 
-    const financialAccount = await prisma.financialAccount.findUnique({
-      where: { id: payload.financialAccountId },
+    const financialAccount = await prisma.financialAccount.findFirst({
+      where: { id: payload.financialAccountId, companyId: company.id, isActive: true },
     });
-    if (!financialAccount || !financialAccount.isActive) {
+    if (!financialAccount) {
       return errorResponse("Selected financial account is unavailable");
     }
 
@@ -912,8 +964,9 @@ export async function createExpense(input: unknown) {
     const today = new Date();
     const transactionNumber = `EXP-${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, "0")}-${String(today.getUTCDate()).padStart(2, "0")}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 
-    const expense = await prisma.expense.create({
-      data: {
+    const expense = await prisma.$transaction(async (tx) => {
+      const created = await tx.expense.create({
+        data: {
         transactionNumber,
         description: payload.description,
         amount: new Prisma.Decimal((totals.totalAmountCents / 100).toFixed(2)),
@@ -935,8 +988,18 @@ export async function createExpense(input: unknown) {
         customer: payload.customerId ? { connect: { id: payload.customerId } } : undefined,
         category: { connect: { id: payload.categoryId } },
         financialAccount: { connect: { id: payload.financialAccountId } },
-        createdBy: { connect: { id: user.id } },
-      },
+          createdBy: { connect: { id: user.id } },
+        },
+      });
+      await tx.expenseHistory.create({
+        data: {
+          expenseId: created.id,
+          userId: user.id,
+          action: "CREATED",
+          details: JSON.stringify({ transactionNumber: created.transactionNumber, amount: created.amount.toString() }),
+        },
+      });
+      return created;
     });
 
     revalidatePath("/dashboard/finance");
@@ -968,9 +1031,38 @@ export async function updateExpense(id: string, input: unknown) {
     }
 
     const payload = parsed.data;
-    const existing = await prisma.expense.findUnique({ where: { id } });
-    if (!existing || existing.deletedAt) {
+    const totals = calculateExpenseTotals(
+      parseExpenseAmountCents(payload.amount),
+      payload.taxRate,
+      payload.taxInclusive,
+    );
+    if (totals.totalAmountCents > MAX_EXPENSE_TOTAL_CENTS) {
+      return errorResponse("Total expense amount including tax exceeds the maximum allowed amount");
+    }
+    const company = await prisma.company.findFirst({ select: { id: true } });
+    if (!company) {
+      return errorResponse("Company profile must exist before updating expenses");
+    }
+
+    const existing = await prisma.expense.findFirst({
+      where: { id, deletedAt: null, financialAccount: { companyId: company.id } },
+      select: { id: true },
+    });
+    if (!existing) {
       return errorResponse("Expense not found");
+    }
+
+    const [category, financialAccount] = await Promise.all([
+      prisma.expenseCategory.findUnique({ where: { id: payload.categoryId } }),
+      prisma.financialAccount.findFirst({
+        where: { id: payload.financialAccountId, companyId: company.id, isActive: true },
+      }),
+    ]);
+    if (!category || !category.isActive) {
+      return errorResponse("Selected expense category is unavailable");
+    }
+    if (!financialAccount) {
+      return errorResponse("Selected financial account is unavailable");
     }
 
     if (payload.customerId) {
@@ -983,11 +1075,12 @@ export async function updateExpense(id: string, input: unknown) {
       }
     }
 
-    const expense = await prisma.expense.update({
+    const expense = await prisma.$transaction(async (tx) => {
+      const updated = await tx.expense.update({
       where: { id },
       data: {
         description: payload.description,
-        amount: new Prisma.Decimal(payload.amount),
+        amount: new Prisma.Decimal((totals.totalAmountCents / 100).toFixed(2)),
         expenseDate: new Date(payload.expenseDate),
         paymentMethod: payload.paymentMethod,
         status: payload.status,
@@ -1000,13 +1093,99 @@ export async function updateExpense(id: string, input: unknown) {
           : { disconnect: true },
         category: { connect: { id: payload.categoryId } },
         financialAccount: { connect: { id: payload.financialAccountId } },
+        expenseType: payload.expenseType,
+        sacCode: payload.sacCode || null,
+        gstTreatment: payload.gstTreatment || null,
+        sourceOfSupply: payload.sourceOfSupply,
+        destinationOfSupply: payload.destinationOfSupply,
+        reverseCharge: payload.reverseCharge,
+        taxRate: payload.taxRate ?? null,
+        taxInclusive: payload.taxInclusive,
       },
+      });
+      await tx.expenseHistory.create({
+        data: {
+          expenseId: id,
+          userId: user.id,
+          action: "UPDATED",
+          details: JSON.stringify({ amount: payload.amount, status: payload.status, financialAccountId: payload.financialAccountId }),
+        },
+      });
+      return updated;
     });
 
+    revalidatePath("/dashboard/finance");
+    revalidatePath(`/dashboard/finance/expenses/${id}`);
+    revalidatePath(`/dashboard/finance/expenses/${id}/edit`);
     return successResponse("Expense updated successfully", expense);
   } catch (error) {
     return errorResponse("Failed to update expense", error);
   }
+}
+
+export async function getExpense(id: string) {
+    try {
+      const user = await getSessionUser();
+      if (!user) return errorResponse("Unauthorized");
+      const hasPermission = await checkFinancePermission("read");
+      if (!hasPermission) return errorResponse("You do not have permission to view expenses");
+
+      const company = await prisma.company.findFirst({ select: { id: true } });
+      if (!company) return errorResponse("Company profile not found");
+
+      const expense = await prisma.expense.findFirst({
+        where: { id, deletedAt: null, financialAccount: { companyId: company.id } },
+        include: {
+          category: { select: { id: true, name: true, isActive: true } },
+          customer: { select: { id: true, companyName: true, primaryContactName: true } },
+          history: { include: { user: { select: { id: true, name: true } } }, orderBy: { createdAt: "desc" } },
+        },
+      });
+      if (!expense) return errorResponse("Expense not found");
+      return successResponse("Expense loaded successfully", expense);
+    } catch (error) {
+      return errorResponse("Failed to load expense", error);
+    }
+  }
+
+export async function deleteExpense(id: string) {
+    try {
+      const user = await getSessionUser();
+      if (!user) return errorResponse("Unauthorized");
+      const hasPermission = await checkFinancePermission("delete");
+      if (!hasPermission) return errorResponse("You do not have permission to delete expenses");
+
+      const company = await prisma.company.findFirst({ select: { id: true } });
+      if (!company) return errorResponse("Company profile not found");
+
+      const existing = await prisma.expense.findFirst({
+        where: { id, deletedAt: null, financialAccount: { companyId: company.id } },
+        include: { category: { select: { name: true } } },
+      });
+      if (!existing) return errorResponse("Expense not found");
+
+      await prisma.$transaction([
+        prisma.expenseHistory.create({
+          data: {
+            expenseId: id,
+            userId: user.id,
+            action: "DELETED",
+            details: JSON.stringify({ transactionNumber: existing.transactionNumber, amount: existing.amount.toString() }),
+          },
+        }),
+        prisma.expense.update({
+          where: { id },
+          data: { deletedAt: new Date() },
+        }),
+      ]);
+
+      revalidatePath("/dashboard/finance");
+      revalidatePath(`/dashboard/finance/expenses/${id}`);
+      revalidatePath(`/dashboard/finance/expenses/${id}/edit`);
+      return successResponse("Expense deleted successfully");
+    } catch (error) {
+      return errorResponse("Failed to delete expense", error);
+    }
 }
 
 export async function createFinancialAccount(input: unknown) {

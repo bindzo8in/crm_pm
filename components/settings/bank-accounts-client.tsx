@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { BankAccountForm } from "./bank-account-form";
@@ -9,22 +9,67 @@ import { DeleteBankAccount, SetDefaultBankAccount, ToggleBankAccountStatus, GetB
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Edit, Plus, Trash } from "lucide-react";
+import { Building2, Edit, Plus, Search, Trash } from "lucide-react";
 import { CompanyBankAccount } from "@/app/generated/prisma/client";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 
-export function BankAccountsClient({ data: initialData }: { data: CompanyBankAccount[] }) {
+interface BankAccountPageInfo {
+    page: number;
+    pageSize: number;
+    search: string;
+    totalCount: number;
+}
+
+export function BankAccountsClient({
+    data: initialData,
+    initialPagination,
+}: {
+    data: CompanyBankAccount[];
+    initialPagination: BankAccountPageInfo;
+}) {
     const queryClient = useQueryClient();
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [editingAccount, setEditingAccount] = useState<CompanyBankAccount | null>(null);
+    const [search, setSearch] = useState("");
+    const [debouncedSearch, setDebouncedSearch] = useState(initialPagination.search);
+    const [page, setPage] = useState(initialPagination.page);
+    const [pageSize, setPageSize] = useState(initialPagination.pageSize);
 
-    const { data: response } = useQuery({
-        queryKey: ["bankAccounts"],
-        queryFn: () => GetBankAccounts(),
-        initialData: { success: true, data: initialData }
+    useEffect(() => {
+        const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+        return () => window.clearTimeout(timer);
+    }, [search]);
+
+    const accountsQuery = useQuery({
+        queryKey: ["bankAccounts", page, pageSize, debouncedSearch],
+        queryFn: async () => {
+            const result = await GetBankAccounts({ page, pageSize, search: debouncedSearch });
+            if (!result.success) throw new Error(result.message || "Could not load bank accounts.");
+            return result;
+        },
+        initialData:
+            page === initialPagination.page &&
+            pageSize === initialPagination.pageSize &&
+            debouncedSearch === initialPagination.search
+                ? {
+                    success: true as const,
+                    data: initialData,
+                    pagination: {
+                        page: initialPagination.page,
+                        pageSize: initialPagination.pageSize,
+                        totalCount: initialPagination.totalCount,
+                        totalPages: Math.ceil(initialPagination.totalCount / initialPagination.pageSize),
+                    },
+                }
+                : undefined,
+        placeholderData: (previousData) => previousData,
     });
 
-    const accounts = response?.success && response.data ? response.data : initialData;
+    const accounts = accountsQuery.data?.data ?? initialData;
+    const totalCount = accountsQuery.data?.pagination.totalCount ?? initialPagination.totalCount;
 
     const renderAccountActions = (account: CompanyBankAccount) => (
         <div className="flex items-center justify-end gap-2">
@@ -80,6 +125,7 @@ export function BankAccountsClient({ data: initialData }: { data: CompanyBankAcc
                 toast.error(ctx.message);
             } else {
                 toast.success(ctx.message);
+                setPage(0);
                 queryClient.invalidateQueries({ queryKey: ["bankAccounts"] });
             }
         },
@@ -115,41 +161,63 @@ export function BankAccountsClient({ data: initialData }: { data: CompanyBankAcc
     return (
         <div className="w-full">
             <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
+                <div className="min-w-0">
                     <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">Bank Accounts</h2>
-                    <p className="text-muted-foreground">Manage your company bank accounts.</p>
+                    <p className="text-muted-foreground">
+                        Manage your company bank accounts. {totalCount} total {totalCount === 1 ? "account" : "accounts"}.
+                    </p>
                 </div>
-                <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-                    {accounts.length > 0 && (
-                        <DialogTrigger asChild>
-                            <Button className="w-full sm:w-auto">
-                                <Plus className="size-4" />
-                                Add Bank Account
-                            </Button>
-                        </DialogTrigger>
-                    )}
+                <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+                    <div className="relative w-full sm:w-64">
+                        <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                            type="search"
+                            value={search}
+                            onChange={(event) => {
+                                setPage(0);
+                                setSearch(event.target.value);
+                            }}
+                            aria-label="Search bank accounts"
+                            placeholder="Search bank accounts"
+                            className="h-10 pl-9"
+                        />
+                    </div>
+                    <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                    <DialogTrigger asChild>
+                        <Button className="w-full sm:w-auto">
+                            <Plus className="size-4" />
+                            Add Bank Account
+                        </Button>
+                    </DialogTrigger>
                     <DialogContent className="w-[calc(100%-2rem)] max-w-3xl max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
                             <DialogTitle>Add Bank Account</DialogTitle>
                         </DialogHeader>
                         <BankAccountForm onSuccess={() => setIsCreateOpen(false)} />
                     </DialogContent>
-                </Dialog>
+                    </Dialog>
+                </div>
             </div>
 
-            {accounts.length === 0 ? (
+            {accountsQuery.isError ? (
+                <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 px-5 py-6 text-sm text-destructive">
+                    {accountsQuery.error.message}
+                </div>
+            ) : accounts.length === 0 ? (
                 <div className="rounded-xl border border-dashed bg-card px-5 py-10 text-center sm:px-8">
                     <div className="mx-auto mb-4 flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary">
                         <Building2 className="size-5" />
                     </div>
-                    <h3 className="font-semibold">No bank accounts yet</h3>
+                    <h3 className="font-semibold">{search ? "No matching bank accounts" : "No bank accounts yet"}</h3>
                     <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-                        Add a company account to include payment details on invoices.
+                        {search
+                            ? "Try another account name or bank."
+                            : "Add a company account to include payment details on invoices."}
                     </p>
-                    <Button className="mt-5" onClick={() => setIsCreateOpen(true)}>
+                    {!search && <Button className="mt-5" onClick={() => setIsCreateOpen(true)}>
                         <Plus className="size-4" />
                         Add Bank Account
-                    </Button>
+                    </Button>}
                 </div>
             ) : (
                 <>
@@ -201,36 +269,36 @@ export function BankAccountsClient({ data: initialData }: { data: CompanyBankAcc
                         ))}
                     </div>
 
-                    <div className="hidden overflow-x-auto rounded-md border lg:block">
-                        <table className="w-full min-w-[780px] text-left text-sm">
-                            <thead className="bg-muted text-muted-foreground">
-                                <tr>
-                                    <th className="p-3 font-medium">Account Name</th>
-                                    <th className="p-3 font-medium">Bank</th>
-                                    <th className="p-3 font-medium">Account Number</th>
-                                    <th className="p-3 font-medium">IFSC</th>
-                                    <th className="p-3 font-medium">Status</th>
-                                    <th className="p-3 font-medium">Default</th>
-                                    <th className="p-3 font-medium text-right">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
+                    <div className="hidden rounded-md border lg:block">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Account Name</TableHead>
+                                    <TableHead>Bank</TableHead>
+                                    <TableHead>Account Number</TableHead>
+                                    <TableHead>IFSC</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead>Default</TableHead>
+                                    <TableHead className="text-right">Actions</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
                                 {accounts.map((account) => (
-                                    <tr key={account.id} className="border-t">
-                                        <td className="p-3">{account.accountName}</td>
-                                        <td className="p-3">{account.bankName}</td>
-                                        <td className="p-3 font-mono">
+                                    <TableRow key={account.id}>
+                                        <TableCell>{account.accountName}</TableCell>
+                                        <TableCell>{account.bankName}</TableCell>
+                                        <TableCell className="font-mono">
                                             {account.accountNumber.replace(/.(?=.{4})/g, '*')}
-                                        </td>
-                                        <td className="p-3">{account.ifscCode}</td>
-                                        <td className="p-3">
+                                        </TableCell>
+                                        <TableCell>{account.ifscCode}</TableCell>
+                                        <TableCell>
                                             <Switch
                                                 aria-label={`${account.isActive ? "Deactivate" : "Activate"} ${account.accountName}`}
                                                 checked={account.isActive}
                                                 onCheckedChange={(checked) => toggleStatus({ id: account.id, isActive: checked })}
                                             />
-                                        </td>
-                                        <td className="p-3">
+                                        </TableCell>
+                                        <TableCell>
                                             {account.isDefault ? (
                                                 <Badge variant="default">Default</Badge>
                                             ) : (
@@ -238,14 +306,28 @@ export function BankAccountsClient({ data: initialData }: { data: CompanyBankAcc
                                                     Set Default
                                                 </Button>
                                             )}
-                                        </td>
-                                        <td className="p-3">{renderAccountActions(account)}</td>
-                                    </tr>
+                                        </TableCell>
+                                        <TableCell>{renderAccountActions(account)}</TableCell>
+                                    </TableRow>
                                 ))}
-                            </tbody>
-                        </table>
+                            </TableBody>
+                        </Table>
                     </div>
                 </>
+            )}
+            {totalCount > 0 && (
+                <div className="mt-4 overflow-hidden rounded-xl border bg-card">
+                    <PaginationControls
+                        page={page}
+                        pageSize={pageSize}
+                        total={totalCount}
+                        onPageChange={setPage}
+                        onPageSizeChange={(nextPageSize) => {
+                            setPageSize(nextPageSize);
+                            setPage(0);
+                        }}
+                    />
+                </div>
             )}
         </div>
     );

@@ -9,6 +9,7 @@ import {
   deleteProjectTaskAction,
   getProject,
   updateProjectStatusAction,
+  updateProjectAction,
   updateProjectTaskAction,
 } from "@/actions/project";
 import {
@@ -22,6 +23,7 @@ import {
   Kanban,
   LayoutDashboard,
   ListTodo,
+  MessageCircle,
   Pencil,
   Trash2,
   UserRound,
@@ -30,6 +32,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Input } from "@/components/ui/input";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarGroup,
+  AvatarGroupCount,
+  AvatarImage,
+} from "@/components/ui/avatar";
 import { formatInIST } from "@/lib/date";
 import { TaskStatusBoard } from "@/components/projects/task-status-board";
 import { TaskStatusSettingsDialog } from "@/components/projects/task-status-settings-dialog";
@@ -41,6 +51,7 @@ import {
   type MultiSelectOption,
 } from "@/components/ui/multi-select";
 import { OptionSelect } from "@/components/ui/option-select";
+import { ProjectChat } from "@/components/projects/project-chat";
 
 export type ProjectWorkspaceData = NonNullable<
   Extract<Awaited<ReturnType<typeof getProject>>, { success: true }>["data"]
@@ -68,13 +79,25 @@ function priorityLabel(value: string) {
   return value[0] + value.slice(1).toLowerCase();
 }
 
+function getInitials(name: string) {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase() || "?";
+}
+
 export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
   const router = useRouter();
   const { project, permissions } = data;
-  const [activeTab, setActiveTab] = useState<"overview" | "tasks" | "board" | "team" | "activity">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "tasks" | "board" | "team" | "activity" | "chat">("overview");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [dateBeingSet, setDateBeingSet] = useState<"startDate" | "dueDate" | null>(null);
+  const [dateDraft, setDateDraft] = useState("");
   const [boardTasks, setOptimisticTaskStatus] = useOptimistic(
     project.tasks,
     (
@@ -88,6 +111,43 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
   );
   const [, startTransition] = useTransition();
   const [selectedStatus, setSelectedStatus] = useState(project.status);
+
+  async function saveProjectDate(field: "startDate" | "dueDate") {
+    if (!dateDraft) return;
+    const otherDate = field === "startDate" ? project.dueDate : project.startDate;
+    const otherDateValue = otherDate ? new Date(otherDate).toISOString().slice(0, 10) : "";
+    if (
+      otherDateValue &&
+      ((field === "startDate" && dateDraft > otherDateValue) ||
+        (field === "dueDate" && dateDraft < otherDateValue))
+    ) {
+      toast.error(field === "startDate"
+        ? "Start date must be on or before the target completion date."
+        : "Target completion must be on or after the start date.");
+      return;
+    }
+
+    setPending(true);
+    try {
+      const result = await updateProjectAction({
+        projectId: project.id,
+        [field]: dateDraft,
+      });
+      if (!result.success) {
+        toast.error(result.message);
+        return;
+      }
+      toast.success(result.message);
+      setDateBeingSet(null);
+      setDateDraft("");
+      router.refresh();
+    } catch (error) {
+      console.error("Failed to set project date", error);
+      toast.error("Unable to set project date.");
+    } finally {
+      setPending(false);
+    }
+  }
 
   async function saveStatus(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -245,6 +305,7 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
   const taskStatusOptions: MultiSelectOption[] = project.taskStatuses.map((status) => ({
     value: status.id,
     label: status.name,
+    color: status.color,
     icon: status.group === "DONE"
       ? "completed"
       : status.group === "CLOSED"
@@ -343,25 +404,116 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
               <UsersRound aria-hidden="true" className="size-4" />
               Team
             </p>
-            <p className="mt-1 font-medium">
-              {project.members.length
-                ? project.members.map(({ user }) => user.name).join(", ")
-                : "No team members"}
-            </p>
+            {project.members.length ? (
+              <button
+                type="button"
+                aria-label="View project team"
+                onClick={() => setActiveTab("team")}
+                className="mt-2 inline-flex rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <AvatarGroup aria-hidden="true">
+                  {project.members.slice(0, 5).map(({ user }) => (
+                    <Avatar key={user.id} title={user.name}>
+                      <AvatarImage src={user.image ?? undefined} alt="" />
+                      <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+                    </Avatar>
+                  ))}
+                  {project.members.length > 5 && (
+                    <AvatarGroupCount>
+                      +{project.members.length - 5}
+                    </AvatarGroupCount>
+                  )}
+                </AvatarGroup>
+              </button>
+            ) : (
+              <p className="mt-1 font-medium">No team members</p>
+            )}
           </div>
           <div className="p-4 sm:p-5">
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
               <CalendarDays aria-hidden="true" className="size-4" />
               Start date
             </p>
-            <p className="mt-1 font-medium">{dateLabel(project.startDate)}</p>
+            {project.startDate ? (
+              <p className="mt-1 font-medium">{dateLabel(project.startDate)}</p>
+            ) : permissions.canEdit && dateBeingSet === "startDate" ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Input
+                  type="date"
+                  aria-label="Project start date"
+                  value={dateDraft}
+                  onChange={(event) => setDateDraft(event.target.value)}
+                  className="h-8 w-auto min-w-0"
+                />
+                <Button type="button" size="sm" disabled={pending || !dateDraft} onClick={() => void saveProjectDate("startDate")}>
+                  Save
+                </Button>
+                <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => setDateBeingSet(null)}>
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <div className="mt-1 flex items-center gap-2">
+                <span className="font-medium text-muted-foreground">Not set</span>
+                {permissions.canEdit && (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0"
+                    onClick={() => {
+                      setDateDraft("");
+                      setDateBeingSet("startDate");
+                    }}
+                  >
+                    Set date
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
           <div className="p-4 sm:p-5">
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
               <CalendarDays aria-hidden="true" className="size-4" />
               Target completion
             </p>
-            <p className="mt-1 font-medium">{dateLabel(project.dueDate)}</p>
+            {project.dueDate ? (
+              <p className="mt-1 font-medium">{dateLabel(project.dueDate)}</p>
+            ) : permissions.canEdit && dateBeingSet === "dueDate" ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Input
+                  type="date"
+                  aria-label="Project target completion date"
+                  value={dateDraft}
+                  onChange={(event) => setDateDraft(event.target.value)}
+                  className="h-8 w-auto min-w-0"
+                />
+                <Button type="button" size="sm" disabled={pending || !dateDraft} onClick={() => void saveProjectDate("dueDate")}>
+                  Save
+                </Button>
+                <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => setDateBeingSet(null)}>
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <div className="mt-1 flex items-center gap-2">
+                <span className="font-medium text-muted-foreground">Not set</span>
+                {permissions.canEdit && (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0"
+                    onClick={() => {
+                      setDateDraft("");
+                      setDateBeingSet("dueDate");
+                    }}
+                  >
+                    Set date
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -373,6 +525,7 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
           { tab: "board", label: "Board", icon: Kanban },
           { tab: "team", label: "Team", icon: UsersRound },
           { tab: "activity", label: "Activity", icon: Activity },
+          { tab: "chat", label: "Chat", icon: MessageCircle },
         ] as const).map(({ tab, label, icon: TabIcon }) => (
           <button
             key={tab}
@@ -391,7 +544,9 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
         ))}
       </nav>
 
-      {activeTab === "tasks" ? (
+      {activeTab === "chat" ? (
+        <ProjectChat projectId={project.id} />
+      ) : activeTab === "tasks" ? (
       <div
         aria-label="Project tasks"
         className="grid gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(280px,0.8fr)]"
@@ -754,10 +909,14 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
             canManage={permissions.canEdit}
           />
           <TaskStatusBoard
+            id={`project-${project.id}-task-board`}
             items={visibleBoardTasks}
             statuses={boardStatuses}
             statusLabels={taskStatusLabels}
             statusGroups={taskStatusGroups}
+            statusColors={Object.fromEntries(
+              project.taskStatuses.map(({ id, color }) => [id, color]),
+            )}
             canMove={(task) => !pending && (
               permissions.canUpdateTasks ||
               (permissions.canUpdateOwnTasks && task.assigneeId === data.actorId)
@@ -825,18 +984,30 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
           <ul className="mt-5 divide-y">
             {project.projectManager && (
               <li className="flex items-center justify-between gap-3 py-3">
-                <div>
-                  <p className="font-medium">{project.projectManager.name}</p>
-                  <p className="text-sm text-muted-foreground">{project.projectManager.designation ?? "Project manager"}</p>
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar aria-hidden="true">
+                    <AvatarImage src={project.projectManager.image ?? undefined} alt="" />
+                    <AvatarFallback>{getInitials(project.projectManager.name)}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{project.projectManager.name}</p>
+                    <p className="text-sm text-muted-foreground">{project.projectManager.designation ?? "Project manager"}</p>
+                  </div>
                 </div>
                 <Badge variant="secondary">Project manager</Badge>
               </li>
             )}
             {project.members.map(({ user }) => (
               <li key={user.id} className="flex items-center justify-between gap-3 py-3">
-                <div>
-                  <p className="font-medium">{user.name}</p>
-                  <p className="text-sm text-muted-foreground">{user.designation ?? "Team member"}</p>
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar aria-hidden="true">
+                    <AvatarImage src={user.image ?? undefined} alt="" />
+                    <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{user.name}</p>
+                    <p className="text-sm text-muted-foreground">{user.designation ?? "Team member"}</p>
+                  </div>
                 </div>
                 <span className="text-sm text-muted-foreground">
                   {project.tasks.filter((task) =>

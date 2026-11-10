@@ -1,0 +1,13 @@
+.git
+.github
+.next
+.turbo
+.agents
+node_modules
+coverage
+playwright-report
+test-results
+*.log
+.env*
+!.env.example
+Dockerfile*

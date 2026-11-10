@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { dateOnlyAtCompanyMidnight } from "@/lib/date";
 
 export const InvoiceStatusEnum = z.enum([
   "DRAFT",
@@ -46,6 +47,7 @@ export const createInvoiceSchema = z.object({
   proposalId: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
   terms: z.string().optional().nullable(),
+  issueDate: z.date().optional().nullable(),
   dueDate: z.date().optional().nullable(),
   bankAccountId: z.string().optional().nullable(),
   currency: z.string().default("INR"),
@@ -56,11 +58,20 @@ export const createInvoiceSchema = z.object({
 });
 
 export const invoiceFormSchema = createInvoiceSchema.extend({
+  issueDate: z
+    .union([z.date(), z.iso.date()])
+    .optional()
+    .nullable()
+    .transform((value) =>
+      typeof value === "string" ? dateOnlyAtCompanyMidnight(value) : value,
+    ),
   dueDate: z
     .union([z.date(), z.iso.date()])
     .optional()
     .nullable()
-    .transform((value) => (typeof value === "string" ? new Date(`${value}T00:00:00`) : value)),
+    .transform((value) =>
+      typeof value === "string" ? new Date(`${value}T00:00:00.000Z`) : value,
+    ),
   lineItems: z.array(invoiceLineItemSchema.extend({
     serviceName: z.string().optional().nullable(),
   })).min(1, "At least one line item is required"),

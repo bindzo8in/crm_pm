@@ -483,7 +483,7 @@ export function ProjectForm({
         </div>
       </div>
       <Dialog open={createCustomerOpen} onOpenChange={setCreateCustomerOpen}>
-        <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[530px] flex-col gap-0 overflow-hidden rounded-xl p-0 sm:max-h-[94dvh]">
+        <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[900px] flex-col gap-0 overflow-hidden rounded-xl p-0 sm:max-h-[94dvh] sm:max-w-[900px]">
           <DialogHeader className="shrink-0 border-b bg-background px-4 py-3 sm:px-5 sm:py-4">
             <DialogTitle>New customer</DialogTitle>
           </DialogHeader>

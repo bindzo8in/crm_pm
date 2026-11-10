@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, CheckCheck } from "lucide-react";
@@ -24,12 +24,15 @@ const notificationsQueryKey = ["my-notifications"];
 
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const realtimeSocketRef = useRef<WebSocket | null>(null);
   const router = useRouter();
   const queryClient = useQueryClient();
   const notificationsQuery = useQuery({
     queryKey: notificationsQueryKey,
     queryFn: getMyNotificationsAction,
     staleTime: 30_000,
+    refetchInterval: realtimeConnected ? false : 30_000,
   });
   const markReadMutation = useMutation({
     mutationFn: markNotificationReadAction,
@@ -43,6 +46,63 @@ export function NotificationBell() {
   });
   const unreadCount = notificationsQuery.data?.unreadCount ?? 0;
   const notifications = notificationsQuery.data?.notifications ?? [];
+
+  useEffect(() => {
+    let reconnectTimer: number | null = null;
+    let stopped = false;
+
+    const connect = () => {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const socket = new WebSocket(`${protocol}//${window.location.host}/api/chat/ws`);
+      realtimeSocketRef.current = socket;
+
+      socket.addEventListener("open", () => {
+        if (realtimeSocketRef.current !== socket) return;
+        socket.send(JSON.stringify({ type: "subscribe-notifications" }));
+      });
+      socket.addEventListener("message", (event) => {
+        try {
+          const payload = JSON.parse(event.data as string) as { type?: string };
+          if (payload.type === "notifications-subscribed") {
+            setRealtimeConnected(true);
+            void queryClient.invalidateQueries({ queryKey: notificationsQueryKey });
+          } else if (payload.type === "notifications-refresh") {
+            void queryClient.invalidateQueries({ queryKey: notificationsQueryKey });
+          }
+        } catch {
+          console.error("Received an invalid notifications realtime message.");
+        }
+      });
+      socket.addEventListener("error", () => {
+        if (realtimeSocketRef.current !== socket) return;
+        setRealtimeConnected(false);
+      });
+      socket.addEventListener("close", () => {
+        if (realtimeSocketRef.current !== socket) return;
+        realtimeSocketRef.current = null;
+        setRealtimeConnected(false);
+        if (!stopped) reconnectTimer = window.setTimeout(connect, 2000);
+      });
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        void queryClient.invalidateQueries({ queryKey: notificationsQueryKey });
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    connect();
+
+    return () => {
+      stopped = true;
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      const socket = realtimeSocketRef.current;
+      realtimeSocketRef.current = null;
+      socket?.close();
+    };
+  }, [queryClient]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -131,6 +191,7 @@ export function NotificationBell() {
                           {new Intl.DateTimeFormat("en-IN", {
                             dateStyle: "medium",
                             timeStyle: "short",
+                            timeZone: "Asia/Kolkata",
                           }).format(notification.createdAt)}
                         </time>
                       </div>

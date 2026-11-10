@@ -1,9 +1,21 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
 import { useRef, useState } from "react"
-import { Ellipsis, LayoutDashboard, ReceiptText, Users, ChartNoAxesCombined } from "lucide-react"
+import {
+  Banknote,
+  CircleUserRound,
+  Ellipsis,
+  LayoutDashboard,
+  ListTodo,
+  LogOut,
+  ReceiptText,
+} from "lucide-react"
+import { useRouter } from "next/navigation"
+import { signOut } from "@/lib/auth-client"
+import { useHydratedPathname } from "@/hooks/use-hydrated-pathname"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Button } from "@/components/ui/button"
 
 import {
   Sheet,
@@ -20,15 +32,16 @@ type NavigationItem = {
   icon?: React.ReactNode
 }
 
-const primaryOrder = ["Dashboard", "Invoices", "Customers", "Reports"]
+const primaryOrder = ["Dashboard", "Invoices", "Tasks", "Expenses"]
 const primaryIcons: Record<string, React.ReactNode> = {
   Dashboard: <LayoutDashboard aria-hidden="true" className="size-5" />,
   Invoices: <ReceiptText aria-hidden="true" className="size-5" />,
-  Customers: <Users aria-hidden="true" className="size-5" />,
-  Reports: <ChartNoAxesCombined aria-hidden="true" className="size-5" />,
+  Tasks: <ListTodo aria-hidden="true" className="size-5" />,
+  Expenses: <Banknote aria-hidden="true" className="size-5" />,
 }
 
-function isItemActive(item: NavigationItem, pathname: string) {
+function isItemActive(item: NavigationItem, pathname: string | null) {
+  if (pathname === null) return false;
   return item.url === "/dashboard"
     ? pathname === item.url
     : pathname === item.url || pathname.startsWith(`${item.url}/`)
@@ -37,11 +50,18 @@ function isItemActive(item: NavigationItem, pathname: string) {
 export function MobileBottomNav({
   items,
   secondaryItems,
+  user,
+  role,
+  department,
 }: {
   items: NavigationItem[]
   secondaryItems: NavigationItem[]
+  user: { name: string; email: string; avatar: string }
+  role: string
+  department?: string | null
 }) {
-  const pathname = usePathname()
+  const router = useRouter()
+  const pathname = useHydratedPathname()
   const [isMoreOpen, setIsMoreOpen] = useState(false)
   const swipeStartY = useRef<number | null>(null)
   const orderedItems = primaryOrder
@@ -55,6 +75,22 @@ export function MobileBottomNav({
   const moreItems = items.filter((item) => !primaryUrls.has(item.url))
   const remainingItems = [...moreItems, ...secondaryItems]
   const isMoreActive = remainingItems.some((item) => isItemActive(item, pathname))
+  const userInitials = user.name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase() || "U"
+
+  async function handleLogout() {
+    await signOut({
+      fetchOptions: {
+        onSuccess: () => router.push("/signin"),
+        onError: () => router.push("/signin"),
+      },
+    })
+  }
 
   return (
     <Sheet open={isMoreOpen} onOpenChange={setIsMoreOpen}>
@@ -136,6 +172,24 @@ export function MobileBottomNav({
           <SheetDescription>Open another part of your workspace.</SheetDescription>
         </SheetHeader>
         <div className="space-y-5 overflow-y-auto px-4 py-4">
+          <section aria-label="Account" className="flex items-center gap-3 rounded-lg border p-3">
+            <Avatar className="size-10 shrink-0 rounded-lg">
+              <AvatarImage src={user.avatar} alt={user.name} />
+              <AvatarFallback className="rounded-lg">{userInitials}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{user.name}</p>
+              <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {role.replaceAll("_", " ")}{department ? ` · ${department}` : ""}
+              </p>
+            </div>
+            <Button asChild size="icon" variant="outline" aria-label="Open profile">
+              <Link href="/dashboard/account" onClick={() => setIsMoreOpen(false)}>
+                <CircleUserRound aria-hidden="true" />
+              </Link>
+            </Button>
+          </section>
           {[
             { label: "Workspace", items: moreItems },
             { label: "Settings", items: secondaryItems },
@@ -170,6 +224,15 @@ export function MobileBottomNav({
           {remainingItems.length === 0 && (
             <p className="px-2 text-sm text-muted-foreground">All available sections are shown in the navigation bar.</p>
           )}
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full justify-start"
+            onClick={() => void handleLogout()}
+          >
+            <LogOut aria-hidden="true" />
+            Log out
+          </Button>
         </div>
       </SheetContent>
     </Sheet>

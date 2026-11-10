@@ -315,9 +315,24 @@ export async function getProjectTaskWorkspacePage(
   const where: Prisma.ProjectTaskWhereInput = {
     AND: [accessWhere, ...filters],
   };
-  const [tasks, total, statusCounts, overdueCount] = await prisma.$transaction(async (tx) => {
-    const tasks = await tx.projectTask.findMany({
-      where,
+  const taskListWhere: Prisma.ProjectTaskWhereInput = {
+    AND: [
+      { project: { deletedAt: null }, parentTaskId: null },
+      {
+        OR: [
+          where,
+          {
+            subtasks: {
+              some: where,
+            },
+          },
+        ],
+      },
+    ],
+  };
+  const [tasks, total, statusCounts, overdueCount] = await Promise.all([
+    prisma.projectTask.findMany({
+      where: taskListWhere,
       select: {
         id: true,
         title: true,
@@ -333,16 +348,35 @@ export async function getProjectTaskWorkspacePage(
         timeTrackedSeconds: true,
         createdAt: true,
         assigneeId: true,
-        assignee: { select: { id: true, name: true } },
+        assignee: { select: { id: true, name: true, role: true, department: true } },
         createdBy: { select: { id: true, name: true } },
+        subtasks: {
+          where,
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            statusGroup: true,
+            assigneeId: true,
+            assignee: {
+              select: { id: true, name: true, role: true, department: true },
+            },
+            dueDate: true,
+          },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        },
         project: {
           select: {
             id: true,
             name: true,
             projectNumber: true,
-            projectManager: { select: { id: true, name: true } },
+            projectManager: { select: { id: true, name: true, role: true, department: true } },
             members: {
-              select: { user: { select: { id: true, name: true } } },
+              select: {
+                user: {
+                  select: { id: true, name: true, role: true, department: true },
+                },
+              },
               orderBy: { assignedAt: "asc" },
             },
             taskStatuses: true,
@@ -356,22 +390,21 @@ export async function getProjectTaskWorkspacePage(
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
       take: query.pageSize + 1,
-    });
-    const total = await tx.projectTask.count({ where });
-    const statusCounts = await tx.projectTask.groupBy({
+    }),
+    prisma.projectTask.count({ where: taskListWhere }),
+    prisma.projectTask.groupBy({
       by: ["statusGroup"],
       where: accessWhere,
       _count: { _all: true },
-    });
-    const overdueCount = await tx.projectTask.count({
+    }),
+    prisma.projectTask.count({
       where: {
         ...accessWhere,
         dueDate: { lt: today },
         statusGroup: { notIn: ["DONE", "CLOSED"] },
       },
-    });
-    return [tasks, total, statusCounts, overdueCount] as const;
-  });
+    }),
+  ]);
   const hasMore = tasks.length > query.pageSize;
   const pageTasks = tasks.slice(0, query.pageSize);
   const summary = statusCounts.reduce(
@@ -477,9 +510,9 @@ export async function getProjectById(
         },
       },
       proposal: { select: { id: true, proposalNumber: true, title: true } },
-      projectManager: { select: { id: true, name: true, designation: true } },
+      projectManager: { select: { id: true, name: true, image: true, designation: true } },
       members: {
-        include: { user: { select: { id: true, name: true, designation: true } } },
+        include: { user: { select: { id: true, name: true, image: true, designation: true } } },
         orderBy: { assignedAt: "asc" },
       },
       tasks: {
@@ -526,7 +559,13 @@ export async function getProjectFormOptions(userIds: string[] = []) {
       banned: { not: true },
       employmentStatus: EmploymentStatus.ACTIVE,
     },
-    select: { id: true, name: true, designation: true, department: true },
+    select: {
+      id: true,
+      name: true,
+      designation: true,
+      department: true,
+      additionalDepartments: true,
+    },
   });
   return { users };
 }
@@ -539,11 +578,25 @@ export async function getProjectTeamById(projectId: string) {
       projectNumber: true,
       name: true,
       projectManager: {
-        select: { id: true, name: true, designation: true, department: true },
+        select: {
+          id: true,
+          name: true,
+          designation: true,
+          department: true,
+          additionalDepartments: true,
+        },
       },
       members: {
         select: {
-          user: { select: { id: true, name: true, designation: true, department: true } },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              designation: true,
+              department: true,
+              additionalDepartments: true,
+            },
+          },
         },
         orderBy: { assignedAt: "asc" },
       },
@@ -569,7 +622,13 @@ export async function getProjectUserPage(search: string, page: number) {
   };
   const users = await prisma.user.findMany({
     where,
-    select: { id: true, name: true, designation: true, department: true },
+    select: {
+      id: true,
+      name: true,
+      designation: true,
+      department: true,
+      additionalDepartments: true,
+    },
     orderBy: [{ name: "asc" }, { id: "asc" }],
     skip: page * projectUserPageSize,
     take: projectUserPageSize + 1,
@@ -722,6 +781,11 @@ export async function createProjectRecord(
   proposal?: { id: string; snapshot: Prisma.InputJsonValue },
 ) {
   return prisma.$transaction(async (tx) => {
+    const memberIds = [...new Set([
+      actorId,
+      ...(input.projectManagerId ? [input.projectManagerId] : []),
+      ...input.teamMemberIds,
+    ])];
     const project = await tx.project.create({
       data: {
         name: input.name,
@@ -743,7 +807,7 @@ export async function createProjectRecord(
         currency: input.currency,
         createdById: actorId,
         members: {
-          create: input.teamMemberIds.map((userId) => ({ userId })),
+          create: memberIds.map((userId) => ({ userId })),
         },
         activities: {
           create: {
@@ -801,7 +865,13 @@ export async function createConvertedProjectRecord(
         budgetAmount: input.budgetAmount === undefined ? null : new Prisma.Decimal(input.budgetAmount),
         currency: input.currency,
         createdById: actorId,
-        members: { create: input.teamMemberIds.map((userId) => ({ userId })) },
+        members: {
+          create: [...new Set([
+            actorId,
+            ...(input.projectManagerId ? [input.projectManagerId] : []),
+            ...input.teamMemberIds,
+          ])].map((userId) => ({ userId })),
+        },
         activities: {
           create: {
             actorId,
@@ -1186,7 +1256,9 @@ export async function getProjectTaskPreview(
       createdAt: true,
       updatedAt: true,
       assigneeId: true,
-      assignee: { select: { id: true, name: true, image: true } },
+      assignee: {
+        select: { id: true, name: true, image: true, role: true, department: true },
+      },
       createdBy: { select: { id: true, name: true } },
       parentTask: { select: { id: true, title: true } },
       project: {
@@ -1195,9 +1267,15 @@ export async function getProjectTaskPreview(
           name: true,
           projectNumber: true,
           taskStatuses: true,
-          projectManager: { select: { id: true, name: true } },
+          projectManager: {
+            select: { id: true, name: true, role: true, department: true },
+          },
           members: {
-            select: { user: { select: { id: true, name: true } } },
+            select: {
+              user: {
+                select: { id: true, name: true, role: true, department: true },
+              },
+            },
             orderBy: { assignedAt: "asc" },
           },
           tasks: {

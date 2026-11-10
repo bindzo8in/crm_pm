@@ -34,28 +34,38 @@ import {
   LaptopIcon,
   ShieldAlertIcon,
   ChevronRightIcon,
+  FilterIcon,
+  XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Department } from "@/app/generated/prisma/enums";
-import { format, subDays, startOfMonth, endOfMonth } from "date-fns";
+import { MultiSelect, type MultiSelectOption } from "@/components/ui/multi-select";
+import { AttendanceStatus, Department, WorkMode } from "@/app/generated/prisma/enums";
+import { format, parseISO, subDays, startOfMonth, endOfMonth } from "date-fns";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { getAttendanceDate } from "@/lib/date";
 
 type DatePreset = "7d" | "14d" | "30d" | "thisMonth" | "all" | "custom";
 
 export function AttendanceAnalytics() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   // Filters State
   const [preset, setPreset] = useState<DatePreset>("thisMonth");
-  const [startDate, setStartDate] = useState<string>(format(startOfMonth(new Date()), "yyyy-MM-dd"));
-  const [endDate, setEndDate] = useState<string>(format(endOfMonth(new Date()), "yyyy-MM-dd"));
-  const [departmentFilter, setDepartmentFilter] = useState<string>("ALL");
-  const [employeeFilter, setEmployeeFilter] = useState<string>("ALL");
+  const [startDate, setStartDate] = useState<string>(
+    format(startOfMonth(parseISO(getAttendanceDate())), "yyyy-MM-dd"),
+  );
+  const [endDate, setEndDate] = useState<string>(
+    format(endOfMonth(parseISO(getAttendanceDate())), "yyyy-MM-dd"),
+  );
+  const [departmentFilters, setDepartmentFilters] = useState<string[]>([]);
+  const [employeeFilters, setEmployeeFilters] = useState<string[]>([]);
+  const [statusFilters, setStatusFilters] = useState<string[]>([]);
+  const [workModeFilters, setWorkModeFilters] = useState<string[]>([]);
   const [employees, setEmployees] = useState<Array<{ id: string; name: string; email: string; employeeId?: string | null; department?: string | null }>>([]);
 
   // Load employee list on mount
@@ -70,7 +80,7 @@ export function AttendanceAnalytics() {
   // Handle Date Presets
   const applyPreset = (newPreset: DatePreset) => {
     setPreset(newPreset);
-    const today = new Date();
+    const today = parseISO(getAttendanceDate());
     if (newPreset === "7d") {
       setStartDate(format(subDays(today, 6), "yyyy-MM-dd"));
       setEndDate(format(today, "yyyy-MM-dd"));
@@ -95,8 +105,10 @@ export function AttendanceAnalytics() {
       const res = await getAttendanceAnalyticsAction({
         startDate: startDate || undefined,
         endDate: endDate || undefined,
-        department: departmentFilter !== "ALL" ? departmentFilter : undefined,
-        userId: employeeFilter !== "ALL" ? employeeFilter : undefined,
+        department: departmentFilters.length ? departmentFilters : undefined,
+        userId: employeeFilters.length ? employeeFilters : undefined,
+        status: statusFilters.length ? statusFilters as AttendanceStatus[] : undefined,
+        workMode: workModeFilters.length ? workModeFilters as WorkMode[] : undefined,
       });
 
       if (res && res.success) {
@@ -115,7 +127,40 @@ export function AttendanceAnalytics() {
     startTransition(() => {
       fetchAnalytics();
     });
-  }, [startDate, endDate, departmentFilter, employeeFilter]);
+  }, [startDate, endDate, departmentFilters, employeeFilters, statusFilters, workModeFilters]);
+
+  const activeFilterCount =
+    departmentFilters.length +
+    employeeFilters.length +
+    statusFilters.length +
+    workModeFilters.length +
+    (preset !== "thisMonth" ? 1 : 0);
+
+  const resetFilters = () => {
+    applyPreset("thisMonth");
+    setDepartmentFilters([]);
+    setEmployeeFilters([]);
+    setStatusFilters([]);
+    setWorkModeFilters([]);
+  };
+
+  const departmentOptions: MultiSelectOption[] = Object.values(Department).map((value) => ({
+    value,
+    label: value.replaceAll("_", " "),
+  }));
+  const employeeOptions: MultiSelectOption[] = employees.map((employee) => ({
+    value: employee.id,
+    label: `${employee.name}${employee.employeeId ? ` (${employee.employeeId})` : ""}`,
+    description: employee.department?.replaceAll("_", " "),
+  }));
+  const statusOptions: MultiSelectOption[] = Object.values(AttendanceStatus).map((value) => ({
+    value,
+    label: value.replaceAll("_", " "),
+  }));
+  const workModeOptions: MultiSelectOption[] = Object.values(WorkMode).map((value) => ({
+    value,
+    label: value.replaceAll("_", " "),
+  }));
 
   const summary = data?.summary || {};
   const timeSeriesData = data?.timeSeriesData || [];
@@ -146,13 +191,29 @@ export function AttendanceAnalytics() {
             </div>
           </div>
 
-          {/* Quick Refresh */}
           <div className="flex items-center gap-2 self-start lg:self-auto">
+            <Button
+              type="button"
+              variant={filtersOpen ? "secondary" : "outline"}
+              size="icon"
+              aria-label={filtersOpen ? "Hide attendance filters" : "Show attendance filters"}
+              aria-expanded={filtersOpen}
+              title={filtersOpen ? "Hide filters" : "Show filters"}
+              onClick={() => setFiltersOpen((open) => !open)}
+              className="relative size-9 rounded-xl"
+            >
+              <FilterIcon className="size-4" aria-hidden="true" />
+              {activeFilterCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={fetchAnalytics}
-              disabled={loading}
+              disabled={loading || isPending}
               className="rounded-xl text-xs h-9 gap-1.5 border-border/80 hover:bg-muted"
             >
               <RefreshCwIcon className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
@@ -161,10 +222,11 @@ export function AttendanceAnalytics() {
           </div>
         </div>
 
-        {/* Date Presets + Dropdown Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 pt-2 border-t border-border/40">
+        {filtersOpen && (
+        <div className="space-y-4 border-t border-border/50 pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
           {/* Preset Buttons */}
-          <div className="md:col-span-6 flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             {[
               { id: "thisMonth", label: "This Month" },
               { id: "30d", label: "Last 30 Days" },
@@ -189,64 +251,79 @@ export function AttendanceAnalytics() {
               </Button>
             ))}
           </div>
-
-          {/* Department Filter */}
-          <div className="md:col-span-3">
-            <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-              <SelectTrigger className="rounded-xl text-xs h-8 bg-background/50 border-border/70">
-                <SelectValue placeholder="All Departments" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All departments</SelectItem>
-                {Object.values(Department).map((dept) => (
-                  <SelectItem key={dept} value={dept}>
-                    {dept}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {activeFilterCount > 0 && (
+            <Button type="button" variant="ghost" size="sm" onClick={resetFilters} className="h-8">
+              <XIcon className="mr-1 size-3.5" />
+              Clear filters
+            </Button>
+          )}
           </div>
 
-          {/* Employee Filter */}
-          <div className="md:col-span-3">
-            <Select value={employeeFilter} onValueChange={setEmployeeFilter}>
-              <SelectTrigger className="rounded-xl text-xs h-8 bg-background/50 border-border/70">
-                <SelectValue placeholder="All Employees" />
-              </SelectTrigger>
-              <SelectContent className="max-h-64">
-                <SelectItem value="ALL">All employees</SelectItem>
-                {employees.map((emp) => (
-                  <SelectItem key={emp.id} value={emp.id}>
-                    {emp.name} {emp.employeeId ? `(${emp.employeeId})` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <DateRangePicker
+              startDate={startDate}
+              endDate={endDate}
+              onChange={(range) => {
+                setPreset("custom");
+                setStartDate(range?.from ? format(range.from, "yyyy-MM-dd") : "");
+                setEndDate(range?.to ? format(range.to, "yyyy-MM-dd") : "");
+              }}
+              onClear={() => {
+                setPreset("all");
+                setStartDate("");
+                setEndDate("");
+              }}
+            />
+            <div className="space-y-2">
+              <span className="block text-xs font-medium text-muted-foreground">Departments</span>
+              <MultiSelect
+                label="Departments"
+                placeholder="All departments"
+                searchPlaceholder="Search departments"
+                options={departmentOptions}
+                value={departmentFilters}
+                onValueChange={setDepartmentFilters}
+              />
+            </div>
+            <div className="space-y-2">
+              <span className="block text-xs font-medium text-muted-foreground">Employees</span>
+              <MultiSelect
+                label="Employees"
+                placeholder="All employees"
+                searchPlaceholder="Search employees"
+                options={employeeOptions}
+                value={employeeFilters}
+                onValueChange={setEmployeeFilters}
+              />
+            </div>
+            <div className="space-y-2">
+              <span className="block text-xs font-medium text-muted-foreground">Attendance status</span>
+              <MultiSelect
+                label="Attendance status"
+                placeholder="All statuses"
+                searchPlaceholder="Search statuses"
+                options={statusOptions}
+                value={statusFilters}
+                onValueChange={setStatusFilters}
+              />
+            </div>
+            <div className="space-y-2">
+              <span className="block text-xs font-medium text-muted-foreground">Work mode</span>
+              <MultiSelect
+                label="Work mode"
+                placeholder="All work modes"
+                options={workModeOptions}
+                value={workModeFilters}
+                onValueChange={setWorkModeFilters}
+              />
+            </div>
           </div>
+          {preset === "custom" && (startDate || endDate) && (
+            <p className="text-xs text-muted-foreground">
+              Showing {startDate || "any date"} through {endDate || "any date"}.
+            </p>
+          )}
         </div>
-
-        {/* Custom Date Range Picker Inputs */}
-        {preset === "custom" && (
-          <div className="flex flex-wrap items-center gap-3 pt-2 bg-muted/30 p-3 rounded-2xl border border-border/40">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground font-medium">From:</span>
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="h-8 text-xs w-36 rounded-xl bg-background"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground font-medium">To:</span>
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="h-8 text-xs w-36 rounded-xl bg-background"
-              />
-            </div>
-          </div>
         )}
       </div>
 

@@ -11,6 +11,7 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { env } from "@/lib/env";
+import { broadcastNotificationUpdates } from "@/lib/notification-realtime";
 
 async function requireNotificationUserId() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -28,13 +29,15 @@ export async function getMyNotificationsAction() {
 export async function markNotificationReadAction(input: unknown) {
   const userId = await requireNotificationUserId();
   const { id } = z.object({ id: z.string().trim().min(1).max(100) }).parse(input);
-  await markUserNotificationRead(userId, id);
+  const result = await markUserNotificationRead(userId, id);
+  if (result.count > 0) await broadcastNotificationUpdates([userId]);
   return { success: true };
 }
 
 export async function markAllNotificationsReadAction() {
   const userId = await requireNotificationUserId();
-  await markAllUserNotificationsRead(userId);
+  const result = await markAllUserNotificationsRead(userId);
+  if (result.count > 0) await broadcastNotificationUpdates([userId]);
   return { success: true };
 }
 

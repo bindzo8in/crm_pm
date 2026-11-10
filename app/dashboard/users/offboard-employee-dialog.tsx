@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { format } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -41,6 +41,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { getUsers } from "@/actions/user";
+import { formatInIST, getAttendanceDate } from "@/lib/date";
 
 type UserRow = Awaited<ReturnType<typeof getUsers>>["users"][number];
 
@@ -51,10 +52,6 @@ const formSchema = z.object({
 });
 
 type FormValues = z.infer<typeof formSchema>;
-
-function todayDateValue() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export function OffboardEmployeeDialog({
   open,
@@ -71,7 +68,7 @@ export function OffboardEmployeeDialog({
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      effectiveDate: todayDateValue(),
+      effectiveDate: getAttendanceDate(),
       reason: "",
       reassignmentUserId: "",
     },
@@ -114,7 +111,7 @@ export function OffboardEmployeeDialog({
         queryKey: ["employee-status-history", user.id],
       });
       form.reset({
-        effectiveDate: todayDateValue(),
+        effectiveDate: getAttendanceDate(),
         reason: "",
         reassignmentUserId: "",
       });
@@ -151,7 +148,7 @@ export function OffboardEmployeeDialog({
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen && !mutation.isPending) {
       form.reset({
-        effectiveDate: todayDateValue(),
+        effectiveDate: getAttendanceDate(),
         reason: "",
         reassignmentUserId: "",
       });
@@ -291,7 +288,7 @@ export function OffboardEmployeeDialog({
                 <Input
                   id="employment-effective-date"
                   type="date"
-                  max={todayDateValue()}
+                  max={getAttendanceDate()}
                   aria-invalid={Boolean(form.formState.errors.effectiveDate)}
                   {...form.register("effectiveDate")}
                 />
@@ -330,7 +327,7 @@ export function OffboardEmployeeDialog({
 
             {!isActive && user.employmentEndedAt && (
               <p className="text-sm text-muted-foreground">
-                Inactive since {format(user.employmentEndedAt, "dd/MM/yyyy")}.
+                Inactive since {formatInTimeZone(user.employmentEndedAt, "UTC", "dd/MM/yyyy")}.
               </p>
             )}
 
@@ -356,7 +353,7 @@ export function OffboardEmployeeDialog({
                             : "Reactivated"}
                         </span>
                         <span className="text-muted-foreground">
-                          Effective {format(event.effectiveAt, "dd/MM/yyyy")}
+                          Effective {formatInTimeZone(event.effectiveAt, "UTC", "dd/MM/yyyy")}
                         </span>
                       </div>
                       <p>{event.reason}</p>
@@ -366,7 +363,7 @@ export function OffboardEmployeeDialog({
                           ? ` · Work reassigned to ${event.reassignedTo.name}`
                           : ""}
                         {" · "}
-                        {format(event.changedAt, "dd/MM/yyyy HH:mm")}
+                        {formatInIST(event.changedAt, "dd/MM/yyyy HH:mm")}
                       </p>
                     </li>
                   ))}

@@ -2,6 +2,7 @@ import webpush from "web-push";
 import prisma from "@/lib/prisma";
 import { env } from "@/lib/env";
 import { getAttendanceDate, formatInIST } from "@/lib/date";
+import { broadcastNotificationUpdates } from "@/lib/notification-realtime";
 import { getWeekendDays } from "@/services/attendance-settings-service";
 import {
   isEligibleForAttendanceReminder,
@@ -51,7 +52,13 @@ export async function sendAttendanceReminders(now = new Date()) {
       settings?.expectedClockIn ?? "09:00",
     )
   ) {
-    return { skipped: "Outside the configured reminder window.", notified: 0, pushFailures: 0 };
+    return {
+      skipped: "Outside the configured reminder window.",
+      notified: 0,
+      pushSent: 0,
+      pushSkipped: 0,
+      pushFailures: 0,
+    };
   }
 
   const weekendDays = await getWeekendDays();
@@ -65,13 +72,14 @@ export async function sendAttendanceReminders(now = new Date()) {
         select: {
           id: true,
           department: true,
+          additionalDepartments: true,
           dateOfJoining: true,
           employmentEndedAt: true,
         },
       }),
       prisma.holiday.findMany({
         where: { date: today },
-        select: { departments: true },
+        select: { departments: true, isHalfDay: true },
       }),
       prisma.leaveRequest.findMany({
         where: {
@@ -91,8 +99,9 @@ export async function sendAttendanceReminders(now = new Date()) {
       }),
     ]);
 
-  const holidayDepartments = holidays.length > 0
-    ? holidays.map((holiday) => holiday.departments)
+  const fullDayHolidays = holidays.filter((holiday) => !holiday.isHalfDay);
+  const holidayDepartments = fullDayHolidays.length > 0
+    ? fullDayHolidays.map((holiday) => holiday.departments)
     : null;
   const leaveUserIds = new Set(approvedLeaves.map((leave) => leave.userId));
   const attendanceUserIds = new Set(attendance.map((record) => record.userId));
@@ -116,7 +125,10 @@ export async function sendAttendanceReminders(now = new Date()) {
   }
 
   let notified = 0;
+  let pushSent = 0;
+  let pushSkipped = 0;
   let pushFailures = 0;
+  const realtimeUserIds: string[] = [];
   const payload = JSON.stringify({
     title: "Attendance reminder",
     body: "Please mark your attendance before your shift starts.",
@@ -158,6 +170,7 @@ export async function sendAttendanceReminders(now = new Date()) {
         date: today,
         weekendDays,
         department: user.department,
+        additionalDepartments: user.additionalDepartments,
         holidayDepartments,
         hasApprovedLeave: leaveUserIds.has(user.id),
         hasAttendanceRecord: attendanceUserIds.has(user.id),
@@ -182,6 +195,7 @@ export async function sendAttendanceReminders(now = new Date()) {
           });
         });
         notified += 1;
+        realtimeUserIds.push(user.id);
       } catch (error: unknown) {
         if (isPrismaUniqueViolation(error)) continue;
         throw error;
@@ -189,11 +203,18 @@ export async function sendAttendanceReminders(now = new Date()) {
       reminder = { userId: user.id, pushSentAt: null };
     }
 
-    if (reminder.pushSentAt || !pushConfigured) continue;
+    if (reminder.pushSentAt) continue;
+    if (!pushConfigured) {
+      pushSkipped += 1;
+      continue;
+    }
     const userSubscriptions = subscriptionsByUser.get(user.id) ?? [];
-    if (userSubscriptions.length === 0) continue;
+    if (userSubscriptions.length === 0) {
+      pushSkipped += 1;
+      continue;
+    }
 
-    let hadTransientFailure = false;
+    let sentForUser = 0;
     await Promise.all(
       userSubscriptions.map(async (subscription) => {
         try {
@@ -204,6 +225,7 @@ export async function sendAttendanceReminders(now = new Date()) {
             },
             payload,
           );
+          sentForUser += 1;
         } catch (error: unknown) {
           const statusCode = getPushStatusCode(error);
           if (statusCode === 404 || statusCode === 410) {
@@ -212,7 +234,6 @@ export async function sendAttendanceReminders(now = new Date()) {
             });
             return;
           }
-          hadTransientFailure = true;
           pushFailures += 1;
           console.error("Attendance reminder push delivery failed.", {
             userId: user.id,
@@ -223,7 +244,8 @@ export async function sendAttendanceReminders(now = new Date()) {
       }),
     );
 
-    if (!hadTransientFailure) {
+    pushSent += sentForUser;
+    if (sentForUser > 0) {
       await prisma.attendanceReminder.update({
         where: {
           userId_date: { userId: user.id, date: today },
@@ -233,5 +255,6 @@ export async function sendAttendanceReminders(now = new Date()) {
     }
   }
 
-  return { notified, pushFailures };
+  await broadcastNotificationUpdates(realtimeUserIds);
+  return { notified, pushSent, pushSkipped, pushFailures };
 }

@@ -119,6 +119,13 @@ export const statement = {
         "review",
     ],
 
+    issueReports: [
+        "create",
+        "read-own",
+        "read-all",
+        "update",
+    ],
+
     holidays: [
         "read",
         "create",
@@ -196,7 +203,7 @@ export const superAdminRole = ac.newRole({
     attendance: ["clock-in", "clock-out", "read-own", "read-all", "manage", "view-analytics", "regularize", "approve-regularization", "view-audit-logs"],
 
     leave: ["create", "read-own", "cancel-own", "read-all", "review"],
-
+    issueReports: ["create", "read-own", "read-all", "update"],
     holidays: ["read", "create", "update", "delete"],
 
     salary: ["read-own", "read-all", "create", "update", "mark-paid"],
@@ -234,7 +241,7 @@ export const adminRole = ac.newRole({
     users: ["read", "update", "assign-department"],
 
     leave: ["create", "read-own", "cancel-own", "read-all", "review"],
-
+    issueReports: ["create", "read-own", "read-all", "update"],
     holidays: ["read", "create", "update", "delete"],
 
     salary: ["read-own", "read-all", "create", "update", "mark-paid"],
@@ -263,7 +270,7 @@ export const staffRole = ac.newRole({
     attendance: ["clock-in", "clock-out", "read-own", "view-analytics", "regularize", "view-audit-logs"],
 
     leave: ["create", "read-own", "cancel-own"],
-
+    issueReports: ["create", "read-own"],
     holidays: ["read"],
 
     salary: ["read-own"],
@@ -302,6 +309,7 @@ export const prismaModelPermissions = {
     Expense: "finance",
     InvoicePayment: "invoices",
     InvoiceActivity: "invoices",
+    IssueReport: "issueReports",
     ExchangeRateCache: "referenceData",
     Country: "referenceData",
     State: "referenceData",
@@ -331,6 +339,12 @@ export const prismaModelPermissions = {
     ProjectTaskTimeEntry: "tasks",
     ProjectTaskStatusTemplate: "projects",
     EmployeeStatusHistory: "users",
+    ExpenseHistory: "finance",
+    Conversation: "projects",
+    ConversationMember: "projects",
+    ChatMessage: "projects",
+    ChatMessageReaction: "projects",
+    ChatMessageAttachment: "projects",
 } satisfies Record<Prisma.ModelName, keyof typeof statement>;
 
 export function canReadFinance(role: UserRole): boolean {
@@ -353,6 +367,16 @@ export function canReadDashboard(role: UserRole): boolean {
         case UserRole.STAFF:
             return false;
     }
+}
+
+export function canManageIssueReports(
+    user: { role: UserRole; department: Department | null },
+): boolean {
+    return (
+        user.role === UserRole.SUPER_ADMIN ||
+        user.role === UserRole.ADMIN ||
+        (user.role === UserRole.STAFF && user.department === Department.HR)
+    );
 }
 
 export function canManageUser(

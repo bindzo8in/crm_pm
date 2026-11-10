@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { format, parseISO } from "date-fns";
 import { useRouter } from "next/navigation";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -29,6 +30,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { CalendarPlus, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -61,6 +63,7 @@ const holidayFormSchema = z
       ]),
     ),
     notifyStaff: z.boolean(),
+    isHalfDay: z.boolean(),
     description: z.string().trim().max(500),
   })
   .refine((values) => values.endDate >= values.startDate, {
@@ -88,6 +91,7 @@ export type HolidayFormRecord = {
   category: HolidayCategory;
   departments: Department[];
   notifyStaff: boolean;
+  isHalfDay: boolean;
   description: string | null;
 };
 
@@ -133,6 +137,7 @@ export function ManageHolidayDialog({
       category: holiday?.category ?? "MANDATORY_GAZETTED",
       departments: holiday?.departments ?? [],
       notifyStaff: holiday?.notifyStaff ?? true,
+      isHalfDay: holiday?.isHalfDay ?? false,
       description: holiday?.description ?? "",
     },
   });
@@ -141,6 +146,7 @@ export function ManageHolidayDialog({
     name: "departments",
   });
   const startDate = useWatch({ control: form.control, name: "startDate" });
+  const endDate = useWatch({ control: form.control, name: "endDate" });
   const allDepartments = selectedDepartments.length === 0;
   const allDepartmentsSelected =
     allDepartments || selectedDepartments.length === HOLIDAY_DEPARTMENTS.length;
@@ -172,6 +178,7 @@ export function ManageHolidayDialog({
           category: "MANDATORY_GAZETTED",
           departments: [],
           notifyStaff: true,
+          isHalfDay: false,
           description: "",
         });
       }
@@ -253,43 +260,58 @@ export function ManageHolidayDialog({
               )}
             </label>
 
-            <label className="block space-y-2 text-sm font-medium">
-              Start date
-              <Input
-                type="date"
-                {...form.register("startDate", {
-                  onChange: (event) => {
-                    if (form.getValues("endDate") < event.target.value) {
-                      form.setValue("endDate", event.target.value, {
-                        shouldDirty: true,
-                        shouldValidate: true,
-                      });
-                    }
-                  },
-                })}
-                aria-invalid={Boolean(form.formState.errors.startDate)}
+            <div className="space-y-2 sm:col-span-2">
+              <DateRangePicker
+                label="Holiday dates"
+                ariaLabel="Choose holiday date range"
+                startDate={startDate}
+                endDate={endDate}
+                minDate={parseISO(today)}
+                ariaInvalid={Boolean(form.formState.errors.startDate || form.formState.errors.endDate)}
+                onChange={(range) => {
+                  const startDate = range?.from
+                    ? format(range.from, "yyyy-MM-dd")
+                    : "";
+                  const endDate = range?.to
+                    ? format(range.to, "yyyy-MM-dd")
+                    : "";
+                  form.setValue("startDate", startDate, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                  form.setValue("endDate", endDate, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                }}
               />
-              {form.formState.errors.startDate && (
-                <span className="block text-xs text-destructive">
-                  {form.formState.errors.startDate.message}
-                </span>
+              {(form.formState.errors.startDate || form.formState.errors.endDate) && (
+                <p role="alert" className="text-xs text-destructive">
+                  {form.formState.errors.startDate?.message ?? form.formState.errors.endDate?.message}
+                </p>
               )}
-            </label>
+            </div>
+          </div>
 
-            <label className="block space-y-2 text-sm font-medium">
-              End date
-              <Input
-                type="date"
-                min={startDate || undefined}
-                {...form.register("endDate")}
-                aria-invalid={Boolean(form.formState.errors.endDate)}
-              />
-              {form.formState.errors.endDate && (
-                <span className="block text-xs text-destructive">
-                  {form.formState.errors.endDate.message}
-                </span>
+          <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+            <div className="space-y-1">
+              <Label htmlFor="half-day-holiday">Half-day holiday</Label>
+              <p className="text-xs leading-5 text-muted-foreground">
+                The holiday covers half the day; employees are expected to work the other half. This applies to every date in this range.
+              </p>
+            </div>
+            <Controller
+              control={form.control}
+              name="isHalfDay"
+              render={({ field }) => (
+                <Switch
+                  id="half-day-holiday"
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                  aria-label="Mark every date in this holiday range as a half-day holiday"
+                />
               )}
-            </label>
+            />
           </div>
 
           <fieldset className="space-y-3">

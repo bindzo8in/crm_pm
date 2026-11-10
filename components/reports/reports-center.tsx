@@ -423,7 +423,7 @@ export function ReportsCenter({
                     )}
                   </div>
                   <div className="hidden overflow-x-auto lg:block">
-                    <Table className="min-w-[720px]">
+                    <Table layout="scroll" className="min-w-[720px]">
                       <TableHeader>
                         <TableRow>
                           {selectedDefinition.columns.map((column) => (

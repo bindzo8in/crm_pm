@@ -14,6 +14,10 @@ import {
 } from "@/app/generated/prisma/enums";
 import { auth } from "@/lib/auth";
 import {
+  departmentMembershipWhere,
+  normalizeAdditionalDepartments,
+} from "@/lib/departments";
+import {
   canAssignUserDepartment,
   canManageUser,
   canManageUserDirectory,
@@ -50,11 +54,50 @@ const userListSchema = z.object({
   emailVerified: z.boolean().optional(),
 });
 
+function validateDepartmentAssignments(
+  assignment: {
+    department: Department | null;
+    additionalDepartments: Department[];
+  },
+  context: z.RefinementCtx,
+) {
+  if (
+    new Set(assignment.additionalDepartments).size !==
+    assignment.additionalDepartments.length
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["additionalDepartments"],
+      message: "Choose each additional department only once.",
+    });
+  }
+  if (
+    assignment.department &&
+    assignment.additionalDepartments.includes(assignment.department)
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["additionalDepartments"],
+      message: "The primary department cannot also be an additional department.",
+    });
+  }
+}
+
 const createStaffSchema = z.object({
   name: z.string().trim().min(1).max(120),
   email: z.email().max(254),
   department: z.enum(Department),
-});
+  additionalDepartments: z
+    .array(z.enum(Department))
+    .max(Object.values(Department).length)
+    .default([]),
+}).superRefine(validateDepartmentAssignments);
+const assignDepartmentSchema = z.object({
+  department: z.enum(Department).nullable(),
+  additionalDepartments: z
+    .array(z.enum(Department))
+    .max(Object.values(Department).length),
+}).superRefine(validateDepartmentAssignments);
 
 const userIdSchema = z.string().min(1).max(255);
 const employmentStatusChangeSchema = z.object({
@@ -161,13 +204,12 @@ export async function getUsers({
         }
       : {}),
     ...(input.data.role ? { role: input.data.role } : {}),
-    ...(input.data.department
+    ...(input.data.department === "UNASSIGNED"
       ? {
-          department:
-            input.data.department === "UNASSIGNED"
-              ? null
-              : input.data.department,
+          AND: [{ department: null }, { additionalDepartments: { isEmpty: true } }],
         }
+      : input.data.department
+        ? { AND: [departmentMembershipWhere(input.data.department)] }
       : {}),
     ...(input.data.employmentStatus
       ? { employmentStatus: input.data.employmentStatus }
@@ -201,6 +243,7 @@ export async function getUsers({
         banReason: true,
         banExpires: true,
         department: true,
+        additionalDepartments: true,
         workMode: true,
         includeInAttendanceReports: true,
       },
@@ -208,11 +251,14 @@ export async function getUsers({
     prisma.user.count({ where }),
     prisma.user.count({ where: { ...where, employmentStatus: EmploymentStatus.ACTIVE } }),
     prisma.user.count({ where: { ...where, emailVerified: true } }),
-    prisma.user.groupBy({
-      by: ["department"],
-      where,
-      _count: { _all: true },
-    }),
+    Promise.all(
+      Object.values(Department).map(async (department) => ({
+        department,
+        count: await prisma.user.count({
+          where: { AND: [where, departmentMembershipWhere(department)] },
+        }),
+      })),
+    ),
   ]);
   const isPayrollManager =
     actor.role === UserRole.SUPER_ADMIN || actor.role === UserRole.ADMIN;
@@ -275,11 +321,7 @@ export async function getUsers({
       active: activeTotal,
       verified: verifiedTotal,
       departments: departmentRows
-        .filter((row) => row.department)
-        .map((row) => ({
-          department: row.department as Department,
-          count: row._count._all,
-        })),
+        .filter((row) => row.count > 0),
     },
   };
 }
@@ -288,6 +330,7 @@ export async function createStaffAccount(input: {
   name: string;
   email: string;
   department: Department;
+  additionalDepartments?: Department[];
 }) {
   const parsedInput = createStaffSchema.safeParse(input);
   if (!parsedInput.success) {
@@ -318,6 +361,26 @@ export async function createStaffAccount(input: {
       data: { department: parsedInput.data.department },
     },
   });
+
+  try {
+    await prisma.user.update({
+      where: { id: created.user.id },
+      data: {
+        additionalDepartments: normalizeAdditionalDepartments(
+          parsedInput.data.department,
+          parsedInput.data.additionalDepartments,
+        ),
+      },
+    });
+  } catch (error) {
+    console.error("New staff account department membership assignment failed.", {
+      userId: created.user.id,
+      error,
+    });
+    throw new Error(
+      "The staff account was created, but its department memberships could not be saved. Review the account before sending an invitation.",
+    );
+  }
 
   try {
     await auth.api.requestPasswordReset({
@@ -390,10 +453,13 @@ export async function changeUserRole(
 
 export async function assignUserDepartment(
   userId: string,
-  department: Department | null
+  departmentInput: {
+    department: Department | null;
+    additionalDepartments: Department[];
+  },
 ) {
   const parsedUserId = userIdSchema.safeParse(userId);
-  const parsedDepartment = z.enum(Department).nullable().safeParse(department);
+  const parsedDepartment = assignDepartmentSchema.safeParse(departmentInput);
   if (!parsedUserId.success || !parsedDepartment.success) {
     throw new Error("Invalid user or department.");
   }
@@ -426,10 +492,22 @@ export async function assignUserDepartment(
 
   await prisma.user.update({
     where: { id: parsedUserId.data },
-    data: { department: parsedDepartment.data },
+    data: {
+      department: parsedDepartment.data.department,
+      additionalDepartments: normalizeAdditionalDepartments(
+        parsedDepartment.data.department,
+        parsedDepartment.data.additionalDepartments,
+      ),
+    },
   });
 
   revalidatePath("/dashboard/users");
+  revalidatePath("/dashboard/attendance");
+  revalidatePath("/attendance");
+  revalidatePath("/dashboard/leaves");
+  revalidatePath("/dashboard/holidays");
+  revalidatePath("/dashboard/account");
+  revalidatePath("/attendance/profile");
   return {
     success: true,
   };

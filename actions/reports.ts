@@ -5,6 +5,7 @@ import { ExpenseStatus, InvoiceStatus, ProposalStatus } from "@/app/generated/pr
 import { auth } from "@/lib/auth";
 import { errorResponse, successResponse } from "@/lib/action-response";
 import prisma from "@/lib/prisma";
+import { dateOnlyAtCompanyMidnight, formatInIST, getAttendanceDate, shiftDateOnly } from "@/lib/date";
 import { headers } from "next/headers";
 import { z } from "zod";
 import { receivableAgeSchema, type ReportId } from "@/lib/reports/report-catalog";
@@ -64,7 +65,7 @@ function amountInInr(amount: number, currency: string, exchangeRate: number | nu
 }
 
 function dateValue(date: Date | null) {
-  return date?.toISOString().slice(0, 10) ?? "—";
+  return date ? formatInIST(date, "yyyy-MM-dd") : "—";
 }
 
 function cleanSearch(value: string | number | null) {
@@ -118,17 +119,19 @@ export async function getBusinessReport(input: unknown) {
     }
 
     const now = new Date();
+    const today = getAttendanceDate(now);
+    const tomorrow = shiftDateOnly(today, 1);
+    const monthStart = `${today.slice(0, 7)}-01`;
     const ageFilterActive = filters.reportId === "receivable-details" && filters.age !== "ALL";
-    const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const todayStart = dateOnlyAtCompanyMidnight(today);
     const startDate = filters.startDate
-      ? new Date(`${filters.startDate}T00:00:00.000Z`)
+      ? dateOnlyAtCompanyMidnight(filters.startDate)
       : ageFilterActive
         ? todayStart
-        : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+        : dateOnlyAtCompanyMidnight(monthStart);
     const endExclusive = filters.endDate
-      ? new Date(`${filters.endDate}T00:00:00.000Z`)
-      : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
-    if (filters.endDate) endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+      ? dateOnlyAtCompanyMidnight(shiftDateOnly(filters.endDate, 1))
+      : dateOnlyAtCompanyMidnight(tomorrow);
     if (endExclusive <= startDate) return errorResponse("End date must be on or after start date");
 
     const invoiceStatuses = Object.values(InvoiceStatus) as string[];
@@ -285,12 +288,11 @@ export async function getBusinessReport(input: unknown) {
           }
           if (filters.startDate) {
             ageDateConditions.push({
-              dueDate: { gte: new Date(`${filters.startDate}T00:00:00.000Z`) },
+              dueDate: { gte: dateOnlyAtCompanyMidnight(filters.startDate) },
             });
           }
           if (filters.endDate) {
-            const selectedEnd = new Date(`${filters.endDate}T00:00:00.000Z`);
-            selectedEnd.setUTCDate(selectedEnd.getUTCDate() + 1);
+            const selectedEnd = dateOnlyAtCompanyMidnight(shiftDateOnly(filters.endDate, 1));
             ageDateConditions.push({ dueDate: { lt: selectedEnd } });
           }
         }
@@ -712,8 +714,8 @@ export async function getBusinessReport(input: unknown) {
       page: filters.page,
       pageSize: filters.pageSize,
       totalPages: Math.ceil(totalCount / filters.pageSize),
-      startDate: startDate.toISOString().slice(0, 10),
-      endDate: new Date(endExclusive.getTime() - 86400000).toISOString().slice(0, 10),
+      startDate: formatInIST(startDate, "yyyy-MM-dd"),
+      endDate: formatInIST(new Date(endExclusive.getTime() - 1), "yyyy-MM-dd"),
     });
   } catch (error) {
     console.error("Failed to load business report:", error);

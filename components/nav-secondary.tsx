@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { useHydratedPathname } from "@/hooks/use-hydrated-pathname"
 
 import {
   SidebarGroup,
@@ -23,7 +23,7 @@ export function NavSecondary({
     icon: React.ReactNode
   }[]
 } & React.ComponentPropsWithoutRef<typeof SidebarGroup>) {
-  const pathname = usePathname()
+  const pathname = useHydratedPathname()
   const { isMobile, setOpenMobile } = useSidebar()
   const closeMobileNav = () => {
     if (isMobile) setOpenMobile(false)
@@ -37,11 +37,18 @@ export function NavSecondary({
             <SidebarMenuItem key={item.title}>
               <SidebarMenuButton
                 asChild
-                isActive={item.url === pathname || pathname.startsWith(`${item.url}/`)}
+                isActive={pathname !== null && (
+                  item.url === pathname || pathname.startsWith(`${item.url}/`)
+                )}
               >
                 <Link
                   href={item.url}
-                  aria-current={item.url === pathname || pathname.startsWith(`${item.url}/`) ? "page" : undefined}
+                  aria-current={
+                    pathname !== null &&
+                    (item.url === pathname || pathname.startsWith(`${item.url}/`))
+                      ? "page"
+                      : undefined
+                  }
                   onClick={closeMobileNav}
                 >
                   {item.icon}

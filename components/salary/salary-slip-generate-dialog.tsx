@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -9,6 +9,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -18,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { searchSalaryEmployeesAction } from "@/actions/salary";
 import {
   CalendarDaysIcon,
   CalculatorIcon,
@@ -28,18 +30,24 @@ import type { SalaryEmployee, SalarySlipRecord } from "./types";
 interface SalarySlipGenerateDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  users: SalaryEmployee[];
   onSuccess: (slip: SalarySlipRecord) => void;
 }
 
 export function SalarySlipGenerateDialog({
   isOpen,
   onClose,
-  users,
   onSuccess,
 }: SalarySlipGenerateDialogProps) {
   const [loading, setLoading] = useState(false);
-  const [userId, setUserId] = useState<string>("");
+  const [employeeSearch, setEmployeeSearch] = useState("");
+  const [employees, setEmployees] = useState<
+    Array<Pick<SalaryEmployee, "id" | "name" | "email" | "department">>
+  >([]);
+  const [selectedEmployee, setSelectedEmployee] = useState<
+    Pick<SalaryEmployee, "id" | "name" | "email" | "department"> | null
+  >(null);
+  const [employeesLoading, setEmployeesLoading] = useState(false);
+  const [employeesError, setEmployeesError] = useState<string | null>(null);
   
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
@@ -65,8 +73,34 @@ export function SalarySlipGenerateDialog({
     (currentYear + 1 - index).toString()
   );
 
+  useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      setEmployeesLoading(true);
+      setEmployeesError(null);
+      try {
+        const result = await searchSalaryEmployeesAction({ search: employeeSearch });
+        if (!result.success) throw new Error(result.error);
+        if (active) setEmployees(result.employees);
+      } catch (error) {
+        if (active) {
+          setEmployeesError(
+            error instanceof Error ? error.message : "Could not load employees.",
+          );
+        }
+      } finally {
+        if (active) setEmployeesLoading(false);
+      }
+    }, 250);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [employeeSearch, isOpen]);
+
   const handleGenerate = async () => {
-    if (!userId) {
+    if (!selectedEmployee) {
       toast.error("Please select an employee");
       return;
     }
@@ -77,7 +111,7 @@ export function SalarySlipGenerateDialog({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId,
+          userId: selectedEmployee.id,
           month: Number(month),
           year: Number(year),
         }),
@@ -87,14 +121,11 @@ export function SalarySlipGenerateDialog({
         toast.success("Salary slip generated successfully.");
         // Add user info back to slip object for UI
         const generatedSlip = data.slip;
-        const selectedUser = users.find((user) => user.id === userId);
-        if (selectedUser) {
-          generatedSlip.user = {
-            name: selectedUser.name,
-            email: selectedUser.email,
-            department: selectedUser.department
-          };
-        }
+        generatedSlip.user = {
+          name: selectedEmployee.name,
+          email: selectedEmployee.email,
+          department: selectedEmployee.department,
+        };
         onSuccess(generatedSlip);
         onClose();
       } else {
@@ -125,20 +156,51 @@ export function SalarySlipGenerateDialog({
         </DialogHeader>
 
         <div className="space-y-6 px-5 py-5 sm:px-7 sm:py-6">
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label htmlFor="salary-slip-employee">Employee</Label>
-            <Select value={userId} onValueChange={setUserId}>
-              <SelectTrigger id="salary-slip-employee" className="h-11 w-full">
-                <SelectValue placeholder="Choose an employee" />
-              </SelectTrigger>
-              <SelectContent>
-                {users.map((user) => (
-                  <SelectItem key={user.id} value={user.id}>
-                    {user.name} ({user.department || "No department"})
-                  </SelectItem>
+            <Input
+              id="salary-slip-employee"
+              value={employeeSearch}
+              onChange={(event) => {
+                setEmployeeSearch(event.target.value);
+                setSelectedEmployee(null);
+              }}
+              placeholder="Search name, email, or department"
+              className="h-11"
+            />
+            {selectedEmployee && (
+              <p className="rounded-md bg-primary/5 px-3 py-2 text-sm">
+                Selected: <span className="font-medium">{selectedEmployee.name}</span>
+                <span className="text-muted-foreground">
+                  {" "}({selectedEmployee.department || selectedEmployee.email})
+                </span>
+              </p>
+            )}
+            {employeesLoading ? (
+              <p className="text-sm text-muted-foreground">Searching employees…</p>
+            ) : employeesError ? (
+              <p role="alert" className="text-sm text-destructive">{employeesError}</p>
+            ) : employees.length ? (
+              <div className="max-h-44 overflow-y-auto rounded-md border">
+                {employees.map((employee) => (
+                  <button
+                    key={employee.id}
+                    type="button"
+                    onClick={() => setSelectedEmployee(employee)}
+                    className="flex min-h-11 w-full flex-col items-start px-3 py-2 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                  >
+                    <span className="font-medium">{employee.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {employee.department || employee.email}
+                    </span>
+                  </button>
                 ))}
-              </SelectContent>
-            </Select>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No payroll employees match this search.
+              </p>
+            )}
           </div>
 
           <section
@@ -210,7 +272,7 @@ export function SalarySlipGenerateDialog({
           </Button>
           <Button
             onClick={handleGenerate}
-            disabled={loading || !userId}
+            disabled={loading || !selectedEmployee}
             className="min-h-11 w-full sm:w-auto"
           >
             {loading ? (

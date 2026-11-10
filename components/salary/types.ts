@@ -1,16 +1,16 @@
-import type { EmploymentStatus } from "@/app/generated/prisma/enums";
+import type { EmploymentStatus, UserRole } from "@/app/generated/prisma/enums";
 
 export interface SalaryEmployee {
   id: string;
   name: string;
   email: string;
-  role: string;
+  role: UserRole;
   employmentStatus: EmploymentStatus;
   department: string | null;
   includeInPayroll: boolean;
   hasSalaryStructure: boolean;
-  grossSalary?: string | null;
-  designation?: string | null;
+  grossSalary: string | null;
+  designation: string | null;
   dateOfJoining?: Date | string | null;
   employmentType?: "PERMANENT" | "CONTRACT" | "PROBATION" | "INTERN" | null;
   annualCtc?: string | null;
@@ -49,6 +49,31 @@ export interface SalarySlipRecord {
   emailSentAt?: Date | string | null;
   adjustments?: SalarySlipAdjustmentRecord[];
   user?: Pick<SalaryEmployee, "name" | "email" | "department"> | null;
+}
+
+export interface SalarySlipPageInfo {
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  paidYtd: string;
+}
+
+export interface SalaryRosterPageInfo {
+  page: number;
+  pageSize: number;
+  totalCount: number;
+}
+
+export interface SalaryManagementSummary {
+  activeCount: number;
+  includedCount: number;
+  excludedCount: number;
+  configuredCount: number;
+  latestMonth: number | null;
+  latestYear: number | null;
+  monthlyTotal: string;
+  paidCount: number;
+  slipCount: number;
 }
 
 export interface SalarySlipAdjustmentRecord {

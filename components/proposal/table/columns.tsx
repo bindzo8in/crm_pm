@@ -3,6 +3,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import { ProposalActions } from "./actions";
 import { Badge } from "@/components/ui/badge";
 import { Mail, Phone } from "lucide-react";
+import { formatInIST } from "@/lib/date";
 
 type GetProposalsResponse = Awaited<ReturnType<typeof getProposals>>;
 
@@ -65,7 +66,7 @@ export function getProposalColumns(canConvertToProject: boolean): ColumnDef<Prop
     header: "Valid Until",
     cell: ({ row }) =>
       row.original.validUntil
-        ? new Date(row.original.validUntil).toLocaleDateString("en-IN")
+        ? formatInIST(new Date(row.original.validUntil), "d MMM yyyy")
         : "—",
   },
   {

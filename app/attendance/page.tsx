@@ -81,6 +81,7 @@ export default async function AttendancePage() {
 
   let record = null;
   let settings = null;
+  let dayStatus = null;
   let userRole = (user.role || "STAFF") as UserRole;
 
   try {
@@ -88,6 +89,7 @@ export default async function AttendancePage() {
 
     record = res.record;
     settings = res.settings;
+    dayStatus = res.dayStatus ?? null;
     userRole = res.userRole as UserRole;
   } catch (error) {
     console.error("Failed to load today's attendance record:", error);
@@ -117,7 +119,7 @@ export default async function AttendancePage() {
               asChild
               variant="outline"
               size="sm"
-              className="h-9 rounded-xl px-2.5 text-xs font-semibold sm:h-10 sm:rounded-2xl sm:px-4 sm:text-sm"
+              className="hidden h-9 rounded-xl px-2.5 text-xs font-semibold sm:inline-flex sm:h-10 sm:rounded-2xl sm:px-4 sm:text-sm"
             >
               <Link href="/attendance/profile">
                 <UserIcon className="h-4 w-4 shrink-0 text-primary sm:mr-2" />
@@ -146,6 +148,7 @@ export default async function AttendancePage() {
           <AttendanceClientHub
             initialRecord={record}
             settings={settings}
+            dayStatus={dayStatus}
             userRole={userRole}
             userDepartment={user.department || ""}
             workMode={workMode}

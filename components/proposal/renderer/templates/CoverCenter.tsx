@@ -1,12 +1,14 @@
 import React from "react";
-import { format } from "date-fns";
+import { formatInIST } from "@/lib/date";
 
 export function CoverCenter({ proposal, company, config }: { proposal: any; company: any; config: any }) {
   const preparedFor = proposal?.customerCompanyName || proposal?.customerDisplayName || "Valued Client";
   const preparedBy = proposal?.preparedByName || "Account Executive";
   const subtitle = proposal?.notes || "Prepared exclusively for your business";
   
-  const dateStr = proposal?.createdAt ? format(new Date(proposal.createdAt), "dd MMM, yyyy") : format(new Date(), "dd MMM, yyyy");
+  const dateStr = proposal?.createdAt
+    ? formatInIST(new Date(proposal.createdAt), "dd MMM, yyyy")
+    : null;
   let validUntilStr = null;
   if (proposal?.validUntil) {
     const start = new Date(proposal?.createdAt || new Date());
@@ -56,7 +58,7 @@ export function CoverCenter({ proposal, company, config }: { proposal: any; comp
           <div className="flex gap-8 justify-end">
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-bold tracking-widest text-black uppercase">Date</span>
-              <span className="text-sm font-bold text-black">{dateStr}</span>
+              <span className="text-sm font-bold text-black">{dateStr ?? "Pending"}</span>
             </div>
             {validUntilStr && (
               <div className="flex flex-col gap-1">

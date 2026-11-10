@@ -211,8 +211,6 @@ export const UserActions = ({ user }: { user: UserActionRow }) => {
                 open={deptDialogOpen}
                 onOpenChange={setDeptDialogOpen}
                 user={user}
-                currentUserRole={currentUserRole}
-                currentUserId={session?.user.id ?? ""}
             />
 
             <ChangeWorkModeDialog

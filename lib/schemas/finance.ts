@@ -36,8 +36,8 @@ export const expenseSchema = z.object({
   financialAccountId: z.string().min(1, "Financial account is required"),
   categoryId: z.string().min(1, "Expense category is required"),
   vendorName: z.string().trim().optional().nullable(),
-  customerId: z.string().trim().optional().nullable(),
-  referenceNumber: z.string().trim().optional().nullable(),
+  customerId: z.string().trim().min(1, "Customer is required"),
+  referenceNumber: z.string().trim().max(120),
   notes: z.string().trim().max(1000).optional().nullable(),
   status: expenseStatusSchema.default("PENDING"),
   receiptUrl: z.union([z.literal(""), z.url()]).optional().nullable(),
@@ -56,7 +56,7 @@ export const expenseSchema = z.object({
     "TAX_DEDUCTOR",
     "SEZ_DEVELOPER",
     "INPUT_SERVICE_DISTRIBUTOR",
-  ]).optional().nullable(),
+  ]),
   sourceOfSupply: z.string().trim().min(1, "Source of supply is required").max(80),
   destinationOfSupply: z.string().trim().min(1, "Destination of supply is required").max(80),
   reverseCharge: z.boolean().default(false),
@@ -86,4 +86,5 @@ export type FinancialAccountInput = z.infer<typeof financialAccountSchema>;
 export type ExpenseCategoryInput = z.infer<typeof expenseCategorySchema>;
 export type ExpenseCategoryPageInput = z.input<typeof expenseCategoryPageSchema>;
 export type ExpenseInput = z.infer<typeof expenseSchema>;
+export type ExpenseFormInput = z.input<typeof expenseSchema>;
 export type FinanceReportInput = z.input<typeof financeReportSchema>;

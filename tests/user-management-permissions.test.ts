@@ -7,6 +7,7 @@ import {
   canManageEmploymentStatus,
   canManageUserDirectory,
 } from "@/lib/permissions";
+import { isLeaveManager } from "@/lib/leave-permissions";
 import { canAccessRoute } from "@/lib/route-permissions";
 
 test("user directory access is limited to privileged users and HR staff", () => {
@@ -24,6 +25,17 @@ test("user directory access is limited to privileged users and HR staff", () => 
     false,
   );
   assert.equal(canManageUserDirectory(UserRole.STAFF, null), false);
+});
+
+test("additional HR membership does not grant primary-department privileges", () => {
+  assert.equal(
+    isLeaveManager({
+      role: UserRole.STAFF,
+      department: Department.SALES,
+      additionalDepartments: [Department.HR],
+    }),
+    false,
+  );
 });
 
 test("HR may assign only staff departments, and users routing excludes other staff", () => {

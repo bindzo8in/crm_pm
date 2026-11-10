@@ -1,23 +1,121 @@
 "use client";
 
 import React, { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { updateAttendanceSettingsAction } from "@/actions/attendance";
-import { Settings2Icon, RefreshCwIcon, CheckCircle2Icon, ShieldAlertIcon, Clock3, MapPin } from "lucide-react";
+import { AlertCircleIcon, BellRingIcon, CheckCircle2Icon, ChevronDownIcon, Clock3, MapPin, RefreshCwIcon, Settings2Icon } from "lucide-react";
 import { toast } from "sonner";
+import { AttendanceBrowserReminders } from "./attendance-browser-reminders";
 
 interface AttendanceSettingsDialogProps {
   isOpen: boolean;
+  onClose: () => void;
+  settings: any;
+  canManageShiftRules: boolean;
+  canManageReminderTime: boolean;
+  onSuccess: () => void;
+}
+
+export function AttendanceSettingsDialog({
+  isOpen,
+  onClose,
+  settings,
+  canManageShiftRules,
+  canManageReminderTime,
+  onSuccess,
+}: AttendanceSettingsDialogProps) {
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[90dvh] w-[calc(100%-1rem)] max-w-2xl gap-0 overflow-x-hidden overflow-y-auto p-0 sm:w-[calc(100%-2rem)]">
+        <DialogHeader className="sticky top-0 z-10 min-w-0 border-b bg-popover px-4 py-4 pr-12 sm:px-6">
+          <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
+            <Settings2Icon aria-hidden="true" className="size-5 text-primary" />
+            Attendance settings
+          </DialogTitle>
+          <DialogDescription>
+            Manage browser alerts and shift rules.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="min-w-0 max-w-full space-y-6 p-4 sm:p-6">
+          <section aria-labelledby="browser-alerts-title" className="space-y-3 border-t border-border/60 pt-5">
+            <div className="flex items-start gap-3">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <BellRingIcon aria-hidden="true" className="size-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 id="browser-alerts-title" className="font-medium">Browser alerts</h3>
+                <p className="text-sm text-muted-foreground">
+                  Receive attendance reminders and holiday announcements in this browser.
+                </p>
+              </div>
+              <AttendanceBrowserReminders />
+            </div>
+          </section>
+
+          <section aria-labelledby="shift-rules-title" className="space-y-3 border-t border-border/60 pt-5">
+            <div className="flex items-start gap-3">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Clock3 aria-hidden="true" className="size-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 id="shift-rules-title" className="font-medium">Shift rules</h3>
+                <p className="text-sm text-muted-foreground">
+                  {canManageShiftRules
+                    ? "Manage shift times, grace period, and office geofence."
+                    : `Expected shift: ${settings?.expectedClockIn || "09:00"} – ${settings?.expectedClockOut || "18:00"}`}
+                </p>
+              </div>
+            </div>
+            {canManageShiftRules ? (
+              <details
+                className="border-t border-border/60 pt-3"
+                open={!settings?.isConfigured}
+              >
+                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-2 text-sm font-medium outline-none hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+                  <span>{settings?.isConfigured ? "Edit shift and office rules" : "Complete shift setup"}</span>
+                  <ChevronDownIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                </summary>
+                <div className="pt-3">
+                  <AttendanceSettingsForm
+                    onClose={onClose}
+                    settings={settings}
+                    canManageReminderTime={canManageReminderTime}
+                    onSuccess={onSuccess}
+                  />
+                </div>
+              </details>
+            ) : (
+              <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                <AlertCircleIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+                <p>Only attendance administrators can change shift rules.</p>
+              </div>
+            )}
+          </section>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface AttendanceSettingsFormProps {
   onClose: () => void;
   settings: any;
   canManageReminderTime: boolean;
   onSuccess: () => void;
 }
 
-export function AttendanceSettingsDialog({ isOpen, onClose, settings, canManageReminderTime, onSuccess }: AttendanceSettingsDialogProps) {
+function AttendanceSettingsForm({ onClose, settings, canManageReminderTime, onSuccess }: AttendanceSettingsFormProps) {
   const [expectedClockIn, setExpectedClockIn] = useState(settings?.expectedClockIn || "09:00");
   const [expectedClockOut, setExpectedClockOut] = useState(settings?.expectedClockOut || "18:00");
   const [attendanceReminderTime, setAttendanceReminderTime] = useState(settings?.attendanceReminderTime || "08:30");
@@ -87,26 +185,15 @@ export function AttendanceSettingsDialog({ isOpen, onClose, settings, canManageR
       toast.success("Attendance rules & office location saved!");
       onSuccess();
       onClose();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to update settings");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to update settings");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-xl font-bold">
-            <Settings2Icon className="w-5 h-5 text-primary" /> Shift Rules & Geofence Settings
-          </DialogTitle>
-          <DialogDescription className="text-xs text-muted-foreground">
-            Configure shift timings, office location coordinates, allowed radius, and auto-checkout cap.
-          </DialogDescription>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-4 py-2">
+    <form onSubmit={handleSubmit} className="space-y-4 py-2">
           {/* Shift Hours */}
           <div className="space-y-3 p-3 bg-muted/30 rounded-2xl border border-border/50">
             <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
@@ -284,8 +371,6 @@ export function AttendanceSettingsDialog({ isOpen, onClose, settings, canManageR
               )}
             </Button>
           </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    </form>
   );
 }

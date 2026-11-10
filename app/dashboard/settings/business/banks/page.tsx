@@ -12,11 +12,12 @@ export const metadata = {
 export default async function BankAccountsPage() {
   await requirePageAccess("/dashboard/settings");
   const queryClient = getQueryClient();
+  const initialQuery = { page: 0, pageSize: 20, search: "" };
 
-  await queryClient.prefetchQuery({
-    queryKey: ["bankAccounts"],
+  const initialData = await queryClient.fetchQuery({
+    queryKey: ["bankAccounts", initialQuery.page, initialQuery.pageSize, initialQuery.search],
     queryFn: async () => {
-      const res = await GetBankAccounts();
+      const res = await GetBankAccounts(initialQuery);
       if (!res.success) throw new Error(res.error || "Failed to fetch");
       return res;
     }
@@ -25,7 +26,13 @@ export default async function BankAccountsPage() {
   return (
     <DashboardContainer title="Business Settings">
       <HydrationBoundary state={dehydrate(queryClient)}>
-        <BankAccountsClient data={[]} />
+        <BankAccountsClient
+          data={initialData.data}
+          initialPagination={{
+            ...initialQuery,
+            totalCount: initialData.pagination.totalCount,
+          }}
+        />
       </HydrationBoundary>
     </DashboardContainer>
   );

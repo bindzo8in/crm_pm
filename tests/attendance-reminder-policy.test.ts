@@ -54,6 +54,14 @@ test("reminders skip weekends, applicable holidays, approved leave, and checked-
     true,
   );
   assert.equal(
+    isEligibleForAttendanceReminder({
+      ...eligible,
+      additionalDepartments: ["SALES"],
+      holidayDepartments: [["SALES"]],
+    }),
+    false,
+  );
+  assert.equal(
     isEligibleForAttendanceReminder({ ...eligible, hasApprovedLeave: true }),
     false,
   );

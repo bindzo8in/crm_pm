@@ -96,7 +96,10 @@ export default async function CustomerDetailsPage({
                   <Badge variant="outline">{project.status.replaceAll("_", " ").toLowerCase()}</Badge>
                   <span className="text-muted-foreground">
                     {project.dueDate
-                      ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(new Date(project.dueDate))
+                      ? new Intl.DateTimeFormat("en-IN", {
+                          dateStyle: "medium",
+                          timeZone: "Asia/Kolkata",
+                        }).format(new Date(project.dueDate))
                       : "No target date"}
                   </span>
                 </div>

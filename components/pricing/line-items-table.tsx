@@ -607,7 +607,7 @@ export function LineItemsTable({ pricingApi,
 
   return (
     <div className="space-y-4">
-      <div className="overflow-x-auto rounded-xl border border-border/60 bg-background/50 shadow-sm">
+      <div data-table-scroll="line-items" className="overflow-x-auto rounded-xl border border-border/60 bg-background/50 shadow-sm">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <table className="w-full text-left text-sm border-collapse">
             <thead>

@@ -8,7 +8,6 @@ import {
     FieldGroup,
     FieldLabel,
     FieldError,
-    FieldSeparator,
 } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +16,8 @@ import { toast } from "sonner";
 import { ImageUpload } from "@/components/ui/image-upload";
 import { useSession, updateUser, changePassword } from "@/lib/auth-client";
 import { useState } from "react";
+import { KeyRoundIcon, UserRoundIcon } from "lucide-react";
+import { LogoutConfirmButton } from "@/components/auth/logout-confirm-button";
 
 const profileSchema = z.object({
     name: z.string().min(2, { message: "Name must be at least 2 characters." }),
@@ -25,23 +26,7 @@ const profileSchema = z.object({
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
 
-function formatAccountLabel(value: string | null | undefined) {
-    if (!value) return "Not assigned";
-
-    return value
-        .toLowerCase()
-        .split("_")
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(" ");
-}
-
-export function AccountProfileForm({
-    role,
-    department,
-}: {
-    role?: string | null;
-    department?: string | null;
-}) {
+export function AccountProfileForm({ showLogoutButton = true }: { showLogoutButton?: boolean }) {
     const { data: session, isPending: isSessionLoading } = useSession();
     const [isSaving, setIsSaving] = useState(false);
 
@@ -66,7 +51,9 @@ export function AccountProfileForm({
                 toast.success("Profile updated successfully");
             }
         } catch (error) {
-            toast.error("An error occurred while updating profile");
+            toast.error(
+                error instanceof Error ? error.message : "An error occurred while updating profile"
+            );
         } finally {
             setIsSaving(false);
         }
@@ -77,23 +64,33 @@ export function AccountProfileForm({
     return (
         <form
             onSubmit={handleSubmit}
-            className="p-2 sm:p-5 md:p-8 w-full rounded-md gap-2 border "
+            className="w-full overflow-hidden rounded-3xl border border-border/70 bg-card"
         >
-            <div className="flex justify-between items-center">
-                <h2 className="mt-2 mb-1 font-extrabold text-2xl tracking-tight col-span-full">
-                    Profile Information
-                </h2>
-            </div>
-            <FieldSeparator className="my-4" />
+            <header className="flex items-center justify-between gap-4 border-b border-border/60 px-5 py-5 sm:px-7">
+                <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                        <UserRoundIcon className="size-5" aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0">
+                        <h2 className="font-heading text-lg font-bold tracking-tight sm:text-xl">
+                            Personal information
+                        </h2>
+                        <p className="mt-0.5 text-sm text-muted-foreground">
+                            Update your photo and the name shown across CRM.
+                        </p>
+                    </div>
+                </div>
+                {showLogoutButton && <LogoutConfirmButton />}
+            </header>
 
-            <FieldGroup className="grid md:grid-cols-6 gap-4 mb-6">
+            <div className="grid gap-7 p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] lg:items-center">
                 <Controller
                     name="image"
                     control={form.control}
                     render={({ field }) => (
-                        <Field className="gap-1 col-span-full">
-                            <FieldLabel>Profile Image</FieldLabel>
+                        <Field className="min-w-0 gap-2">
                             <ImageUpload
+                                compact
                                 value={field.value ? { url: field.value, publicId: "" } : null}
                                 onChange={(val) => field.onChange(val?.url || null)}
                                 scope="account-profile"
@@ -103,48 +100,45 @@ export function AccountProfileForm({
                     )}
                 />
 
-                <Controller
-                    name="name"
-                    control={form.control}
-                    render={({ field, fieldState }) => (
-                        <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full md:col-span-4">
-                            <FieldLabel htmlFor="name">Full Name</FieldLabel>
-                            <Input {...field} id="name" placeholder="John Doe" disabled={isSaving} />
-                            {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                        </Field>
-                    )}
-                />
-
-                <Field className="gap-1 col-span-full md:col-span-4">
-                    <FieldLabel>Email (Read-only)</FieldLabel>
-                    <Input value={session?.user?.email || ""} disabled />
-                </Field>
-
-                <Field className="gap-1 col-span-full md:col-span-2">
-                    <FieldLabel htmlFor="accountRole">Role (Read-only)</FieldLabel>
-                    <Input
-                        id="accountRole"
-                        value={formatAccountLabel(role)}
-                        disabled
+                <FieldGroup className="grid min-w-0 gap-5">
+                    <Controller
+                        name="name"
+                        control={form.control}
+                        render={({ field, fieldState }) => (
+                            <Field data-invalid={fieldState.invalid} className="gap-2">
+                                <FieldLabel htmlFor="name" className="text-sm font-semibold">Full name</FieldLabel>
+                                <Input
+                                    {...field}
+                                    id="name"
+                                    placeholder="Your name"
+                                    disabled={isSaving}
+                                    className="h-11 rounded-xl border-border/80 bg-background"
+                                />
+                                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                            </Field>
+                        )}
                     />
-                </Field>
 
-                <Field className="gap-1 col-span-full md:col-span-2">
-                    <FieldLabel htmlFor="accountDepartment">Department (Read-only)</FieldLabel>
-                    <Input
-                        id="accountDepartment"
-                        value={formatAccountLabel(department)}
-                        disabled
-                    />
-                </Field>
-
-            </FieldGroup>
-
-            <div className="flex justify-end items-center w-full">
-                <Button disabled={isSaving}>
-                    {isSaving ? "Saving..." : "Save Profile"}
-                </Button>
+                    <Field className="gap-2">
+                        <FieldLabel htmlFor="accountEmail" className="text-sm font-semibold">Email address</FieldLabel>
+                        <Input
+                            id="accountEmail"
+                            value={session?.user?.email || ""}
+                            disabled
+                            className="h-11 rounded-xl border-border/60 bg-muted/50 text-muted-foreground"
+                        />
+                    </Field>
+                </FieldGroup>
             </div>
+
+            <footer className="flex flex-col-reverse gap-3 border-t border-border/60 bg-muted/20 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+                <p className="text-xs text-muted-foreground">
+                    Your role and department are managed by your administrator.
+                </p>
+                <Button disabled={isSaving} className="rounded-xl px-5">
+                    {isSaving ? "Saving changes..." : "Save changes"}
+                </Button>
+            </footer>
         </form>
     );
 }
@@ -187,7 +181,9 @@ export function AccountPasswordForm() {
                 form.reset();
             }
         } catch (error) {
-            toast.error("An error occurred while changing password");
+            toast.error(
+                error instanceof Error ? error.message : "An error occurred while changing password"
+            );
         } finally {
             setIsSaving(false);
         }
@@ -196,23 +192,30 @@ export function AccountPasswordForm() {
     return (
         <form
             onSubmit={handleSubmit}
-            className="p-2 sm:p-5 md:p-8 w-full rounded-md gap-2 border max-w-3xl mt-8"
+            className="w-full overflow-hidden rounded-3xl border border-border/70 bg-card"
         >
-            <div className="flex justify-between items-center">
-                <h2 className="mt-2 mb-1 font-extrabold text-2xl tracking-tight col-span-full">
-                    Change Password
-                </h2>
-            </div>
-            <FieldSeparator className="my-4" />
+            <header className="flex items-center gap-3 border-b border-border/60 px-5 py-5 sm:px-7">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+                    <KeyRoundIcon className="size-5" aria-hidden="true" />
+                </span>
+                <div>
+                    <h2 className="font-heading text-lg font-bold tracking-tight sm:text-xl">
+                        Password & security
+                    </h2>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                        Change your password to keep your account secure.
+                    </p>
+                </div>
+            </header>
 
-            <FieldGroup className="grid md:grid-cols-6 gap-4 mb-6">
+            <FieldGroup className="grid gap-5 p-5 sm:p-7 md:grid-cols-2">
                 <Controller
                     name="currentPassword"
                     control={form.control}
                     render={({ field, fieldState }) => (
-                        <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full md:col-span-4">
-                            <FieldLabel htmlFor="currentPassword">Current Password</FieldLabel>
-                            <Password {...field} id="currentPassword" disabled={isSaving} />
+                        <Field data-invalid={fieldState.invalid} className="gap-2">
+                            <FieldLabel htmlFor="currentPassword" className="text-sm font-semibold">Current password</FieldLabel>
+                            <Password {...field} id="currentPassword" disabled={isSaving} className="h-11 rounded-xl" />
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                         </Field>
                     )}
@@ -222,9 +225,9 @@ export function AccountPasswordForm() {
                     name="newPassword"
                     control={form.control}
                     render={({ field, fieldState }) => (
-                        <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full md:col-span-4">
-                            <FieldLabel htmlFor="newPassword">New Password</FieldLabel>
-                            <Password {...field} id="newPassword" disabled={isSaving} />
+                        <Field data-invalid={fieldState.invalid} className="gap-2">
+                            <FieldLabel htmlFor="newPassword" className="text-sm font-semibold">New password</FieldLabel>
+                            <Password {...field} id="newPassword" disabled={isSaving} className="h-11 rounded-xl" />
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                         </Field>
                     )}
@@ -234,20 +237,20 @@ export function AccountPasswordForm() {
                     name="confirmPassword"
                     control={form.control}
                     render={({ field, fieldState }) => (
-                        <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full md:col-span-4">
-                            <FieldLabel htmlFor="confirmPassword">Confirm Password</FieldLabel>
-                            <Password {...field} id="confirmPassword" disabled={isSaving} />
+                        <Field data-invalid={fieldState.invalid} className="gap-2">
+                            <FieldLabel htmlFor="confirmPassword" className="text-sm font-semibold">Confirm new password</FieldLabel>
+                            <Password {...field} id="confirmPassword" disabled={isSaving} className="h-11 rounded-xl" />
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                         </Field>
                     )}
                 />
             </FieldGroup>
 
-            <div className="flex justify-end items-center w-full">
-                <Button disabled={isSaving}>
-                    {isSaving ? "Changing Password..." : "Change Password"}
+            <footer className="flex justify-end border-t border-border/60 bg-muted/20 px-5 py-4 sm:px-7">
+                <Button disabled={isSaving} className="rounded-xl px-5">
+                    {isSaving ? "Updating password..." : "Update password"}
                 </Button>
-            </div>
+            </footer>
         </form>
     );
 }

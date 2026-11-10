@@ -94,7 +94,13 @@ export function OptionSelect({
             const OptionIcon = option.icon ? optionIcons[option.icon] : null;
             return (
               <SelectItem key={option.value} value={option.value}>
-                {OptionIcon && <OptionIcon aria-hidden="true" className="text-muted-foreground" />}
+                {OptionIcon && (
+                  <OptionIcon
+                    aria-hidden="true"
+                    className={option.color ? undefined : "text-muted-foreground"}
+                    style={option.color ? { color: option.color } : undefined}
+                  />
+                )}
                 {option.label}
               </SelectItem>
             );

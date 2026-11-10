@@ -19,6 +19,7 @@ import { updateProposalStatus, sendProposalEmailAction } from "@/actions/proposa
 import { toast } from "sonner";
 import { ProposalWorkflowNav } from "@/components/proposal/proposal-workflow-nav";
 import Link from "next/link";
+import { formatInIST } from "@/lib/date";
 
 interface PreviewToolbarProps {
   proposalId: string;
@@ -109,7 +110,7 @@ export function PreviewToolbar({ proposalId, proposalNumber, proposalStatus, cli
       `Please find proposal #${proposalNumber}: ${proposalDetails.title}`,
       ...(proposalDetails.customerCompanyName ? [`Prepared for: ${proposalDetails.customerCompanyName}`] : []),
       ...(proposalDetails.validUntil
-        ? [`Valid until: ${new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(new Date(proposalDetails.validUntil))}`]
+        ? [`Valid until: ${formatInIST(new Date(proposalDetails.validUntil), "d MMM yyyy")}`]
         : []),
       "",
       "Proposal summary:",

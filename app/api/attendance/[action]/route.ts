@@ -18,6 +18,11 @@ export async function GET(
     const { action } = await params;
 
     if (action === "today") {
+      const session = await auth.api.getSession({ headers: req.headers });
+      if (!session) {
+        return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+      }
+
       const res = await getTodayAttendanceAction();
       return NextResponse.json(res);
     }
@@ -34,6 +39,20 @@ export async function POST(
 ) {
   try {
     const { action } = await params;
+    const requiresAuthentication = [
+      "clock-in",
+      "clock-out",
+      "start-break",
+      "end-break",
+      "edit",
+    ].includes(action);
+    if (
+      requiresAuthentication &&
+      !(await auth.api.getSession({ headers: req.headers }))
+    ) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
     let input = {};
     try {
       input = await req.json();

@@ -34,10 +34,24 @@ export async function GET(
       const userId = url.searchParams.get("userId") || undefined;
       const monthStr = url.searchParams.get("month");
       const yearStr = url.searchParams.get("year");
+      const pageStr = url.searchParams.get("page");
+      const pageSizeStr = url.searchParams.get("pageSize");
       const month = monthStr ? Number(monthStr) : undefined;
       const year = yearStr ? Number(yearStr) : undefined;
+      const page = pageStr ? Number(pageStr) : undefined;
+      const pageSize = pageSizeStr ? Number(pageSizeStr) : undefined;
+      const search = url.searchParams.get("search") ?? undefined;
+      const status = url.searchParams.get("status") ?? undefined;
       
-      const res = await getSalarySlipsAction({ userId, month, year });
+      const res = await getSalarySlipsAction({
+        userId,
+        month,
+        year,
+        page,
+        pageSize,
+        search,
+        status,
+      });
       return NextResponse.json(res);
     }
 

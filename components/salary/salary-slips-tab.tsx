@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getSalarySlipsAction } from "@/actions/salary";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +15,9 @@ import { SalarySlipAdjustmentsDialog } from "./salary-slip-adjustments-dialog";
 import { SalarySlipApprovalDialog } from "./salary-slip-approval-dialog";
 import { SalarySlipEmailDialog } from "./salary-slip-email-dialog";
 import { formatCurrency } from "@/lib/utils";
+import { formatInIST } from "@/lib/date";
+import { requiresSalarySlipReview } from "@/lib/salary-review-policy";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import {
   PlusIcon,
   DownloadIcon,
@@ -26,11 +31,15 @@ import {
   MailIcon,
 } from "lucide-react";
 import Link from "next/link";
-import type { SalaryEmployee, SalarySlipRecord, SalarySlipUpdate } from "./types";
+import type {
+  SalarySlipPageInfo,
+  SalarySlipRecord,
+  SalarySlipUpdate,
+} from "./types";
 
 interface SalarySlipsTabProps {
-  users: SalaryEmployee[];
   initialSlips: SalarySlipRecord[];
+  initialPage: SalarySlipPageInfo;
   isHrOrAdmin: boolean;
 }
 
@@ -40,30 +49,82 @@ function getDisplayedSlipStatus(slip: SalarySlipRecord): SalarySlipRecord["statu
     : slip.status;
 }
 
-export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlipsTabProps) {
-  const [slips, setSlips] = useState<SalarySlipRecord[]>(initialSlips);
+function canProcessSalarySlip(slip: SalarySlipRecord) {
+  return (
+    slip.status === "PAID" ||
+    (slip.status === "GENERATED" && !requiresSalarySlipReview(slip))
+  );
+}
+
+function getSalarySlipLabel(slip: SalarySlipRecord, staffView = false) {
+  if (requiresSalarySlipReview(slip)) {
+    return staffView ? "Awaiting review" : "Needs review";
+  }
+  if (slip.status === "GENERATED" && slip.approvedAt) {
+    return "Approved";
+  }
+  if (slip.status === "GENERATED") {
+    return slip.emailSentAt ? "Emailed" : "Generated";
+  }
+  return getDisplayedSlipStatus(slip);
+}
+
+export function SalarySlipsTab({ initialSlips, initialPage, isHrOrAdmin }: SalarySlipsTabProps) {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | SalarySlipRecord["status"]>("ALL");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(initialPage.page);
+  const [pageSize, setPageSize] = useState(initialPage.pageSize);
   const [isGenerateOpen, setIsGenerateOpen] = useState(false);
   const [markPaidSlipId, setMarkPaidSlipId] = useState<string | null>(null);
   const [adjustmentSlip, setAdjustmentSlip] = useState<SalarySlipRecord | null>(null);
   const [approvalSlip, setApprovalSlip] = useState<SalarySlipRecord | null>(null);
   const [emailSlip, setEmailSlip] = useState<SalarySlipRecord | null>(null);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  const slipsQuery = useQuery({
+    queryKey: ["salary-slips", page, pageSize, debouncedSearch, statusFilter],
+    queryFn: async () => {
+      const result = await getSalarySlipsAction({
+        page,
+        pageSize,
+        search: debouncedSearch,
+        status: statusFilter,
+      });
+      if (!result.success) throw new Error(result.error);
+      return result;
+    },
+    initialData:
+      page === initialPage.page &&
+      pageSize === initialPage.pageSize &&
+      !debouncedSearch &&
+      statusFilter === "ALL"
+        ? {
+            success: true as const,
+            slips: initialSlips,
+            page: initialPage.page,
+            pageSize: initialPage.pageSize,
+            totalCount: initialPage.totalCount,
+            totalPages: Math.ceil(initialPage.totalCount / initialPage.pageSize),
+            paidYtd: initialPage.paidYtd,
+          }
+        : undefined,
+    placeholderData: keepPreviousData,
+  });
+  const slips = slipsQuery.data?.slips ?? initialSlips;
+  const totalCount = slipsQuery.data?.totalCount ?? initialPage.totalCount;
+
   const getMonthName = (m: number) => {
     const d = new Date(2000, m - 1, 1);
     return d.toLocaleString('default', { month: 'long' });
   };
 
-  const visibleSlips = slips.filter((slip) => {
-    const matchesSearch = `${slip.user?.name ?? ""} ${slip.user?.department ?? ""}`
-      .toLowerCase()
-      .includes(search.trim().toLowerCase());
-    return matchesSearch &&
-      (statusFilter === "ALL" || getDisplayedSlipStatus(slip) === statusFilter);
-  });
-
-  const slipsByYear = visibleSlips.reduce<Array<{ year: number; months: Array<{ month: number; slips: SalarySlipRecord[] }> }>>(
+  const slipsByYear = slips.reduce<Array<{ year: number; months: Array<{ month: number; slips: SalarySlipRecord[] }> }>>(
     (years, slip) => {
       let yearGroup = years.find((group) => group.year === slip.year);
       if (!yearGroup) {
@@ -85,24 +146,23 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlips
   slipsByYear.sort((a, b) => b.year - a.year);
   slipsByYear.forEach((yearGroup) => yearGroup.months.sort((a, b) => b.month - a.month));
 
-  const handleSuccess = (newSlip: SalarySlipRecord) => {
-    setSlips(prev => [newSlip, ...prev.filter(s => s.id !== newSlip.id)]);
+  const refreshSlips = () => {
+    setPage(0);
+    void queryClient.invalidateQueries({ queryKey: ["salary-slips"] });
   };
 
-  const handleMarkPaidSuccess = (updatedSlip: SalarySlipUpdate) => {
-    setSlips(prev => prev.map(s => s.id === updatedSlip.id ? { ...s, ...updatedSlip } : s));
-  };
+  const handleSuccess = () => refreshSlips();
 
   const handleAdjustmentsSuccess = (updatedSlip: SalarySlipUpdate) => {
-    setSlips(prev => prev.map(s => s.id === updatedSlip.id ? { ...s, ...updatedSlip } : s));
+    refreshSlips();
     setAdjustmentSlip((current) =>
       current?.id === updatedSlip.id ? { ...current, ...updatedSlip } : current,
     );
   };
 
-  const handleEmailSuccess = (updatedSlip: SalarySlipUpdate) => {
-    setSlips(prev => prev.map(s => s.id === updatedSlip.id ? { ...s, ...updatedSlip } : s));
-  };
+  const handleMarkPaidSuccess = () => refreshSlips();
+
+  const handleEmailSuccess = () => refreshSlips();
 
   return (
     <div className="space-y-6">
@@ -123,21 +183,30 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlips
             <SearchIcon aria-hidden="true" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => {
+                setPage(0);
+                setSearch(event.target.value);
+              }}
               type="search"
               aria-label="Search salary slips"
               placeholder="Search employee or department"
               className="h-11 pl-9"
             />
           </div>
-          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as "ALL" | SalarySlipRecord["status"])}>
+          <Select
+            value={statusFilter}
+            onValueChange={(value) => {
+              setPage(0);
+              setStatusFilter(value as "ALL" | SalarySlipRecord["status"]);
+            }}
+          >
             <SelectTrigger aria-label="Filter salary slips by status" className="h-11">
               <SelectValue placeholder="All statuses" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All statuses</SelectItem>
               <SelectItem value="DRAFT">Draft</SelectItem>
-              <SelectItem value="GENERATED">Needs review</SelectItem>
+              <SelectItem value="GENERATED">Generated</SelectItem>
               <SelectItem value="APPROVED">Approved</SelectItem>
               <SelectItem value="PAID">Paid</SelectItem>
             </SelectContent>
@@ -145,11 +214,18 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlips
         </div>
       </div>
 
+      {slipsQuery.isError && (
+        <p role="alert" className="text-sm text-destructive">
+          {slipsQuery.error.message}
+        </p>
+      )}
       <Card className="min-w-0 overflow-hidden rounded-xl border py-0">
         <div className="divide-y lg:hidden">
-          {visibleSlips.length === 0 ? (
+          {slips.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-              {slips.length === 0 ? "No salary slips generated yet. Generate a slip to see it here." : "No salary slips match the current filters."}
+              {totalCount === 0 && !debouncedSearch && statusFilter === "ALL"
+                ? "No salary slips generated yet. Generate a slip to see it here."
+                : "No salary slips match the current filters."}
             </p>
           ) : slipsByYear.map((yearGroup, yearIndex) => (
             <details key={yearGroup.year} open={yearIndex === 0} className="group border-b last:border-b-0">
@@ -180,7 +256,7 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlips
                           <p className="text-xs text-muted-foreground">{slip.user?.department || "Not assigned"}</p>
                         </div>
                         <Badge variant={getDisplayedSlipStatus(slip) === "PAID" || getDisplayedSlipStatus(slip) === "APPROVED" ? "default" : "secondary"} className="shrink-0 text-xs">
-                          {getDisplayedSlipStatus(slip) === "GENERATED" ? "Needs review" : getDisplayedSlipStatus(slip)}
+                          {getSalarySlipLabel(slip)}
                         </Badge>
                       </div>
                       <dl className="grid grid-cols-2 gap-3 rounded-md bg-muted/40 p-3">
@@ -201,7 +277,7 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlips
                       </dl>
                       {slip.emailSentAt && (
                         <p className="text-xs text-muted-foreground">
-                          Slip emailed {new Date(slip.emailSentAt).toLocaleDateString()}
+                          Slip emailed {formatInIST(new Date(slip.emailSentAt), "dd MMM yyyy")}
                         </p>
                       )}
                       <div className="flex items-center justify-end gap-1">
@@ -215,23 +291,23 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlips
                             <DownloadIcon aria-hidden="true" className="size-4" />
                           </a>
                         </Button>
-                        {isHrOrAdmin && getDisplayedSlipStatus(slip) === "GENERATED" && (
-                          <>
-                            <Button variant="ghost" size="icon" className="size-10 text-muted-foreground hover:text-foreground" onClick={() => setAdjustmentSlip(slip)} aria-label={`Adjust salary slip for ${slip.user?.name ?? "employee"}`}>
-                              <PencilIcon aria-hidden="true" className="size-4" />
-                            </Button>
-                            <Button variant="outline" size="sm" className="h-10" onClick={() => setApprovalSlip(slip)} aria-label={`Review and approve salary slip for ${slip.user?.name ?? "employee"}`}>
-                              <BadgeCheckIcon aria-hidden="true" className="size-4" />
-                              Approve
-                            </Button>
-                          </>
+                        {isHrOrAdmin && slip.status === "GENERATED" && !slip.approvedAt && (
+                          <Button variant="ghost" size="icon" className="size-10 text-muted-foreground hover:text-foreground" onClick={() => setAdjustmentSlip(slip)} aria-label={`Adjust salary slip for ${slip.user?.name ?? "employee"}`}>
+                            <PencilIcon aria-hidden="true" className="size-4" />
+                          </Button>
                         )}
-                        {isHrOrAdmin && getDisplayedSlipStatus(slip) === "APPROVED" && (
+                        {isHrOrAdmin && requiresSalarySlipReview(slip) && (
+                          <Button variant="outline" size="sm" className="h-10" onClick={() => setApprovalSlip(slip)} aria-label={`Review and approve salary slip for ${slip.user?.name ?? "employee"}`}>
+                            <BadgeCheckIcon aria-hidden="true" className="size-4" />
+                            Approve
+                          </Button>
+                        )}
+                        {isHrOrAdmin && slip.status === "GENERATED" && canProcessSalarySlip(slip) && (
                           <Button variant="ghost" size="icon" className="size-10 text-emerald-700 hover:text-emerald-800 dark:text-emerald-400" onClick={() => setMarkPaidSlipId(slip.id)} aria-label={`Mark salary slip for ${slip.user?.name ?? "employee"} as paid`}>
                             <DollarSignIcon aria-hidden="true" className="size-4" />
                           </Button>
                         )}
-                        {isHrOrAdmin && (getDisplayedSlipStatus(slip) === "APPROVED" || slip.status === "PAID") && slip.user?.email && (
+                        {isHrOrAdmin && canProcessSalarySlip(slip) && slip.user?.email && (
                           <Button variant="outline" size="sm" className="h-10" onClick={() => setEmailSlip(slip)} aria-label={`${slip.emailSentAt ? "Resend" : "Send"} salary slip email to ${slip.user.name}`}>
                             <MailIcon aria-hidden="true" className="size-4" />
                             {slip.emailSentAt ? "Resend" : "Email PDF"}
@@ -249,9 +325,11 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlips
         </div>
 
         <div className="hidden lg:block">
-          {visibleSlips.length === 0 ? (
+          {slips.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-              {slips.length === 0 ? "No salary slips generated yet. Generate a slip to see it here." : "No salary slips match the current filters."}
+              {totalCount === 0 && !debouncedSearch && statusFilter === "ALL"
+                ? "No salary slips generated yet. Generate a slip to see it here."
+                : "No salary slips match the current filters."}
             </p>
           ) : slipsByYear.map((yearGroup, yearIndex) => (
             <details key={yearGroup.year} open={yearIndex === 0} className="group border-b last:border-b-0">
@@ -305,11 +383,11 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlips
                       <TableCell>
                         <div className="space-y-1">
                           <Badge variant={getDisplayedSlipStatus(slip) === 'PAID' || getDisplayedSlipStatus(slip) === 'APPROVED' ? 'default' : 'secondary'} className="text-xs">
-                              {getDisplayedSlipStatus(slip) === "GENERATED" ? "Needs review" : getDisplayedSlipStatus(slip)}
+                              {getSalarySlipLabel(slip)}
                           </Badge>
                           {slip.emailSentAt && (
                             <div className="text-xs text-muted-foreground">
-                              Emailed {new Date(slip.emailSentAt).toLocaleDateString()}
+                              Emailed {formatInIST(new Date(slip.emailSentAt), "dd MMM yyyy")}
                             </div>
                           )}
                         </div>
@@ -326,23 +404,23 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlips
                               <DownloadIcon aria-hidden="true" className="size-4" />
                             </a>
                           </Button>
-                          {isHrOrAdmin && getDisplayedSlipStatus(slip) === 'GENERATED' && (
-                            <>
-                              <Button variant="ghost" size="icon" className="size-10 text-muted-foreground hover:text-foreground" onClick={() => setAdjustmentSlip(slip)} aria-label={`Adjust salary slip for ${slip.user?.name ?? "employee"}`}>
-                                <PencilIcon aria-hidden="true" className="size-4" />
-                              </Button>
-                              <Button variant="outline" size="sm" className="h-10" onClick={() => setApprovalSlip(slip)} aria-label={`Review and approve salary slip for ${slip.user?.name ?? "employee"}`}>
-                                <BadgeCheckIcon aria-hidden="true" className="size-4" />
-                                Approve
-                              </Button>
-                            </>
+                          {isHrOrAdmin && slip.status === "GENERATED" && !slip.approvedAt && (
+                            <Button variant="ghost" size="icon" className="size-10 text-muted-foreground hover:text-foreground" onClick={() => setAdjustmentSlip(slip)} aria-label={`Adjust salary slip for ${slip.user?.name ?? "employee"}`}>
+                              <PencilIcon aria-hidden="true" className="size-4" />
+                            </Button>
                           )}
-                          {isHrOrAdmin && getDisplayedSlipStatus(slip) === 'APPROVED' && (
+                          {isHrOrAdmin && requiresSalarySlipReview(slip) && (
+                            <Button variant="outline" size="sm" className="h-10" onClick={() => setApprovalSlip(slip)} aria-label={`Review and approve salary slip for ${slip.user?.name ?? "employee"}`}>
+                              <BadgeCheckIcon aria-hidden="true" className="size-4" />
+                              Approve
+                            </Button>
+                          )}
+                          {isHrOrAdmin && slip.status === "GENERATED" && canProcessSalarySlip(slip) && (
                             <Button variant="ghost" size="icon" className="size-10 text-emerald-700 hover:text-emerald-800 dark:text-emerald-400" onClick={() => setMarkPaidSlipId(slip.id)} aria-label={`Mark salary slip for ${slip.user?.name ?? "employee"} as paid`}>
                               <DollarSignIcon aria-hidden="true" className="size-4" />
                             </Button>
                           )}
-                          {isHrOrAdmin && (getDisplayedSlipStatus(slip) === "APPROVED" || slip.status === "PAID") && slip.user?.email && (
+                          {isHrOrAdmin && canProcessSalarySlip(slip) && slip.user?.email && (
                             <Button variant="outline" size="sm" className="h-10" onClick={() => setEmailSlip(slip)} aria-label={`${slip.emailSentAt ? "Resend" : "Send"} salary slip email to ${slip.user.name}`}>
                               <MailIcon aria-hidden="true" className="size-4" />
                               {slip.emailSentAt ? "Resend" : "Email PDF"}
@@ -362,12 +440,23 @@ export function SalarySlipsTab({ users, initialSlips, isHrOrAdmin }: SalarySlips
           ))}
         </div>
       </Card>
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <PaginationControls
+          page={page}
+          pageSize={pageSize}
+          total={totalCount}
+          onPageChange={setPage}
+          onPageSizeChange={(nextPageSize) => {
+            setPageSize(nextPageSize);
+            setPage(0);
+          }}
+        />
+      </div>
 
       {isHrOrAdmin && (
         <SalarySlipGenerateDialog 
           isOpen={isGenerateOpen}
           onClose={() => setIsGenerateOpen(false)}
-          users={users}
           onSuccess={handleSuccess}
         />
       )}

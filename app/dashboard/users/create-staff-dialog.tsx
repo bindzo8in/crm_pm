@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import {
@@ -32,6 +32,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { MultiSelect } from "@/components/ui/multi-select";
 import {
   Select,
   SelectContent,
@@ -46,6 +47,7 @@ const schema = z.object({
   department: z.enum(Department, {
     error: "Select a department.",
   }),
+  additionalDepartments: z.array(z.enum(Department)),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -67,7 +69,12 @@ export function CreateStaffDialog({
       name: "",
       email: "",
       department: undefined,
+      additionalDepartments: [],
     },
+  });
+  const primaryDepartment = useWatch({
+    control: form.control,
+    name: "department",
   });
 
   const mutation = useMutation({
@@ -203,7 +210,7 @@ export function CreateStaffDialog({
             <div className="grid gap-4 sm:grid-cols-2">
               <Field data-invalid={Boolean(form.formState.errors.department)}>
                 <FieldLabel htmlFor="staff-department">
-                  Department{" "}
+                  Primary department{" "}
                   <span aria-hidden="true" className="text-destructive">*</span>
                 </FieldLabel>
                 <FieldContent>
@@ -211,7 +218,19 @@ export function CreateStaffDialog({
                     control={form.control}
                     name="department"
                     render={({ field }) => (
-                      <Select value={field.value} onValueChange={field.onChange}>
+                      <Select
+                        value={field.value ?? ""}
+                        onValueChange={(department) => {
+                          field.onChange(department);
+                          form.setValue(
+                            "additionalDepartments",
+                            form
+                              .getValues("additionalDepartments")
+                              .filter((value) => value !== department),
+                            { shouldValidate: true },
+                          );
+                        }}
+                      >
                         <SelectTrigger
                           id="staff-department"
                           aria-required="true"
@@ -238,6 +257,48 @@ export function CreateStaffDialog({
                     errors={
                       form.formState.errors.department
                         ? [form.formState.errors.department]
+                        : []
+                    }
+                  />
+                </FieldContent>
+              </Field>
+
+              <Field data-invalid={Boolean(form.formState.errors.additionalDepartments)}>
+                <FieldLabel htmlFor="staff-additional-departments">
+                  Additional departments
+                </FieldLabel>
+                <FieldContent>
+                  <Controller
+                    control={form.control}
+                    name="additionalDepartments"
+                    render={({ field }) => (
+                      <MultiSelect
+                        label="Additional departments"
+                        options={departments
+                          .filter((department) => department !== primaryDepartment)
+                          .map((department) => ({
+                            value: department,
+                            label:
+                              department === Department.HR ||
+                              department === Department.SEO
+                                ? department
+                                : department.charAt(0) +
+                                  department.slice(1).toLowerCase(),
+                          }))}
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        placeholder="Choose additional departments"
+                        searchPlaceholder="Search departments"
+                      />
+                    )}
+                  />
+                  <FieldDescription>
+                    Membership does not grant department-specific permissions.
+                  </FieldDescription>
+                  <FieldError
+                    errors={
+                      form.formState.errors.additionalDepartments
+                        ? [form.formState.errors.additionalDepartments]
                         : []
                     }
                   />

@@ -1,5 +1,6 @@
 import React from "react";
 import "./proposal-renderer.css";
+import { formatInIST } from "@/lib/date";
 
 interface SignatureContent {
   clientSignatory?: string;
@@ -130,7 +131,7 @@ export function SignatureRenderer({ block, proposal, company }: SignatureRendere
             <p className="text-xs font-bold text-black uppercase tracking-wider mt-4 border-t border-black/20 pt-2 w-max">For Client</p>
           </div>
           <div className="mt-6 pt-4 border-t border-dashed border-gray-300 grid grid-cols-1 gap-2 text-[10px] text-black font-semibold font-mono">
-            <div className="flex justify-between"><span>Date Signed:</span> <span>{proposal?.acceptedAt ? new Date(proposal.acceptedAt).toLocaleDateString() : 'Pending'}</span></div>
+            <div className="flex justify-between"><span>Date Signed:</span> <span>{proposal?.acceptedAt ? formatInIST(new Date(proposal.acceptedAt), "dd/MM/yyyy") : 'Pending'}</span></div>
             <div className="flex justify-between">
               <span>{proposal?.customer?.email ? 'Signee Email:' : (proposal?.customer?.phone ? 'Signee Phone:' : 'Signee Email:')}</span> 
               <span>{proposal?.customer?.email || proposal?.customer?.phone || 'Pending'}</span>
@@ -159,7 +160,7 @@ export function SignatureRenderer({ block, proposal, company }: SignatureRendere
             <p className="text-xs font-bold text-black uppercase tracking-wider mt-4 border-t border-black/20 pt-2 w-max">For Company</p>
           </div>
           <div className="mt-6 pt-4 border-t border-dashed border-gray-300 grid grid-cols-1 gap-2 text-[10px] text-black font-semibold font-mono">
-            <div className="flex justify-between"><span>Date Signed:</span> <span>{proposal?.createdAt ? new Date(proposal.createdAt).toLocaleDateString() : 'Recorded'}</span></div>
+            <div className="flex justify-between"><span>Date Signed:</span> <span>{proposal?.createdAt ? formatInIST(new Date(proposal.createdAt), "dd/MM/yyyy") : 'Recorded'}</span></div>
             <div className="flex justify-between">
               <span>{company?.email ? 'Signee Email:' : (company?.phone ? 'Signee Phone:' : 'Signee Email:')}</span> 
               <span>{company?.email || company?.phone || 'Recorded'}</span>

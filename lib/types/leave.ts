@@ -11,6 +11,8 @@ export type LeaveRequestRow = Pick<
   | "reason"
   | "status"
   | "managerComment"
+  | "isHalfDay"
+  | "halfDayPeriod"
   | "totalDays"
   | "netLeaveDays"
   | "sundayCount"
@@ -29,6 +31,7 @@ export type ManagerLeaveRequestRow = Prisma.LeaveRequestGetPayload<{
         name: true;
         email: true;
         department: true;
+        additionalDepartments: true;
         role: true;
       };
     };
@@ -39,6 +42,8 @@ export type LeaveFormValues = {
   type: LeaveType;
   startDate: string;
   endDate: string;
+  isHalfDay: boolean;
+  halfDayPeriod: "MORNING" | "AFTERNOON" | null;
   reason: string;
 };
 

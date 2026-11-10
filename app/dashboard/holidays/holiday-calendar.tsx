@@ -35,6 +35,7 @@ type HolidayRecord = Pick<
   | "eventId"
   | "name"
   | "date"
+  | "isHalfDay"
   | "category"
   | "departments"
   | "notifyStaff"
@@ -147,6 +148,7 @@ export function HolidayCalendar({
         id: records[0].id,
         name: records[0].name,
         dates: records.map(({ date }) => date).sort((a, b) => a.getTime() - b.getTime()),
+        isHalfDay: records[0].isHalfDay,
         category: records[0].category,
         departments: records[0].departments,
         notifyStaff: records[0].notifyStaff,
@@ -360,7 +362,7 @@ export function HolidayCalendar({
                     key={key}
                     type="button"
                     disabled={!inMonth}
-                    aria-label={`${formatLongDate(date)}${hasHoliday ? ", holiday" : ""}`}
+                    aria-label={`${formatLongDate(date)}${hasHoliday ? `, ${holidays.find((holiday) => dateKey(holiday.date) === key)?.isHalfDay ? "half-day holiday" : "holiday"}` : ""}`}
                     aria-pressed={isSelected}
                     onClick={() => {
                       setSelectedDate((current) => current === key ? null : key);
@@ -527,6 +529,11 @@ export function HolidayCalendar({
                           <Badge variant="outline" className="font-normal">
                             {HOLIDAY_CATEGORY_LABELS[holiday.category]}
                           </Badge>
+                          {holiday.isHalfDay && (
+                            <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                              Half-day
+                            </Badge>
+                          )}
                         </div>
                         <h3 className="break-words font-semibold leading-5">{holiday.name}</h3>
                         <p className="mt-1 text-xs text-muted-foreground">{dateLabel}</p>
@@ -554,6 +561,11 @@ export function HolidayCalendar({
                           <Badge variant="outline" className="font-normal">
                             {HOLIDAY_CATEGORY_LABELS[holiday.category]}
                           </Badge>
+                          {holiday.isHalfDay && (
+                            <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                              Half-day
+                            </Badge>
+                          )}
                         </div>
                         <p className="mt-0.5 text-xs text-muted-foreground">{dateLabel} · {departmentLabel}</p>
                         {holiday.description && (

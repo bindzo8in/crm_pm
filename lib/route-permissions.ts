@@ -43,12 +43,21 @@ export const routePermissions: RoutePermission[] = [
     roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF]
   },
   {
+    path: "/dashboard/attendance/schedule",
+    roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF],
+    departmentRoles: { [UserRole.STAFF]: ["HR"] },
+  },
+  {
     path: "/dashboard/attendance",
     roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF]
   },
   {
     path: "/dashboard/leaves",
     roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF]
+  },
+  {
+    path: "/dashboard/issues",
+    roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.STAFF],
   },
   {
     path: "/attendance",

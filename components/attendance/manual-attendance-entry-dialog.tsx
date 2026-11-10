@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   createManualAttendanceAction,
   getAttendanceEntryEmployeesAction,
@@ -33,6 +33,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 
 interface ManualAttendanceEntryDialogProps {
   onSuccess: () => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
 }
 
 type AttendanceEntryEmployee = {
@@ -41,6 +44,7 @@ type AttendanceEntryEmployee = {
   email: string;
   employeeId: number | null;
   department: string | null;
+  additionalDepartments: string[];
   workMode: WorkMode;
 };
 
@@ -50,8 +54,16 @@ function getCurrentDateTimeLocal() {
 
 export function ManualAttendanceEntryDialog({
   onSuccess,
+  open: controlledOpen,
+  onOpenChange,
+  hideTrigger = false,
 }: ManualAttendanceEntryDialogProps) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = (nextOpen: boolean) => {
+    if (controlledOpen === undefined) setInternalOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+  };
   const [employees, setEmployees] = useState<AttendanceEntryEmployee[]>([]);
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [employeePickerOpen, setEmployeePickerOpen] = useState(false);
@@ -66,13 +78,18 @@ export function ManualAttendanceEntryDialog({
   const [reason, setReason] = useState("");
 
   const filteredEmployees = employees.filter((employee) =>
-    [employee.name, employee.email, employee.department ?? "", employee.employeeId?.toString() ?? ""]
+    [
+      employee.name,
+      employee.email,
+      employee.department ?? "",
+      ...employee.additionalDepartments,
+      employee.employeeId?.toString() ?? "",
+    ]
       .some((value) => value.toLocaleLowerCase().includes(employeeSearch.trim().toLocaleLowerCase())),
   );
   const selectedEmployee = employees.find((employee) => employee.id === userId);
 
-  const openDialog = async () => {
-    setOpen(true);
+  const loadEmployees = useCallback(async () => {
     setEmployeesLoading(true);
     setEmployeesError("");
     try {
@@ -93,7 +110,15 @@ export function ManualAttendanceEntryDialog({
     } finally {
       setEmployeesLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // Load employee options when an external action opens this dialog.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (open) void loadEmployees();
+  }, [loadEmployees, open]);
+
+  const openDialog = () => setOpen(true);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -132,14 +157,16 @@ export function ManualAttendanceEntryDialog({
 
   return (
     <>
-      <Button
-        size="sm"
-        onClick={openDialog}
-        className="rounded-xl text-xs font-semibold shadow-sm"
-      >
-        <PlusIcon className="mr-1 size-3.5" />
-        Add entry
-      </Button>
+      {!hideTrigger && (
+        <Button
+          size="sm"
+          onClick={openDialog}
+          className="rounded-xl text-xs font-semibold shadow-sm"
+        >
+          <PlusIcon className="mr-1 size-3.5" />
+          Add entry
+        </Button>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-lg">
@@ -176,7 +203,7 @@ export function ManualAttendanceEntryDialog({
                 >
                   <span className="truncate">
                     {selectedEmployee
-                      ? `${selectedEmployee.name} — ${selectedEmployee.email}${selectedEmployee.department ? ` · ${selectedEmployee.department}` : ""}`
+                      ? `${selectedEmployee.name} — ${selectedEmployee.email}${selectedEmployee.department ? ` · ${selectedEmployee.department} (Primary)` : ""}${selectedEmployee.additionalDepartments.length ? ` · ${selectedEmployee.additionalDepartments.join(", ")}` : ""}`
                       : employeesLoading
                         ? "Loading employees..."
                         : "Select an employee"}
@@ -224,7 +251,10 @@ export function ManualAttendanceEntryDialog({
                         <CheckIcon className={`size-4 shrink-0 ${userId === employee.id ? "opacity-100" : "opacity-0"}`} />
                         <span className="min-w-0 truncate">
                           {employee.name} — {employee.email}
-                          {employee.department ? ` · ${employee.department}` : ""}
+                          {employee.department ? ` · ${employee.department} (Primary)` : ""}
+                          {employee.additionalDepartments.length
+                            ? ` · ${employee.additionalDepartments.join(", ")}`
+                            : ""}
                         </span>
                       </button>
                     ))

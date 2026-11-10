@@ -18,6 +18,21 @@ function decodeApplicationServerKey(value: string) {
   return Uint8Array.from(window.atob(base64), (character) => character.charCodeAt(0));
 }
 
+function getEnableErrorMessage(error: unknown) {
+  if (!(error instanceof Error)) {
+    return "Could not enable browser reminders. Please try again.";
+  }
+
+  if (
+    Notification.permission === "granted" &&
+    /registration failed.*permission denied/i.test(error.message)
+  ) {
+    return "This browser context does not allow push subscriptions (common in private/incognito windows). Open localhost:3000 in a normal browser window and enable notifications there.";
+  }
+
+  return error.message;
+}
+
 async function waitForActiveServiceWorker(
   registration: ServiceWorkerRegistration,
 ): Promise<ServiceWorkerRegistration> {
@@ -118,7 +133,7 @@ export function AttendanceBrowserReminders() {
     } catch (error: unknown) {
       setState("disabled");
       toast.error(
-        error instanceof Error ? error.message : "Could not enable browser reminders.",
+        getEnableErrorMessage(error),
         { id: "attendance-browser-reminder-enable" },
       );
     } finally {
@@ -149,54 +164,53 @@ export function AttendanceBrowserReminders() {
     }
   };
 
-  if (state === "unsupported") {
-    return (
-      <p className="text-xs text-muted-foreground">
-        Browser notifications are not supported by this browser.
-      </p>
-    );
-  }
-
+  const isEnabled = state === "enabled";
+  const isBusy = state === "working" || state === "checking";
+  const isUnsupported = state === "unsupported";
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-start gap-3">
-        <BellRingIcon className="mt-0.5 size-4 shrink-0 text-primary" />
-        <div className="space-y-1">
-          <h2 className="text-sm font-semibold">Browser notifications</h2>
-          <p className="text-xs text-muted-foreground">
-            Receive attendance reminders and holiday announcements on this browser.
-          </p>
-        </div>
-      </div>
-      {state === "enabled" ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={disableReminders}
-        >
-          <BellOffIcon className="size-4" />
-          Turn off
-        </Button>
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      className="h-9 rounded-full border-border/80 px-3 text-xs font-semibold shadow-sm"
+      aria-label={
+        isUnsupported
+          ? "Browser notifications are not supported"
+          : isEnabled
+            ? "Turn off browser notifications"
+            : "Enable browser notifications"
+      }
+      aria-pressed={isEnabled}
+      title={
+        isUnsupported
+          ? "Browser notifications are not supported by this browser."
+          : "Receive attendance reminders and holiday announcements in this browser."
+      }
+      disabled={isBusy || isUnsupported}
+      onClick={() => {
+        if (isEnabled) {
+          void disableReminders();
+        } else {
+          void enableReminders();
+        }
+      }}
+    >
+      {isBusy ? (
+        <LoaderCircleIcon className="size-4 animate-spin" />
+      ) : isUnsupported ? (
+        <BellOffIcon className="size-4" />
       ) : (
-        <Button
-          type="button"
-          size="sm"
-          onClick={enableReminders}
-          disabled={state === "working" || state === "checking"}
-        >
-          {state === "working" || state === "checking" ? (
-            <LoaderCircleIcon className="size-4 animate-spin" />
-          ) : (
-            <BellRingIcon className="size-4" />
-          )}
-          {state === "working"
-            ? "Updating..."
-            : state === "checking"
-              ? "Checking..."
-              : "Enable notifications"}
-        </Button>
+        <BellRingIcon className="size-4" />
       )}
-    </div>
+      {state === "working"
+        ? "Updating"
+        : state === "checking"
+          ? "Checking"
+          : isUnsupported
+            ? "Unsupported"
+            : isEnabled
+              ? "Alerts on"
+              : "Enable alerts"}
+    </Button>
   );
 }

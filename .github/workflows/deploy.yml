@@ -118,8 +118,15 @@ jobs:
             VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}
             CLOUDINARY_API_KEY=${{ secrets.CLOUDINARY_API_KEY }}
             CLOUDINARY_API_SECRET=${{ secrets.CLOUDINARY_API_SECRET }}
-            
 
+      - name: Build and push attendance scheduler image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./attendance-reminder-scheduler
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ matrix.image_tag }}-scheduler
+          cache-from: type=gha,scope=${{ matrix.client }}-scheduler
+          cache-to: type=gha,mode=max,scope=${{ matrix.client }}-scheduler
 
 
 # ============================================================
@@ -367,7 +374,7 @@ jobs:
 
             echo "Starting application..."
 
-            docker compose up -d
+            docker compose up -d --no-build
 
             # ==================================================
             # Apply Migrations

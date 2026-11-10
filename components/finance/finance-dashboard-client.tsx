@@ -2,12 +2,19 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowDownLeft, ArrowDownRight, ChevronLeft, ChevronRight, Landmark, Plus, ReceiptText, Wallet } from "lucide-react";
+import { ArrowDownLeft, ArrowDownRight, Check, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Landmark, MoreHorizontal, Pencil, Plus, ReceiptText, SlidersHorizontal, Trash2, Wallet } from "lucide-react";
 
-import { getFinanceReport } from "@/actions/finance";
+import { deleteExpense, getFinanceReport } from "@/actions/finance";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -20,6 +27,8 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRouter } from "next/navigation";
+import { formatInIST } from "@/lib/date";
+import { toast } from "sonner";
 
 type Overview = {
   receivedIncome: number;
@@ -62,6 +71,7 @@ type InvoicePaymentRow = {
   paymentMethod: string;
   referenceId: string | null;
   invoice: {
+    id: string;
     invoiceNumber: number;
     customerDisplayName: string;
   };
@@ -91,6 +101,7 @@ type ReportRow = {
   creator: string | null;
   reference_detail: string | null;
   attachment_url: string | null;
+  detail_url: string;
 };
 
 type ReportResult = {
@@ -106,6 +117,12 @@ type ReportResult = {
   endDate: string;
 };
 
+type FinanceSetupStatus = {
+  companyProfileExists: boolean;
+  missingCompanyFields: string[];
+  hasActiveFinancialAccount: boolean;
+};
+
 type Props = {
   overview: Overview | null;
   accounts: Account[];
@@ -113,6 +130,7 @@ type Props = {
   invoicePayments: InvoicePaymentRow[];
   creators: Creator[];
   report: ReportResult | null;
+  setupStatus: FinanceSetupStatus | null;
   loadError: string | null;
 };
 
@@ -162,6 +180,57 @@ const initialFilters: ReportFilters = {
   direction: "desc",
 };
 
+function TransactionActions({
+  row,
+  onDelete,
+}: {
+  row: ReportRow;
+  onDelete: (rowId: string) => void;
+}) {
+  const expenseId = row.type === "EXPENSE" ? row.id.slice("expense:".length) : null;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Actions for ${row.reference}`}
+        >
+          <MoreHorizontal aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem asChild>
+          <Link href={row.detail_url}>
+            <ExternalLink aria-hidden="true" />
+            {expenseId ? "View expense history" : "View invoice"}
+          </Link>
+        </DropdownMenuItem>
+        {expenseId && (
+          <>
+            <DropdownMenuItem asChild>
+              <Link href={`/dashboard/finance/expenses/${expenseId}/edit`}>
+                <Pencil aria-hidden="true" />
+                Edit expense
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              onSelect={() => onDelete(row.id)}
+            >
+              <Trash2 aria-hidden="true" />
+              Delete expense
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function FinanceReportPanel({
   initialReport,
   initialType = "ALL",
@@ -175,6 +244,7 @@ export function FinanceReportPanel({
   categories: Array<Pick<Category, "id" | "name">>;
   creators: Creator[];
 }) {
+  const router = useRouter();
   const [report, setReport] = React.useState(initialReport);
   const [filters, setFilters] = React.useState<ReportFilters>({
     ...initialFilters,
@@ -184,6 +254,23 @@ export function FinanceReportPanel({
   });
   const [isLoading, setIsLoading] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+
+  async function handleDeleteExpense(rowId: string) {
+    const expenseId = rowId.startsWith("expense:") ? rowId.slice("expense:".length) : "";
+    if (!expenseId || !window.confirm("Delete this expense? Its accounting effect will be removed and this action will be kept in history.")) return;
+    try {
+      const result = await deleteExpense(expenseId);
+      if (!result.success) {
+        toast.error(result.message);
+        return;
+      }
+      toast.success("Expense deleted");
+      router.refresh();
+      await runReport(filters);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete this expense.");
+    }
+  }
 
 
 
@@ -233,6 +320,17 @@ export function FinanceReportPanel({
   }
 
   const selectClassName = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  const activeFilterCount = [
+    filters.type !== "ALL",
+    filters.categoryId !== "ALL",
+    filters.accountId !== "ALL",
+    filters.paymentMethod !== "ALL",
+    filters.status !== "ALL",
+    filters.creatorId !== "ALL",
+    Boolean(filters.search),
+    Boolean(filters.minAmount),
+    Boolean(filters.maxAmount),
+  ].filter(Boolean).length;
 
   return (
     <Card className="shadow-none">
@@ -252,7 +350,18 @@ export function FinanceReportPanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-4 pt-4">
-        <form onSubmit={handleSubmit} className="space-y-3 rounded-lg border bg-background p-3">
+        <details className="group rounded-lg border bg-background">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-3 outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <SlidersHorizontal aria-hidden="true" className="size-4 text-muted-foreground" />
+              Filters
+              {activeFilterCount > 0 && (
+                <Badge variant="secondary">{activeFilterCount} active</Badge>
+              )}
+            </span>
+            <ChevronDown aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+          </summary>
+          <form onSubmit={handleSubmit} className="space-y-3 border-t p-3">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_0.9fr_0.9fr_minmax(180px,1.4fr)_auto]">
             <div className="space-y-1.5">
               <Label htmlFor="report-start-date">From date</Label>
@@ -350,7 +459,8 @@ export function FinanceReportPanel({
               </div>
             </div>
           </details>
-        </form>
+          </form>
+        </details>
 
         {errorMessage && <p role="alert" className="text-sm text-destructive">{errorMessage}</p>}
 
@@ -375,14 +485,21 @@ export function FinanceReportPanel({
               {report.rows.length ? report.rows.map((row) => (
                 <article key={row.id} className="space-y-3 px-4 py-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="break-words font-medium">{row.reference}</p>
+                    <Link
+                      href={row.detail_url}
+                      className="min-w-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-label={`View transaction ${row.reference}`}
+                    >
+                      <p className="break-words font-medium text-primary underline-offset-4 hover:underline">{row.reference}</p>
                       <p className="break-words text-xs text-muted-foreground">{row.description}</p>
                       <p className="mt-1 text-xs text-muted-foreground">{formatDate(row.date)}</p>
+                    </Link>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <p className={`text-right text-sm font-semibold tabular-nums ${row.type === "INCOME" ? "text-emerald-700 dark:text-emerald-400" : ""}`}>
+                        {row.type === "INCOME" ? "+" : "−"}{formatCurrency(row.amount)}
+                      </p>
+                      <TransactionActions row={row} onDelete={handleDeleteExpense} />
                     </div>
-                    <p className={`shrink-0 text-right text-sm font-semibold tabular-nums ${row.type === "INCOME" ? "text-emerald-700 dark:text-emerald-400" : ""}`}>
-                      {row.type === "INCOME" ? "+" : "−"}{formatCurrency(row.amount)}
-                    </p>
                   </div>
                   <dl className="grid grid-cols-2 gap-3 rounded-md bg-muted/40 p-3 sm:grid-cols-3">
                     <div className="space-y-1">
@@ -446,27 +563,48 @@ export function FinanceReportPanel({
                     <TableHead>Created by</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="w-32 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {report.rows.map((row) => (
-                    <TableRow key={row.id}>
+                    <TableRow
+                      key={row.id}
+                      tabIndex={0}
+                      aria-label={`View transaction ${row.reference}`}
+                      className="cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      onClick={() => router.push(row.detail_url)}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return;
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          router.push(row.detail_url);
+                        }
+                      }}
+                    >
                       <TableCell>{formatDate(row.date)}</TableCell>
                       <TableCell className="max-w-64">
-                        <p className="font-medium">{row.reference}</p>
-                        <p className="truncate text-xs text-muted-foreground">{row.description}</p>
+                        <Link
+                          href={row.detail_url}
+                          onClick={(event) => event.stopPropagation()}
+                          className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <p className="font-medium text-primary underline-offset-4 hover:underline">{row.reference}</p>
+                          <p className="truncate text-xs text-muted-foreground">{row.description}</p>
+                        </Link>
                       </TableCell>
                       <TableCell>
                         <p>{row.type === "INCOME" ? "Income" : "Expense"}</p>
                         <p className="text-xs text-muted-foreground">{row.category}</p>
                       </TableCell>
                       <TableCell>{row.party ?? "—"}</TableCell>
-                      <TableCell>
+                      <TableCell onClick={(event) => event.stopPropagation()}>
                         {row.attachment_url ? (
                           <a
                             href={row.attachment_url}
                             target="_blank"
                             rel="noreferrer"
+                            onClick={(event) => event.stopPropagation()}
                             className="text-primary underline-offset-4 hover:underline"
                           >
                             View
@@ -484,11 +622,14 @@ export function FinanceReportPanel({
                       <TableCell className={`text-right font-medium tabular-nums ${row.type === "INCOME" ? "text-emerald-700 dark:text-emerald-400" : ""}`}>
                         {row.type === "INCOME" ? "+" : "−"}{formatCurrency(row.amount)}
                       </TableCell>
+                      <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
+                        <TransactionActions row={row} onDelete={handleDeleteExpense} />
+                      </TableCell>
                     </TableRow>
                   ))}
                   {report.rows.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
+                      <TableCell colSpan={11} className="h-24 text-center text-muted-foreground">
                         No transactions match these filters.
                       </TableCell>
                     </TableRow>
@@ -528,11 +669,7 @@ function formatCurrency(value: number) {
 }
 
 function formatDate(value: string | Date) {
-  return new Intl.DateTimeFormat("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
+  return formatInIST(new Date(value), "dd MMM yyyy");
 }
 
 export function FinanceDashboardClient({
@@ -542,8 +679,18 @@ export function FinanceDashboardClient({
   invoicePayments,
   creators,
   report,
+  setupStatus,
   loadError,
 }: Props) {
+  const companyProfileNeedsAttention = setupStatus !== null &&
+    (!setupStatus.companyProfileExists || setupStatus.missingCompanyFields.length > 0);
+  const accountNeedsAttention = setupStatus !== null && !setupStatus.hasActiveFinancialAccount;
+  const needsSetupGuidance = companyProfileNeedsAttention || accountNeedsAttention;
+  const canRecordExpense =
+    setupStatus?.companyProfileExists !== false &&
+    (setupStatus?.missingCompanyFields.length ?? 0) === 0 &&
+    accounts.some((account) => account.isActive) &&
+    categories.some((category) => category.isActive);
   const metricCards = [
     { label: "Received income", value: overview?.receivedIncome, icon: ArrowDownLeft, color: "text-emerald-700 dark:text-emerald-400" },
     { label: "Completed expenses", value: overview?.completedExpenses, icon: ArrowDownRight, color: "text-rose-700 dark:text-rose-400" },
@@ -552,8 +699,6 @@ export function FinanceDashboardClient({
     { label: "Pending expenses", value: overview?.pendingExpenses, icon: ReceiptText, color: "text-amber-700 dark:text-amber-400" },
     { label: "Pending invoice income", value: overview?.outstandingReceivables, icon: ReceiptText, color: "text-violet-700 dark:text-violet-400" },
   ];
-
-    const router = useRouter();
 
   return (
     <main className="min-w-0 space-y-6">
@@ -564,37 +709,101 @@ export function FinanceDashboardClient({
             Record business expenses here. Invoice payments are brought in automatically as received income.
           </p>
         </div>
-        <Button
-          disabled={!accounts.some((account) => account.isActive) || !categories.some((category) => category.isActive)}
-          asChild
-        >
-          <Link href="/dashboard/finance/expenses/create">
+        {canRecordExpense ? (
+          <Button asChild>
+            <Link href="/dashboard/finance/expenses/create">
+              <Plus />
+              Record expense
+            </Link>
+          </Button>
+        ) : (
+          <Button disabled>
             <Plus />
             Record expense
-          </Link>
-        </Button>
+          </Button>
+        )}
       </header>
 
       {loadError && (
         <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          Finance data could not be fully loaded: {loadError}
+          Some finance information could not be loaded: {loadError}
         </div>
       )}
 
-      {accounts.length === 0 && (
-        <div className="flex flex-col gap-3 rounded-lg border border-dashed px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-medium">Set up an account before recording expenses</p>
+      {needsSetupGuidance && (
+        <section aria-labelledby="finance-setup-title" className="rounded-xl border bg-card p-5 sm:p-6">
+          <div className="max-w-2xl">
+            <h3 id="finance-setup-title" className="text-lg font-semibold">
+              Finish setting up Finance
+            </h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Add a company bank account in settings. Office Cash is created automatically when finance setup is available.
+              Complete the required company details first. Then you can record expenses and track your balances.
             </p>
           </div>
-          <Button variant="outline" asChild>
-            <Link href="/dashboard/settings/business/banks">Open bank accounts</Link>
-          </Button>
-        </div>
+          <ol className="mt-5 divide-y">
+            <li className="py-4 first:pt-0 last:pb-0">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="flex min-w-0 flex-1 items-start gap-3">
+                  <span className={`grid size-8 shrink-0 place-items-center rounded-full ${!companyProfileNeedsAttention ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" : "bg-muted text-foreground"}`}>
+                    {!companyProfileNeedsAttention ? <Check aria-hidden="true" className="size-4" /> : "1"}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {!setupStatus?.companyProfileExists
+                        ? "Create your company profile"
+                        : setupStatus.missingCompanyFields.length > 0
+                          ? "Complete your company profile"
+                          : "Company profile"}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {!setupStatus?.companyProfileExists
+                        ? "Enter the company name, legal name, email, phone, street address, city, state, and country. GST and PAN details are optional."
+                        : setupStatus.missingCompanyFields.length > 0
+                          ? `Fill in the required fields: ${setupStatus.missingCompanyFields.join(", ")}.`
+                          : "Your required company details are in place."}
+                    </p>
+                  </div>
+                </div>
+                <Button variant="outline" className="sm:ml-11" asChild>
+                  <Link href="/dashboard/settings/business/company">
+                    {companyProfileNeedsAttention ? "Set up company profile" : "Review company profile"}
+                  </Link>
+                </Button>
+              </div>
+            </li>
+            <li className="py-4 first:pt-0 last:pb-0">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="flex min-w-0 flex-1 items-start gap-3">
+                  <span className={`grid size-8 shrink-0 place-items-center rounded-full ${!accountNeedsAttention ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" : "bg-muted text-foreground"}`}>
+                    {!accountNeedsAttention ? <Check aria-hidden="true" className="size-4" /> : "2"}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">Choose where to track transactions</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {setupStatus?.companyProfileExists
+                        ? setupStatus.hasActiveFinancialAccount
+                          ? "An active account is ready. Add a bank account if you also want to track bank transactions."
+                          : "Add a company bank account to track transactions. Office Cash is created automatically when finance setup is available."
+                        : "After saving your company profile, Office Cash is created automatically. You can also add a company bank account."}
+                    </p>
+                  </div>
+                </div>
+                {setupStatus?.companyProfileExists ? (
+                  <Button variant="outline" className="sm:ml-11" asChild>
+                    <Link href="/dashboard/settings/business/banks">Open bank accounts</Link>
+                  </Button>
+                ) : (
+                  <Button variant="outline" className="sm:ml-11" disabled>
+                    Complete company profile first
+                  </Button>
+                )}
+              </div>
+            </li>
+          </ol>
+        </section>
       )}
 
+      {setupStatus?.companyProfileExists !== false && (
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="grid h-auto w-full grid-cols-3 sm:inline-grid sm:w-auto">
           <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -691,7 +900,11 @@ export function FinanceDashboardClient({
                 ) : (
                   <div className="divide-y">
                     {invoicePayments.map((payment) => (
-                      <div key={payment.id} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0" onClick={() => router.push(`dashboard/invoices/${payment.invoice.invoiceNumber}`)}>
+                      <Link
+                        key={payment.id}
+                        href={`/dashboard/invoices/${payment.invoice.id}`}
+                        className="flex items-center justify-between gap-4 rounded-sm py-3 first:pt-0 last:pb-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium">{payment.invoice.customerDisplayName}</p>
                           <p className="truncate text-xs text-muted-foreground">
@@ -702,7 +915,7 @@ export function FinanceDashboardClient({
                         <p className="shrink-0 font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
                           +{formatCurrency(payment.amount)}
                         </p>
-                      </div>
+                      </Link>
                     ))}
                   </div>
                 )}
@@ -765,6 +978,7 @@ export function FinanceDashboardClient({
           </Card>
         </TabsContent>
       </Tabs>
+      )}
     </main>
   );
 }

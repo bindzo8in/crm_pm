@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/sidebar"
 import { CirclePlusIcon, Eye } from "lucide-react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { useHydratedPathname } from "@/hooks/use-hydrated-pathname"
 
 export function NavMain({
   items,
@@ -27,7 +27,7 @@ export function NavMain({
   }[]
   showQuickActions?: boolean
 }) {
-  const pathname = usePathname()
+  const pathname = useHydratedPathname()
   const { isMobile, setOpenMobile } = useSidebar()
   const closeMobileNav = () => {
     if (isMobile) setOpenMobile(false)
@@ -65,7 +65,10 @@ export function NavMain({
         )}
         <SidebarMenu>
           {items.map((item, index) => {
-            const isActive = item.url === pathname || (item.url !== "/dashboard" && pathname.startsWith(`${item.url}/`))
+            const isActive = pathname !== null && (
+              item.url === pathname ||
+              (item.url !== "/dashboard" && pathname.startsWith(`${item.url}/`))
+            )
             const startsSection = item.section && item.section !== items[index - 1]?.section
 
             return (

@@ -4,28 +4,33 @@ import {
   canManageHolidays,
   isLeaveManager,
 } from "@/lib/leave-permissions";
-import { Department as DepartmentValues } from "@/app/generated/prisma/enums";
 import type { Department } from "@/app/generated/prisma/enums";
 import { hasWorkspaceAccess } from "@/lib/workspace-access";
 import { headers } from "next/headers";
+import prisma from "@/lib/prisma";
+import { getDepartmentMemberships } from "@/lib/departments";
 
 type Session = typeof auth.$Infer.Session;
 export type LeaveUser = Session["user"];
 
 export { canManageHolidays, isLeaveManager };
 
-export function getHolidayDepartment(user: LeaveUser): Department | undefined {
+export async function getHolidayDepartments(
+  user: LeaveUser,
+): Promise<Department[] | undefined> {
   if (canManageHolidays(user)) return undefined;
-  const department = Object.values(DepartmentValues).find(
-    (value) => value === user.department,
-  );
-  if (!department) {
+  const record = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { department: true, additionalDepartments: true },
+  });
+  const memberships = record ? getDepartmentMemberships(record) : [];
+  if (memberships.length === 0) {
     throw new ActionError(
-      "Your department is not configured for holiday access.",
+      "Your department memberships are not configured for holiday access.",
       403,
     );
   }
-  return department;
+  return memberships;
 }
 
 type LeaveSelfPermission = "create" | "read-own" | "cancel-own";

@@ -76,6 +76,7 @@ export function CustomerCombobox({
     return (
         <Combobox
             items={options}
+            filter={null}
             value={selectedCustomer}
             onValueChange={(customer: CustomerComboboxOption | null) => {
                 if (!customer) return;
@@ -123,10 +124,10 @@ export function CustomerCombobox({
                             <ComboboxItem
                                 key={option.id}
                                 value={option}
-                                className="mt-1 border-t border-border pt-2 font-medium text-primary"
+                                className="sticky bottom-0 z-10 mt-1 border-t border-border bg-popover pt-2 font-medium text-primary"
                             >
                                 <Plus className="size-4" />
-                                <span>Add new customer</span>
+                                <span>Create customer</span>
                             </ComboboxItem>
                         ) : (
                             <ComboboxItem key={option.id} value={option}>

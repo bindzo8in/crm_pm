@@ -41,6 +41,7 @@ export function LeaveManagerFilters({
       onChange={handleChange}
       className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-6"
     >
+      <input type="hidden" name="view" value="team-requests" />
       {status && <input type="hidden" name="status" value={status} />}
       <label className="relative min-w-0 sm:col-span-2 xl:col-span-2">
         <Search aria-hidden="true" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />

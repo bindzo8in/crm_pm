@@ -3,6 +3,7 @@
 import React from "react";
 import { env } from "@/lib/env";
 import { formatEmployeeId } from "@/lib/employee-id";
+import { formatInIST } from "@/lib/date";
 
 type SalaryComponent = {
   name: string;
@@ -177,7 +178,7 @@ export function SalarySlipRenderer({
         <div className="border-r border-gray-400 p-2 space-y-0.5">
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Name:</span><span className="font-medium">{slip.user?.name}</span></div>
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Designation:</span><span className="font-medium">{slip.user?.designation || "-"}</span></div>
-          <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Date of Joining:</span><span className="font-medium">{slip.user?.dateOfJoining ? new Date(slip.user.dateOfJoining).toLocaleDateString("en-IN") : "-"}</span></div>
+          <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Date of Joining:</span><span className="font-medium">{slip.user?.dateOfJoining ? formatInIST(new Date(slip.user.dateOfJoining), "dd/MM/yyyy") : "-"}</span></div>
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Department:</span><span className="font-medium">{slip.user?.department || "-"}</span></div>
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Work Location:</span><span className="font-medium">{company?.city || "-"}</span></div>
           <div className="grid grid-cols-[140px_1fr]"><span className="text-gray-800">Effective Work Days:</span><span className="font-medium">{slip.paidDays}</span></div>

@@ -5,7 +5,7 @@ type CustomerRow = Awaited<ReturnType<typeof GetCustomers>>["data"][number];
 import { ColumnDef } from "@tanstack/react-table";
 import { CustomerSchema } from "@/lib/schemas/customer-schema";
 import { Badge } from "@/components/ui/badge";
-import { format } from "date-fns";
+import { formatInIST } from "@/lib/date";
 import { CustomerActions } from "./customer-actions";
 
 export const columns: ColumnDef<CustomerRow>[] = [
@@ -78,7 +78,7 @@ export const columns: ColumnDef<CustomerRow>[] = [
 
             if (!date) return "-";
 
-            return format(new Date(date as string), "dd MMM yyyy");
+            return formatInIST(new Date(date as string), "dd MMM yyyy");
         },
     },
 

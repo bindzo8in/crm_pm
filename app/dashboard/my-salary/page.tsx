@@ -25,7 +25,7 @@ export default async function MySalaryPage() {
         dateOfJoining: true,
       },
     }),
-    getSalarySlipsAction({}),
+    getSalarySlipsAction({ page: 0, pageSize: 20 }),
     prisma.leaveRequest.findMany({
       where: {
         userId: currentUserId,
@@ -66,6 +66,12 @@ export default async function MySalaryPage() {
             dateOfJoining: profile.dateOfJoining?.toISOString().slice(0, 10) ?? null,
           }}
           slips={slipsResult.slips}
+          slipPage={{
+            page: slipsResult.page,
+            pageSize: slipsResult.pageSize,
+            totalCount: slipsResult.totalCount,
+            paidYtd: slipsResult.paidYtd,
+          }}
           leaveSummary={{
             approvedDays: approvedLeaves.reduce(
               (total, leave) => total + Number(leave.netLeaveDays),

@@ -1,11 +1,11 @@
 import { getPublicTariffGrids } from "@/actions/tariffs";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { format } from "date-fns";
 import { PackageOpen } from "lucide-react";
 import { TariffClientGreeting } from "@/components/tariffs/tariff-client-greeting";
 import { Suspense } from "react";
 import { TariffFooter } from "@/components/tariffs/tariff-footer";
+import { formatInIST } from "@/lib/date";
 
 export const dynamic = "force-dynamic"; // Ensure the page is always rendered on the server for up-to-date data
 
@@ -48,7 +48,7 @@ export default async function PublicTariffsPage() {
                 
                 <div className="pt-4 mt-4 border-t border-border flex items-center justify-between text-sm text-muted-foreground mb-6">
                   <span className="font-medium bg-muted/50 px-2 py-1 rounded-md">{grid._count.packages} Options</span>
-                  <span>Updated {format(new Date(grid.updatedAt), "MMM d, yyyy")}</span>
+                  <span>Updated {formatInIST(new Date(grid.updatedAt), "MMM d, yyyy")}</span>
                 </div>
                 
                 <Link href={`/tariffs/${grid.id}`} className="mt-auto">

@@ -51,6 +51,7 @@ export type MultiSelectOption = {
   value: string;
   label: string;
   icon?: MultiSelectIcon;
+  color?: string;
   description?: string;
 };
 

@@ -5,9 +5,10 @@ import { CheckCircle, XCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { UserActions } from "./user-actions"
-import { format } from "date-fns"
 import { getUsers } from "@/actions/user"
 import { EmploymentStatus } from "@/app/generated/prisma/enums"
+import { formatInIST } from "@/lib/date"
+import { getDepartmentMemberships } from "@/lib/departments"
 
 type UserRow = Awaited<ReturnType<typeof getUsers>>["users"][number];
 
@@ -53,11 +54,40 @@ export const columns: ColumnDef<UserRow>[] = [
     {
         accessorKey: "department",
         header: "Department",
-        cell: ({ row }) => (
-            <Badge variant="secondary" className="rounded-md px-2 py-0.5 text-xs font-medium">
-                {row.original.department ?? "Unassigned"}
-            </Badge>
-        )
+        cell: ({ row }) => {
+            const departments = getDepartmentMemberships(row.original);
+            return (
+                <div
+                    aria-label={
+                        row.original.department
+                            ? `Primary department: ${row.original.department}. Additional departments: ${departments.filter((department) => department !== row.original.department).join(", ") || "none"}.`
+                            : "No primary department assigned."
+                    }
+                    className="flex flex-wrap gap-1"
+                >
+                    {departments.length > 0
+                    ? departments.map((department) => (
+                        <Badge
+                            key={department}
+                            variant={department === row.original.department ? "secondary" : "outline"}
+                            className="rounded-md px-2 py-0.5 text-xs font-medium"
+                        >
+                            {department}
+                            {department === row.original.department && (
+                                <span className="ml-1 text-[10px] text-muted-foreground">
+                                    Primary
+                                </span>
+                            )}
+                        </Badge>
+                    ))
+                    : (
+                        <Badge variant="secondary" className="rounded-md px-2 py-0.5 text-xs font-medium">
+                            Unassigned
+                        </Badge>
+                    )}
+                </div>
+            );
+        }
     },
     {
         accessorKey: "employmentStatus",
@@ -74,7 +104,7 @@ export const columns: ColumnDef<UserRow>[] = [
                     </Badge>
                     {!isActive && row.original.employmentEndedAt && (
                         <p className="text-xs text-muted-foreground">
-                            Since {format(new Date(row.original.employmentEndedAt), "dd/MM/yyyy")}
+                            Since {formatInIST(new Date(row.original.employmentEndedAt), "dd/MM/yyyy")}
                         </p>
                     )}
                 </div>
@@ -131,7 +161,7 @@ export const columns: ColumnDef<UserRow>[] = [
         cell: ({ row }) => {
             const dateValue = row.getValue("createdAt") as Date;
             if (!dateValue) return "N/A";
-            return format(new Date(dateValue), "dd/MM/yyyy");
+            return formatInIST(new Date(dateValue), "dd/MM/yyyy");
         },
     },
     {

@@ -74,12 +74,14 @@ export function TaskCreateDialog({
   defaultFolderId,
   hasMoreProjects = false,
   buttonLabel = "Create task",
+  compactOnMobile = false,
 }: {
   projects: TaskComposerProject[];
   defaultProjectId?: string;
   defaultFolderId?: string | null;
   hasMoreProjects?: boolean;
   buttonLabel?: string;
+  compactOnMobile?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
@@ -201,9 +203,16 @@ export function TaskCreateDialog({
       }}
     >
       <DialogTrigger asChild>
-        <Button type="button">
+        <Button
+          type="button"
+          aria-label={compactOnMobile ? buttonLabel : undefined}
+          title={compactOnMobile ? buttonLabel : undefined}
+          className={compactOnMobile ? "h-10 w-10 px-0 sm:h-9 sm:w-auto sm:px-2.5" : undefined}
+        >
           <Plus aria-hidden="true" />
-          {buttonLabel}
+          <span className={compactOnMobile ? "hidden sm:inline" : undefined}>
+            {buttonLabel}
+          </span>
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[min(90dvh,52rem)] max-w-3xl gap-0 overflow-hidden p-0">

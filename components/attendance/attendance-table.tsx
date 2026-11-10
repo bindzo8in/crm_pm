@@ -1,34 +1,43 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { format, parseISO } from "date-fns";
+import { DayPicker, type DateRange } from "react-day-picker";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AttendanceStatus, Department } from "@/app/generated/prisma/enums";
-import { getAttendanceLogsAction, exportAttendanceToExcelAction } from "@/actions/attendance";
+import { getAttendanceLogsAction } from "@/actions/attendance";
 import { RegularizationModal } from "./regularization-modal";
 import { AttendanceAuditViewer } from "./attendance-audit-viewer";
 import { ManualAttendanceEntryDialog } from "./manual-attendance-entry-dialog";
-import { formatTimeInIST, formatDateTimeInIST } from "@/lib/date";
+import { formatInIST, formatTimeInIST } from "@/lib/date";
 import {
   LaptopIcon,
   Building2Icon,
   HomeIcon,
-  CameraIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   FilterIcon,
   FileEditIcon,
   HistoryIcon,
-  FileSpreadsheetIcon,
   Clock3,
   MapPin,
+  CalendarDaysIcon,
+  ChevronDownIcon,
+  EllipsisIcon,
+  PlusIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface AttendanceTableProps {
   userRole: string;
@@ -39,7 +48,6 @@ export function AttendanceTable({ userRole, userDepartment }: AttendanceTablePro
   const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN" || userDepartment === "HR";
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isExporting, setIsExporting] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -48,11 +56,13 @@ export function AttendanceTable({ userRole, userDepartment }: AttendanceTablePro
   const [departmentFilter, setDepartmentFilter] = useState<string>("ALL");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [manualEntryOpen, setManualEntryOpen] = useState(false);
 
   const [selectedRecordForReg, setSelectedRecordForReg] = useState<any | null>(null);
   const [selectedRecordForAudit, setSelectedRecordForAudit] = useState<string | null>(null);
 
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
     setLoading(true);
     try {
       const res = await getAttendanceLogsAction({
@@ -71,65 +81,13 @@ export function AttendanceTable({ userRole, userDepartment }: AttendanceTablePro
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleExport = async () => {
-    if (!isAdmin) return;
-    setIsExporting(true);
-    try {
-      toast.loading("Exporting attendance logs to Excel...", { id: "table-export" });
-      const res = await exportAttendanceToExcelAction({
-        status: statusFilter !== "ALL" ? (statusFilter as AttendanceStatus) : undefined,
-        department: departmentFilter !== "ALL" ? (departmentFilter as Department) : undefined,
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-      });
-
-      if (res.success && res.base64 && res.filename) {
-        const byteCharacters = window.atob(res.base64);
-        const sliceSize = 1024;
-        const byteArrays = [];
-
-        for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
-          const slice = byteCharacters.slice(offset, offset + sliceSize);
-          const byteNumbers = new Array(slice.length);
-          for (let i = 0; i < slice.length; i++) {
-            byteNumbers[i] = slice.charCodeAt(i);
-          }
-          byteArrays.push(new Uint8Array(byteNumbers));
-        }
-
-        const blob = new Blob(byteArrays, {
-          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        });
-
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.style.display = "none";
-        a.href = url;
-        a.download = res.filename;
-        document.body.appendChild(a);
-        a.click();
-
-        setTimeout(() => {
-          window.URL.revokeObjectURL(url);
-          document.body.removeChild(a);
-        }, 200);
-
-        toast.success(`Exported ${res.totalExported} records to Excel!`, { id: "table-export" });
-      } else {
-        toast.error(res.error || "Failed to export records", { id: "table-export" });
-      }
-    } catch (err: any) {
-      toast.error(err.message || "Error exporting records", { id: "table-export" });
-    } finally {
-      setIsExporting(false);
-    }
-  };
+  }, [departmentFilter, endDate, page, startDate, statusFilter]);
 
   useEffect(() => {
-    fetchLogs();
-  }, [page, statusFilter, departmentFilter, startDate, endDate]);
+    // Load records whenever the applied filters change.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchLogs();
+  }, [fetchLogs]);
 
   const getStatusBadge = (status: string, workMinutes?: number, clockOut?: string | null) => {
     switch (status) {
@@ -189,84 +147,209 @@ export function AttendanceTable({ userRole, userDepartment }: AttendanceTablePro
     return `${hours}h ${minutes}m`;
   };
 
+  const activeFilterCount = [
+    statusFilter !== "ALL",
+    departmentFilter !== "ALL",
+    Boolean(startDate || endDate),
+  ].filter(Boolean).length;
+
+  const clearFilters = () => {
+    setPage(1);
+    setStatusFilter("ALL");
+    setDepartmentFilter("ALL");
+    setStartDate("");
+    setEndDate("");
+  };
+
+  const selectedDateRange: DateRange | undefined = startDate || endDate
+    ? {
+        from: startDate ? parseISO(startDate) : undefined,
+        to: endDate ? parseISO(endDate) : undefined,
+      }
+    : undefined;
+  const dateRangeLabel = startDate || endDate
+    ? `${startDate ? format(parseISO(startDate), "MMM d, yyyy") : "Start date"} – ${endDate ? format(parseISO(endDate), "MMM d, yyyy") : "End date"}`
+    : "Choose date range";
+
   return (
     <div className="space-y-6 pb-24 md:pb-6">
       {/* Search and Filters Header */}
       <Card className="border border-border/60 bg-card shadow-md rounded-3xl p-4 md:p-6">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2 w-full md:w-auto">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
             <FilterIcon className="w-4 h-4 text-primary" />
-            <h2 className="text-lg font-bold">Attendance History</h2>
-            <Badge variant="secondary" className="ml-2 text-xs">{totalCount} Logs</Badge>
+            <h2 className="text-base font-semibold sm:text-lg">Attendance History</h2>
+            <Badge variant="secondary" className="text-xs">{totalCount} Logs</Badge>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-            <div className="w-full sm:w-36">
-              <Select value={statusFilter} onValueChange={(val) => { setPage(1); setStatusFilter(val); }}>
-                <SelectTrigger className="rounded-xl text-xs">
-                  <SelectValue placeholder="All Statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">All Statuses</SelectItem>
-                  <SelectItem value="PRESENT">Present</SelectItem>
-                  <SelectItem value="LATE">Late</SelectItem>
-                  <SelectItem value="HALF_DAY">Half Day</SelectItem>
-                  <SelectItem value="ABSENT">Absent</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="w-full sm:w-40">
-              <Select value={departmentFilter} onValueChange={(val) => { setPage(1); setDepartmentFilter(val); }}>
-                <SelectTrigger className="rounded-xl text-xs">
-                  <SelectValue placeholder="All Departments" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">All Departments</SelectItem>
-                  <SelectItem value="SALES">Sales</SelectItem>
-                  <SelectItem value="DEVELOPMENT">Development</SelectItem>
-                  <SelectItem value="DESIGN">Design</SelectItem>
-                  <SelectItem value="SEO">SEO</SelectItem>
-                  <SelectItem value="MARKETING">Marketing</SelectItem>
-                  <SelectItem value="HR">HR</SelectItem>
-                  <SelectItem value="OPERATIONS">Operations</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <Input
-              type="date"
-              value={startDate}
-              onChange={(e) => { setPage(1); setStartDate(e.target.value); }}
-              className="w-full sm:w-36 rounded-xl text-xs"
-              placeholder="From Date"
-            />
-            <Input
-              type="date"
-              value={endDate}
-              onChange={(e) => { setPage(1); setEndDate(e.target.value); }}
-              className="w-full sm:w-36 rounded-xl text-xs"
-              placeholder="To Date"
-            />
-
-            {isAdmin && (
-              <ManualAttendanceEntryDialog onSuccess={fetchLogs} />
-            )}
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-label={filtersOpen ? "Hide attendance filters" : "Show attendance filters"}
+              aria-expanded={filtersOpen}
+              aria-controls="attendance-history-filters"
+              onClick={() => setFiltersOpen((open) => !open)}
+              className="rounded-xl"
+            >
+              <FilterIcon aria-hidden="true" className="size-4 sm:mr-1.5" />
+              <span className="hidden sm:inline">Filters</span>
+              {activeFilterCount > 0 && (
+                <Badge variant="secondary" className="ml-1 size-5 justify-center rounded-full p-0 text-[10px]">
+                  {activeFilterCount}
+                </Badge>
+              )}
+              <ChevronDownIcon aria-hidden="true" className={`ml-1 size-3.5 transition-transform ${filtersOpen ? "rotate-180" : ""}`} />
+            </Button>
 
             {isAdmin && (
               <Button
-                variant="outline"
+                type="button"
                 size="sm"
-                onClick={handleExport}
-                disabled={isExporting || loading || totalCount === 0}
-                className="rounded-xl text-xs font-semibold text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 shadow-sm"
+                onClick={() => setManualEntryOpen(true)}
+                className="hidden rounded-xl text-xs font-semibold shadow-sm sm:inline-flex"
               >
-                <FileSpreadsheetIcon className="w-3.5 h-3.5 mr-1 text-emerald-600" />
-                {isExporting ? "Exporting..." : "Excel"}
+                <PlusIcon aria-hidden="true" className="mr-1 size-3.5" />
+                Add entry
               </Button>
+            )}
+            {isAdmin && (
+              <div className="sm:hidden">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button type="button" variant="outline" size="icon" aria-label="Attendance actions" className="size-9 rounded-xl">
+                      <EllipsisIcon aria-hidden="true" className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem onSelect={() => setManualEntryOpen(true)}>
+                      <PlusIcon aria-hidden="true" />
+                      Add attendance entry
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )}
+            {isAdmin && (
+              <ManualAttendanceEntryDialog
+                hideTrigger
+                open={manualEntryOpen}
+                onOpenChange={setManualEntryOpen}
+                onSuccess={fetchLogs}
+              />
             )}
           </div>
         </div>
+
+        {filtersOpen && (
+          <div id="attendance-history-filters" className="mt-4 border-t border-border/60 pt-4">
+            <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="min-w-0">
+                <label className="mb-1.5 block text-xs font-medium text-muted-foreground" htmlFor="attendance-status-filter">
+                  Status
+                </label>
+                <Select value={statusFilter} onValueChange={(val) => { setPage(1); setStatusFilter(val); }}>
+                  <SelectTrigger id="attendance-status-filter" className="w-full rounded-xl">
+                    <SelectValue placeholder="All statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All statuses</SelectItem>
+                    <SelectItem value="PRESENT">Present</SelectItem>
+                    <SelectItem value="LATE">Late</SelectItem>
+                    <SelectItem value="HALF_DAY">Half day</SelectItem>
+                    <SelectItem value="ABSENT">Absent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="min-w-0">
+                <label className="mb-1.5 block text-xs font-medium text-muted-foreground" htmlFor="attendance-department-filter">
+                  Department
+                </label>
+                <Select value={departmentFilter} onValueChange={(val) => { setPage(1); setDepartmentFilter(val); }}>
+                  <SelectTrigger id="attendance-department-filter" className="w-full rounded-xl">
+                    <SelectValue placeholder="All departments" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All departments</SelectItem>
+                    <SelectItem value="SALES">Sales</SelectItem>
+                    <SelectItem value="DEVELOPMENT">Development</SelectItem>
+                    <SelectItem value="DESIGN">Design</SelectItem>
+                    <SelectItem value="SEO">SEO</SelectItem>
+                    <SelectItem value="MARKETING">Marketing</SelectItem>
+                    <SelectItem value="HR">HR</SelectItem>
+                    <SelectItem value="OPERATIONS">Operations</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="min-w-0">
+                <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Date range</span>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button type="button" variant="outline" className="w-full justify-start gap-2 rounded-xl text-left font-normal">
+                      <CalendarDaysIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{dateRangeLabel}</span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-[min(20rem,calc(100vw-2rem))] gap-3">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">Filter by date range</p>
+                      <p className="text-xs text-muted-foreground">Choose a start and end date.</p>
+                    </div>
+                    <DayPicker
+                      mode="range"
+                      selected={selectedDateRange}
+                      defaultMonth={selectedDateRange?.from}
+                      onSelect={(range) => {
+                        setPage(1);
+                        setStartDate(range?.from ? format(range.from, "yyyy-MM-dd") : "");
+                        setEndDate(range?.to ? format(range.to, "yyyy-MM-dd") : "");
+                      }}
+                      numberOfMonths={1}
+                      className="w-full"
+                      classNames={{
+                        months: "w-full",
+                        month: "w-full space-y-3",
+                        month_caption: "flex h-9 items-center justify-center text-sm font-medium",
+                        nav: "absolute inset-x-1 top-1 flex items-center justify-between",
+                        button_previous: "inline-flex size-8 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        button_next: "inline-flex size-8 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        month_grid: "w-full border-collapse",
+                        weekdays: "flex",
+                        weekday: "flex-1 py-2 text-center text-xs font-normal text-muted-foreground",
+                        week: "mt-1 flex w-full",
+                        day: "relative size-9 flex-1 p-0 text-center text-sm",
+                        day_button: "inline-flex size-9 items-center justify-center rounded-md text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        range_start: "rounded-l-md bg-primary text-primary-foreground",
+                        range_middle: "rounded-none bg-primary/10 text-foreground",
+                        range_end: "rounded-r-md bg-primary text-primary-foreground",
+                        today: "font-semibold text-primary",
+                        outside: "text-muted-foreground/50",
+                        disabled: "pointer-events-none opacity-40",
+                        hidden: "invisible",
+                      }}
+                    />
+                    {(startDate || endDate) && (
+                      <Button type="button" variant="ghost" size="sm" onClick={() => { setPage(1); setStartDate(""); setEndDate(""); }} className="w-full">
+                        Clear date range
+                      </Button>
+                    )}
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+
+            {activeFilterCount > 0 && (
+              <div className="mt-3 flex justify-end">
+                <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
+                  Clear all filters
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
       </Card>
 
       {/* Desktop Table View */}
@@ -319,11 +402,7 @@ export function AttendanceTable({ userRole, userDepartment }: AttendanceTablePro
                     </div>
                   </TableCell>
                   <TableCell className="text-xs">
-                    {new Date(record.date).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
+                    {formatInIST(new Date(record.date), "MMM d, yyyy")}
                   </TableCell>
                   <TableCell className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                     {formatTimeInIST(new Date(record.clockIn))}
@@ -398,7 +477,7 @@ export function AttendanceTable({ userRole, userDepartment }: AttendanceTablePro
         ) : (
           logs.map((record) => (
             <Card key={record.id} className="border border-border/60 bg-card shadow-md rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex min-w-0 items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5">
                   <div className="w-9 h-9 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold text-xs">
                     {record.user?.name ? record.user.name[0].toUpperCase() : "U"}
@@ -406,11 +485,38 @@ export function AttendanceTable({ userRole, userDepartment }: AttendanceTablePro
                   <div>
                     <div className="text-sm font-bold text-foreground">{record.user?.name || "Employee"}</div>
                     <div className="text-[11px] text-muted-foreground">
-                      {new Date(record.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      {formatInIST(new Date(record.date), "MMM d, yyyy")}
                     </div>
                   </div>
                 </div>
-                {getStatusBadge(record.status, record.workMinutes, record.clockOut)}
+                <div className="flex shrink-0 items-center gap-1">
+                  {getStatusBadge(record.status, record.workMinutes, record.clockOut)}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`More actions for ${record.user?.name || "employee"} attendance`}
+                        className="size-8 rounded-lg"
+                      >
+                        <EllipsisIcon aria-hidden="true" className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      {isAdmin && (
+                        <DropdownMenuItem onSelect={() => setSelectedRecordForReg(record)}>
+                          <FileEditIcon aria-hidden="true" />
+                          Edit attendance
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onSelect={() => setSelectedRecordForAudit(record.id)}>
+                        <HistoryIcon aria-hidden="true" />
+                        View audit trail
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-xs bg-muted/30 p-2.5 rounded-xl">

@@ -28,6 +28,7 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import { type ReceivableAgeFilter } from "@/lib/reports/report-catalog";
+import { formatInIST, getAttendanceDate } from "@/lib/date";
 import {
   Tooltip,
   TooltipContent,
@@ -121,7 +122,11 @@ function formatCurrency(amount: number) {
 }
 
 function formatDate(date: string) {
-  return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short" }).format(new Date(date));
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+    timeZone: "Asia/Kolkata",
+  }).format(new Date(date));
 }
 
 function formatPercent(value: number | null) {
@@ -136,7 +141,7 @@ function sourceLabel(source: string | null) {
 }
 
 function isOverdue(date: string | null) {
-  return date !== null && new Date(date).getTime() < new Date().setHours(0, 0, 0, 0);
+  return date !== null && formatInIST(new Date(date), "yyyy-MM-dd") < getAttendanceDate();
 }
 
 function formatTooltipCurrency(amount: number) {
@@ -215,8 +220,8 @@ export function DashboardOverview({
     const monthEnd = Date.UTC(year, monthIndex + 1, 1);
     const chartStart = new Date(`${data.chartStartDate}T00:00:00.000Z`).getTime();
     const chartEnd = new Date(`${data.chartEndDate}T00:00:00.000Z`).getTime() + 86400000;
-    const rangeStart = new Date(Math.max(monthStart, chartStart)).toISOString().slice(0, 10);
-    const rangeEnd = new Date(Math.min(monthEnd, chartEnd) - 86400000).toISOString().slice(0, 10);
+    const rangeStart = formatInIST(new Date(Math.max(monthStart, chartStart)), "yyyy-MM-dd");
+    const rangeEnd = formatInIST(new Date(Math.min(monthEnd, chartEnd) - 86400000), "yyyy-MM-dd");
     const params = new URLSearchParams({
       report: type === "income"
         ? "sales-by-customer"
@@ -346,8 +351,10 @@ export function DashboardOverview({
           ].map((metric) => (
             <Card key={metric.label} className="min-w-0 shadow-none">
               <CardContent className="px-3 py-3 sm:px-4 sm:py-4">
-                <div className="flex items-center gap-1">
-                  <p className={`truncate text-[10px] font-medium uppercase tracking-wide sm:text-xs ${metric.tone}`}>{metric.label}</p>
+                <div className="flex min-h-6 min-w-0 items-start gap-1 sm:min-h-0 sm:items-center">
+                  <p className={`min-w-0 flex-1 text-[10px] font-medium leading-3 sm:truncate sm:text-xs sm:uppercase sm:leading-normal sm:tracking-wide ${metric.tone}`}>
+                    {metric.label}
+                  </p>
                   <SectionTooltip
                     label={metric.label.toLowerCase()}
                     description={metric.label === "Total sales"

@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Department, WorkMode } from "@/app/generated/prisma/enums";
+import { AttendanceStatus, Department, WorkMode } from "@/app/generated/prisma/enums";
+import { parseISO } from "date-fns";
 import {
   getDetailedAttendanceReportAction,
   getAttendanceEmployeesListAction,
   exportAttendanceToExcelAction,
 } from "@/actions/attendance";
-import { formatTimeInIST, formatDateTimeInIST, formatInIST } from "@/lib/date";
+import { formatTimeInIST, formatDateTimeInIST, formatInIST, getAttendanceDate } from "@/lib/date";
 import {
   FileSpreadsheetIcon,
   FilterIcon,
@@ -38,6 +39,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { MultiSelect, type MultiSelectOption } from "@/components/ui/multi-select";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 
 const attendanceStatusStyles: Record<string, string> = {
   PRESENT: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
@@ -55,13 +58,28 @@ function getAttendanceStatusLabel(record: {
   lateMinutes?: number;
   leaveType?: string;
   holidayName?: string;
+  holidayIsHalfDay?: boolean;
+  leaveIsHalfDay?: boolean;
+  leaveHalfDayPeriod?: "MORNING" | "AFTERNOON" | null;
   leaveRequestStatus?: string;
 }) {
+  if (record.holidayName && record.holidayIsHalfDay) {
+    const leaveDetail = record.leaveIsHalfDay
+      ? ` · ${record.leaveHalfDayPeriod === "AFTERNOON" ? "afternoon" : "morning"} leave`
+      : "";
+    return `${String(record.status).replaceAll("_", " ")} · half-day holiday${leaveDetail}`;
+  }
   if (record.holidayName && record.status !== "HOLIDAY") {
     return `${String(record.status).replaceAll("_", " ")} · holiday`;
   }
   if (record.leaveRequestStatus === "APPROVED" && record.status !== "ON_LEAVE") {
+    if (record.leaveIsHalfDay) {
+      return `${String(record.status).replaceAll("_", " ")} · approved ${record.leaveHalfDayPeriod === "AFTERNOON" ? "afternoon" : "morning"} half-day leave`;
+    }
     return `${String(record.status).replaceAll("_", " ")} · approved leave`;
+  }
+  if (record.status === "ON_LEAVE" && record.leaveIsHalfDay) {
+    return `Half-day leave · ${record.leaveHalfDayPeriod === "AFTERNOON" ? "afternoon" : "morning"}`;
   }
   if (record.status === "LATE") return `Late · ${record.lateMinutes}m`;
   if (record.status === "ON_LEAVE") return "ON LEAVE";
@@ -90,24 +108,26 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
   const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isExporting, startExportTransition] = useTransition();
+  const [isFiltering, startFilterTransition] = useTransition();
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Filter States
   const [page, setPage] = useState(1);
   const [datePreset, setDatePreset] = useState<string>("THIS_MONTH");
   const [startDate, setStartDate] = useState<string>(() => {
-    const now = new Date();
+    const now = parseISO(getAttendanceDate());
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
     return formatLocalDateInput(firstDay);
   });
   const [endDate, setEndDate] = useState<string>(() => {
-    return formatLocalDateInput(new Date());
+    return getAttendanceDate();
   });
 
-  const [selectedDept, setSelectedDept] = useState<string>("ALL");
-  const [selectedEmployee, setSelectedEmployee] = useState<string>("ALL");
-  const [selectedStatus, setSelectedStatus] = useState<string>("ALL");
-  const [selectedWorkMode, setSelectedWorkMode] = useState<string>("ALL");
+  const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
+  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
+  const [selectedWorkModes, setSelectedWorkModes] = useState<string[]>([]);
 
   // Advanced toggles
   const [onlyLate, setOnlyLate] = useState(false);
@@ -153,7 +173,7 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
   // Quick Preset Date handler
   const handleDatePresetChange = (preset: string) => {
     setDatePreset(preset);
-    const now = new Date();
+    const now = parseISO(getAttendanceDate());
     let s = "";
     let e = formatLocalDateInput(now);
 
@@ -169,9 +189,9 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
       const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Monday
       const monday = new Date(now.setDate(diff));
       s = formatLocalDateInput(monday);
-      e = formatLocalDateInput(new Date());
+      e = getAttendanceDate();
     } else if (preset === "LAST_WEEK") {
-      const prevMonday = new Date();
+      const prevMonday = parseISO(getAttendanceDate());
       prevMonday.setDate(prevMonday.getDate() - ((prevMonday.getDay() + 6) % 7) - 7);
       const prevSunday = new Date(prevMonday);
       prevSunday.setDate(prevSunday.getDate() + 6);
@@ -180,7 +200,7 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
     } else if (preset === "THIS_MONTH") {
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
       s = formatLocalDateInput(firstDay);
-      e = formatLocalDateInput(new Date());
+      e = getAttendanceDate();
     } else if (preset === "LAST_MONTH") {
       const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
@@ -190,7 +210,7 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
       const quarter = Math.floor(now.getMonth() / 3);
       const firstDay = new Date(now.getFullYear(), quarter * 3, 1);
       s = formatLocalDateInput(firstDay);
-      e = formatLocalDateInput(new Date());
+      e = getAttendanceDate();
     }
 
     if (preset !== "CUSTOM") {
@@ -205,18 +225,10 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
     return {
       startDate: startDate || undefined,
       endDate: endDate || undefined,
-      department: selectedDept !== "ALL" ? (selectedDept as Department) : undefined,
-      userId: selectedEmployee !== "ALL" ? selectedEmployee : undefined,
-      status: selectedStatus !== "ALL" ? selectedStatus as
-        | "PRESENT"
-        | "LATE"
-        | "HALF_DAY"
-        | "ABSENT"
-        | "ON_LEAVE"
-        | "HOLIDAY"
-        | "WEEKEND"
-        | "AWAITING_ATTENDANCE" : undefined,
-      workMode: selectedWorkMode !== "ALL" ? (selectedWorkMode as WorkMode) : undefined,
+      department: selectedDepartments.length ? selectedDepartments as Department[] : undefined,
+      userId: selectedEmployees.length ? selectedEmployees : undefined,
+      status: selectedStatuses.length ? selectedStatuses as (AttendanceStatus | "HOLIDAY" | "WEEKEND" | "AWAITING_ATTENDANCE")[] : undefined,
+      workMode: selectedWorkModes.length ? selectedWorkModes as WorkMode[] : undefined,
       onlyLate: onlyLate || undefined,
       minLateMinutes: minLateMins > 0 ? minLateMins : undefined,
       onlyEarlyLeave: onlyEarlyLeave || undefined,
@@ -257,15 +269,17 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
   };
 
   useEffect(() => {
-    fetchReportData();
+    startFilterTransition(() => {
+      fetchReportData();
+    });
   }, [
     page,
     startDate,
     endDate,
-    selectedDept,
-    selectedEmployee,
-    selectedStatus,
-    selectedWorkMode,
+    selectedDepartments,
+    selectedEmployees,
+    selectedStatuses,
+    selectedWorkModes,
     onlyLate,
     minLateMins,
     onlyEarlyLeave,
@@ -333,10 +347,10 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
     setStartDate(formatLocalDateInput(firstDay));
     setEndDate(formatLocalDateInput(now));
-    setSelectedDept("ALL");
-    setSelectedEmployee("ALL");
-    setSelectedStatus("ALL");
-    setSelectedWorkMode("ALL");
+    setSelectedDepartments([]);
+    setSelectedEmployees([]);
+    setSelectedStatuses([]);
+    setSelectedWorkModes([]);
     setOnlyLate(false);
     setMinLateMins(0);
     setOnlyEarlyLeave(false);
@@ -360,9 +374,50 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
     onlyRegularized,
     onlyManuallyEdited,
     geofenceFilter !== "ALL",
-    selectedWorkMode !== "ALL",
-    selectedStatus !== "ALL",
+    selectedWorkModes.length > 0,
+    selectedStatuses.length > 0,
   ].filter(Boolean).length;
+
+  const activeFilterCount =
+    selectedDepartments.length +
+    selectedEmployees.length +
+    selectedStatuses.length +
+    selectedWorkModes.length +
+    [
+      onlyLate,
+      minLateMins > 0,
+      onlyEarlyLeave,
+      onlyOvertime,
+      onlyExcessiveBreaks,
+      onlyAutoCheckedOut,
+      onlyRegularized,
+      onlyManuallyEdited,
+      geofenceFilter !== "ALL",
+    ].filter(Boolean).length +
+    (datePreset !== "THIS_MONTH" ? 1 : 0);
+
+  const departmentOptions: MultiSelectOption[] = Object.values(Department).map((value) => ({
+    value,
+    label: value.replaceAll("_", " "),
+  }));
+  const employeeOptions: MultiSelectOption[] = employees.map((employee) => ({
+    value: employee.id,
+    label: `${employee.name}${employee.employeeId ? ` (${employee.employeeId})` : ""}`,
+    description: employee.department?.replaceAll("_", " "),
+  }));
+  const statusOptions: MultiSelectOption[] = [...new Set([
+    ...Object.values(AttendanceStatus),
+    "HOLIDAY",
+    "WEEKEND",
+    "AWAITING_ATTENDANCE",
+  ])].map((value) => ({
+    value,
+    label: value.replaceAll("_", " "),
+  }));
+  const workModeOptions: MultiSelectOption[] = Object.values(WorkMode).map((value) => ({
+    value,
+    label: value.replaceAll("_", " "),
+  }));
 
   const summary = reportData.summary;
 
@@ -387,7 +442,7 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
             variant="outline"
             size="sm"
             onClick={fetchReportData}
-            disabled={loading}
+            disabled={loading || isFiltering}
             className="rounded-2xl text-xs font-semibold shadow-sm"
           >
             <RefreshCwIcon className={cn("w-3.5 h-3.5 mr-1.5", loading && "animate-spin")} />
@@ -407,6 +462,28 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
 
       {/* 2. PRIMARY FILTER BAR */}
       <Card className="border border-border/70 rounded-3xl shadow-sm p-4 md:p-5 space-y-4">
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant={filtersOpen ? "secondary" : "outline"}
+            size="icon"
+            aria-label={filtersOpen ? "Hide report filters" : "Show report filters"}
+            aria-expanded={filtersOpen}
+            title={filtersOpen ? "Hide filters" : "Show filters"}
+            onClick={() => setFiltersOpen((open) => !open)}
+            className="relative size-9 shrink-0 rounded-xl"
+          >
+            <FilterIcon className="size-4" aria-hidden="true" />
+            {activeFilterCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                {activeFilterCount > 9 ? "9+" : activeFilterCount}
+              </span>
+            )}
+          </Button>
+        </div>
+
+        {filtersOpen && (
+        <div className="space-y-4 border-t border-border/50 pt-4">
         {/* Date Presets Pill Row */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
           {[
@@ -437,83 +514,51 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
 
         {/* Filters Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-1">
-          {/* Custom Date Range */}
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Start Date</label>
-            <Input
-              type="date"
-              value={startDate}
-              onChange={(e) => {
-                setStartDate(e.target.value);
-                setDatePreset("CUSTOM");
+          <DateRangePicker
+            startDate={startDate}
+            endDate={endDate}
+            onChange={(range) => {
+              setStartDate(range?.from ? formatLocalDateInput(range.from) : "");
+              setEndDate(range?.to ? formatLocalDateInput(range.to) : "");
+              setDatePreset("CUSTOM");
+              setPage(1);
+            }}
+            onClear={() => {
+              setStartDate("");
+              setEndDate("");
+              setDatePreset("CUSTOM");
+              setPage(1);
+            }}
+          />
+
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground">Departments</label>
+            <MultiSelect
+              label="Departments"
+              placeholder="All departments"
+              searchPlaceholder="Search departments"
+              options={departmentOptions}
+              value={selectedDepartments}
+              onValueChange={(values) => {
+                setSelectedDepartments(values);
                 setPage(1);
               }}
-              className="rounded-xl text-xs h-9"
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">End Date</label>
-            <Input
-              type="date"
-              value={endDate}
-              onChange={(e) => {
-                setEndDate(e.target.value);
-                setDatePreset("CUSTOM");
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground">Employees</label>
+            <MultiSelect
+              label="Employees"
+              placeholder="All employees"
+              searchPlaceholder="Search employees"
+              options={employeeOptions}
+              value={selectedEmployees}
+              onValueChange={(values) => {
+                setSelectedEmployees(values);
                 setPage(1);
               }}
-              className="rounded-xl text-xs h-9"
             />
-          </div>
-
-          {/* Department Filter */}
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Department</label>
-            <Select
-              value={selectedDept}
-              onValueChange={(val) => {
-                setSelectedDept(val);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="rounded-xl text-xs h-9">
-                <SelectValue placeholder="All Departments" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Departments</SelectItem>
-                <SelectItem value="SALES">Sales</SelectItem>
-                <SelectItem value="DEVELOPMENT">Development</SelectItem>
-                <SelectItem value="DESIGN">Design</SelectItem>
-                <SelectItem value="SEO">SEO</SelectItem>
-                <SelectItem value="MARKETING">Marketing</SelectItem>
-                <SelectItem value="HR">HR</SelectItem>
-                <SelectItem value="OPERATIONS">Operations</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Employee Filter */}
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Employee</label>
-            <Select
-              value={selectedEmployee}
-              onValueChange={(val) => {
-                setSelectedEmployee(val);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="rounded-xl text-xs h-9">
-                <SelectValue placeholder="All Employees" />
-              </SelectTrigger>
-              <SelectContent className="max-h-60">
-                <SelectItem value="ALL">All Employees</SelectItem>
-                {employees.map((emp) => (
-                  <SelectItem key={emp.id} value={emp.id}>
-                    {emp.name} {emp.employeeId ? `(${emp.employeeId})` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
         </div>
 
@@ -536,7 +581,7 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
               )}
             </Button>
 
-            {activeAdvancedCount > 0 && (
+            {activeFilterCount > 0 && (
               <Button
                 type="button"
                 variant="ghost"
@@ -563,50 +608,32 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
               {/* Status Select */}
               <div className="space-y-1">
                 <label className="font-bold text-muted-foreground">Attendance Status</label>
-                <Select
-                  value={selectedStatus}
-                  onValueChange={(val) => {
-                    setSelectedStatus(val);
+                <MultiSelect
+                  label="Attendance status"
+                  placeholder="All statuses"
+                  searchPlaceholder="Search statuses"
+                  options={statusOptions}
+                  value={selectedStatuses}
+                  onValueChange={(values) => {
+                    setSelectedStatuses(values);
                     setPage(1);
                   }}
-                >
-                  <SelectTrigger className="rounded-xl text-xs h-8 bg-background">
-                    <SelectValue placeholder="All Statuses" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">All Statuses</SelectItem>
-                    <SelectItem value="PRESENT">Present</SelectItem>
-                    <SelectItem value="LATE">Late</SelectItem>
-                    <SelectItem value="HALF_DAY">Half Day</SelectItem>
-                    <SelectItem value="ABSENT">Absent</SelectItem>
-                    <SelectItem value="ON_LEAVE">Approved leave</SelectItem>
-                    <SelectItem value="HOLIDAY">Holiday</SelectItem>
-                    <SelectItem value="WEEKEND">Weekend</SelectItem>
-                    <SelectItem value="AWAITING_ATTENDANCE">Awaiting attendance</SelectItem>
-                  </SelectContent>
-                </Select>
+                />
               </div>
 
               {/* Work Mode */}
               <div className="space-y-1">
                 <label className="font-bold text-muted-foreground">Work Mode</label>
-                <Select
-                  value={selectedWorkMode}
-                  onValueChange={(val) => {
-                    setSelectedWorkMode(val);
+                <MultiSelect
+                  label="Work mode"
+                  placeholder="All work modes"
+                  options={workModeOptions}
+                  value={selectedWorkModes}
+                  onValueChange={(values) => {
+                    setSelectedWorkModes(values);
                     setPage(1);
                   }}
-                >
-                  <SelectTrigger className="rounded-xl text-xs h-8 bg-background">
-                    <SelectValue placeholder="All Work Modes" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">All Work Modes</SelectItem>
-                    <SelectItem value="OFFICE">Office</SelectItem>
-                    <SelectItem value="REMOTE">Remote</SelectItem>
-                    <SelectItem value="HYBRID">Hybrid</SelectItem>
-                  </SelectContent>
-                </Select>
+                />
               </div>
 
               {/* Geofence Compliance */}
@@ -729,6 +756,8 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
             </div>
           </div>
         )}
+        </div>
+        )}
       </Card>
 
       {/* 3. KPI SUMMARY CARDS */}
@@ -831,7 +860,7 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
               : rec.clockOut
               ? formatInIST(new Date(rec.clockOut), "hh:mm a")
               : rec.isAutoCheckedOut
-                ? "Auto-Closed"
+                ? "Not clocked out"
                 : "Active";
             const grossMins = rec.clockIn && rec.clockOut
               ? Math.max(0, Math.round((new Date(rec.clockOut).getTime() - new Date(rec.clockIn).getTime()) / (1000 * 60)))
@@ -957,7 +986,7 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
                     : rec.isSynthetic
                     ? "—"
                     : rec.isAutoCheckedOut
-                    ? "Auto-Closed"
+                    ? "Not clocked out"
                     : "Active";
 
                   const grossMins =

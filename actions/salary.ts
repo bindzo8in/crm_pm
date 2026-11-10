@@ -3,7 +3,8 @@
 import prisma from "@/lib/prisma";
 import { calculateMonthlySalary, countWorkingDays } from "@/lib/salary-calculation";
 import { auth } from "@/lib/auth";
-import { UserRole } from "@/app/generated/prisma/enums";
+import { Department, UserRole } from "@/app/generated/prisma/enums";
+import type { Prisma } from "@/app/generated/prisma/client";
 import { headers } from "next/headers";
 import { env } from "@/lib/env";
 import {
@@ -18,10 +19,16 @@ import {
   salaryComponentsSchema,
   salaryPayrollInclusionSchema,
   salarySlipsQuerySchema,
+  salaryRosterQuerySchema,
+  salaryEmployeeSearchSchema,
 } from "@/lib/schemas/salary-schema";
 import { revalidatePath } from "next/cache";
 import { isSalaryPinSessionValid } from "@/lib/salary-pin";
 import { sendSalarySlipPdfEmail } from "@/lib/email";
+import {
+  hasManualSalaryAdjustments,
+  requiresSalarySlipReview,
+} from "@/lib/salary-review-policy";
 
 type SalaryActor = NonNullable<
   Awaited<ReturnType<typeof auth.api.getSession>>
@@ -61,6 +68,22 @@ function hasSalaryCronAuthorization(requestHeaders: Headers) {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unexpected error.";
+}
+
+function getEmployeeSearchConditions(search: string): Prisma.UserWhereInput[] {
+  const departmentMatches = Object.values(Department).filter((department) =>
+    department.toLowerCase().includes(search.toLowerCase()),
+  );
+  return [
+    { name: { contains: search, mode: "insensitive" } },
+    { email: { contains: search, mode: "insensitive" } },
+    ...(departmentMatches.length > 0
+      ? [
+          { department: { in: departmentMatches } },
+          { additionalDepartments: { hasSome: departmentMatches } },
+        ]
+      : []),
+  ];
 }
 
 async function emailAutomaticallyGeneratedSalarySlip(slipId: string) {
@@ -566,6 +589,12 @@ export async function autoGenerateMonthlySalarySlipsAction(input: unknown) {
           where: {
             userId_month_year: { userId: user.id, month, year },
           },
+          include: {
+            adjustments: {
+              where: { removedAt: null },
+              select: { id: true },
+            },
+          },
         });
 
         if (
@@ -573,7 +602,8 @@ export async function autoGenerateMonthlySalarySlipsAction(input: unknown) {
           existing.scheduledGeneration &&
           existing.status === "GENERATED" &&
           !existing.approvedAt &&
-          !existing.emailSentAt
+          !existing.emailSentAt &&
+          !hasManualSalaryAdjustments(existing)
         ) {
           await emailAutomaticallyGeneratedSalarySlip(existing.id);
           results.push("emailed");
@@ -649,7 +679,7 @@ export async function getSalarySlipsAction(input: unknown) {
     const { session } = await getAuthenticatedUser();
     const parsed = salarySlipsQuerySchema.safeParse(input);
     if (!parsed.success) {
-      return { success: false, error: "Invalid salary slip filters.", details: parsed.error.issues };
+      return { success: false as const, error: "Invalid salary slip filters.", details: parsed.error.issues };
     }
     const filters = parsed.data;
     const isSelf = !filters.userId || session.user.id === filters.userId;
@@ -659,7 +689,7 @@ export async function getSalarySlipsAction(input: unknown) {
       (session.user.role === UserRole.STAFF && session.user.department === 'HR');
 
     if (!isSelf && !isHrOrAdmin) {
-      return { success: false, error: "Unauthorized access to salary slips." };
+      return { success: false as const, error: "Unauthorized access to salary slips." };
     }
     if (
       !(await canPerformSalaryPermission(
@@ -667,26 +697,45 @@ export async function getSalarySlipsAction(input: unknown) {
         isHrOrAdmin ? "read-all" : "read-own",
       ))
     ) {
-      return { success: false, error: "Unauthorized access to salary slips." };
+      return { success: false as const, error: "Unauthorized access to salary slips." };
     }
     if (isHrOrAdmin && !(await isSalaryPinSessionValid(session.user.id))) {
-      return { success: false, error: "Unlock Salary Management with your PIN to continue." };
+      return { success: false as const, error: "Unlock Salary Management with your PIN to continue." };
     }
 
-    const whereClause = {
+    const statusClause: Prisma.SalarySlipWhereInput =
+      filters.status === "APPROVED"
+          ? { status: "GENERATED", approvedAt: { not: null } }
+          : filters.status === "GENERATED"
+            ? { status: "GENERATED", approvedAt: null }
+            : filters.status === "ALL"
+              ? {}
+              : { status: filters.status };
+    const whereClause: Prisma.SalarySlipWhereInput = {
       ...(isHrOrAdmin
-        ? filters.userId
-          ? { userId: filters.userId }
+          ? filters.userId
+            ? { userId: filters.userId }
           : {}
-        : { userId: session.user.id }),
+          : { userId: session.user.id }),
       ...(filters.month ? { month: filters.month } : {}),
       ...(filters.year ? { year: filters.year } : {}),
+      ...(filters.search
+          ? {
+              user: {
+                is: {
+                  OR: getEmployeeSearchConditions(filters.search),
+                },
+              },
+            }
+          : {}),
+      ...statusClause,
     };
 
-    const slips = await prisma.salarySlip.findMany({
+    const [slips, totalCount, ytdSalary] = await Promise.all([
+      prisma.salarySlip.findMany({
       where: whereClause,
       include: {
-        user: { select: { name: true, email: true, department: true } },
+          user: { select: { name: true, email: true, department: true } },
         adjustments: {
           where: { removedAt: null },
           select: { id: true, type: true, description: true, amount: true },
@@ -695,14 +744,286 @@ export async function getSalarySlipsAction(input: unknown) {
       },
       orderBy: [
         { year: 'desc' },
-        { month: 'desc' }
-      ]
-    });
+        { month: 'desc' },
+        { user: { name: "asc" } },
+        { id: "asc" },
+      ],
+      skip: filters.page * filters.pageSize,
+      take: filters.pageSize,
+      }),
+      prisma.salarySlip.count({ where: whereClause }),
+      isHrOrAdmin
+        ? Promise.resolve(null)
+        : prisma.salarySlip.aggregate({
+            where: {
+              userId: session.user.id,
+              year: new Date().getFullYear(),
+              status: "PAID",
+            },
+            _sum: { netSalary: true },
+          }),
+    ]);
 
-    return { success: true, slips: JSON.parse(JSON.stringify(slips)) };
+    return {
+      success: true as const,
+      slips: slips.map((slip) => ({
+        ...slip,
+        basicSalary: slip.basicSalary.toString(),
+        hra: slip.hra.toString(),
+        conveyance: slip.conveyance.toString(),
+        medical: slip.medical.toString(),
+        specialAllowance: slip.specialAllowance.toString(),
+        providentFund: slip.providentFund.toString(),
+        professionalTax: slip.professionalTax.toString(),
+        tds: slip.tds.toString(),
+        medicalReimbursement: slip.medicalReimbursement.toString(),
+        extraEarnings: slip.extraEarnings.toString(),
+        extraDeductions: slip.extraDeductions.toString(),
+        absentDeduction: slip.absentDeduction.toString(),
+        halfDayDeduction: slip.halfDayDeduction.toString(),
+        totalEarnings: slip.totalEarnings.toString(),
+        totalDeductions: slip.totalDeductions.toString(),
+        netSalary: slip.netSalary.toString(),
+        adjustments: slip.adjustments.map((adjustment) => ({
+          ...adjustment,
+          amount: adjustment.amount.toString(),
+        })),
+      })),
+      page: filters.page,
+      pageSize: filters.pageSize,
+      totalCount,
+      totalPages: Math.ceil(totalCount / filters.pageSize),
+      paidYtd: ytdSalary?._sum.netSalary?.toString() ?? "0",
+    };
   } catch (error) {
     console.error("Error fetching salary slips:", error);
-    return { success: false, error: getErrorMessage(error) };
+    return { success: false as const, error: getErrorMessage(error) };
+  }
+}
+
+export async function getSalaryRosterAction(input: unknown) {
+  try {
+    const { session } = await getAuthenticatedUser();
+    const parsed = salaryRosterQuerySchema.safeParse(input);
+    if (!parsed.success) {
+      return { success: false as const, error: "Invalid salary roster filters.", details: parsed.error.issues };
+    }
+
+    const isHrOrAdmin =
+      session.user.role === UserRole.SUPER_ADMIN ||
+      session.user.role === UserRole.ADMIN ||
+      (session.user.role === UserRole.STAFF && session.user.department === "HR");
+    if (
+      !isHrOrAdmin ||
+      !(await canPerformSalaryPermission(session.user, "read-all"))
+    ) {
+      return { success: false as const, error: "Only Admins and HR can access salary structures." };
+    }
+    if (!(await isSalaryPinSessionValid(session.user.id))) {
+      return { success: false as const, error: "Unlock Salary Management with your PIN to continue." };
+    }
+
+    const filters = parsed.data;
+    const where: Prisma.UserWhereInput = {
+      employmentStatus: "ACTIVE",
+      includeInPayroll: filters.view === "included",
+      ...(filters.search
+        ? { OR: getEmployeeSearchConditions(filters.search) }
+        : {}),
+    };
+    const [users, totalCount] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          department: true,
+          employmentStatus: true,
+          includeInPayroll: true,
+          designation: true,
+          salaryStructure: {
+            select: {
+              basicSalary: true,
+              hra: true,
+              conveyance: true,
+              medical: true,
+              specialAllowance: true,
+              customComponents: true,
+            },
+          },
+        },
+        orderBy: [{ name: "asc" }, { id: "asc" }],
+        skip: filters.page * filters.pageSize,
+        take: filters.pageSize,
+      }),
+      prisma.user.count({ where }),
+    ]);
+
+    const employees = users.map(({ salaryStructure, ...employee }) => {
+      let grossSalary: string | null = null;
+      if (salaryStructure) {
+        const parsedComponents = salaryComponentsSchema.safeParse(
+          salaryStructure.customComponents ?? [],
+        );
+        if (!parsedComponents.success) {
+          throw new Error(
+            `Salary structure has invalid custom components for employee ${employee.id}.`,
+          );
+        }
+        const fixedEarnings =
+          Number(salaryStructure.basicSalary) +
+          Number(salaryStructure.hra) +
+          Number(salaryStructure.conveyance) +
+          Number(salaryStructure.medical) +
+          Number(salaryStructure.specialAllowance);
+        const additionalEarnings = parsedComponents.data
+          .filter((component) => component.type === "EARNING")
+          .reduce((total, component) => total + component.amount, 0);
+        grossSalary = (fixedEarnings + additionalEarnings).toString();
+      }
+
+      return {
+        ...employee,
+        department: employee.department ? String(employee.department) : null,
+        hasSalaryStructure: salaryStructure !== null,
+        grossSalary,
+      };
+    });
+
+    return {
+      success: true as const,
+      employees,
+      page: filters.page,
+      pageSize: filters.pageSize,
+      totalCount,
+      totalPages: Math.ceil(totalCount / filters.pageSize),
+    };
+  } catch (error) {
+    console.error("Error fetching salary roster:", error);
+    return { success: false as const, error: getErrorMessage(error) };
+  }
+}
+
+export async function getSalaryManagementSummaryAction() {
+  try {
+    const { session } = await getAuthenticatedUser();
+    const isHrOrAdmin =
+      session.user.role === UserRole.SUPER_ADMIN ||
+      session.user.role === UserRole.ADMIN ||
+      (session.user.role === UserRole.STAFF && session.user.department === "HR");
+    if (
+      !isHrOrAdmin ||
+      !(await canPerformSalaryPermission(session.user, "read-all"))
+    ) {
+      return { success: false as const, error: "Only Admins and HR can access salary summaries." };
+    }
+    if (!(await isSalaryPinSessionValid(session.user.id))) {
+      return { success: false as const, error: "Unlock Salary Management with your PIN to continue." };
+    }
+
+    const [activeCount, includedCount, excludedCount, configuredCount, latestSlip] =
+      await Promise.all([
+        prisma.user.count({ where: { employmentStatus: "ACTIVE" } }),
+        prisma.user.count({
+          where: { employmentStatus: "ACTIVE", includeInPayroll: true },
+        }),
+        prisma.user.count({
+          where: { employmentStatus: "ACTIVE", includeInPayroll: false },
+        }),
+        prisma.user.count({
+          where: {
+            employmentStatus: "ACTIVE",
+            includeInPayroll: true,
+            salaryStructure: { isNot: null },
+          },
+        }),
+        prisma.salarySlip.findFirst({
+          orderBy: [{ year: "desc" }, { month: "desc" }],
+          select: { month: true, year: true },
+        }),
+      ]);
+
+    const period = latestSlip
+      ? await Promise.all([
+          prisma.salarySlip.aggregate({
+            where: { month: latestSlip.month, year: latestSlip.year },
+            _sum: { netSalary: true },
+          }),
+          prisma.salarySlip.count({
+            where: {
+              month: latestSlip.month,
+              year: latestSlip.year,
+              status: "PAID",
+            },
+          }),
+          prisma.salarySlip.count({
+            where: { month: latestSlip.month, year: latestSlip.year },
+          }),
+        ])
+      : null;
+
+    return {
+      success: true as const,
+      summary: {
+        activeCount,
+        includedCount,
+        excludedCount,
+        configuredCount,
+        latestMonth: latestSlip?.month ?? null,
+        latestYear: latestSlip?.year ?? null,
+        monthlyTotal: period?.[0]._sum.netSalary?.toString() ?? "0",
+        paidCount: period?.[1] ?? 0,
+        slipCount: period?.[2] ?? 0,
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching salary management summary:", error);
+    return { success: false as const, error: getErrorMessage(error) };
+  }
+}
+
+export async function searchSalaryEmployeesAction(input: unknown) {
+  try {
+    const { session } = await getAuthenticatedUser();
+    const parsed = salaryEmployeeSearchSchema.safeParse(input);
+    if (!parsed.success) {
+      return { success: false as const, error: "Invalid employee search.", details: parsed.error.issues };
+    }
+
+    const isHrOrAdmin =
+      session.user.role === UserRole.SUPER_ADMIN ||
+      session.user.role === UserRole.ADMIN ||
+      (session.user.role === UserRole.STAFF && session.user.department === "HR");
+    if (
+      !isHrOrAdmin ||
+      !(await canPerformSalaryPermission(session.user, "read-all"))
+    ) {
+      return { success: false as const, error: "Only Admins and HR can search payroll employees." };
+    }
+    if (!(await isSalaryPinSessionValid(session.user.id))) {
+      return { success: false as const, error: "Unlock Salary Management with your PIN to continue." };
+    }
+
+    const search = parsed.data.search;
+    const employees = await prisma.user.findMany({
+      where: {
+        employmentStatus: "ACTIVE",
+        includeInPayroll: true,
+        ...(search
+          ? { OR: getEmployeeSearchConditions(search) }
+          : {}),
+      },
+      select: { id: true, name: true, email: true, department: true },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      take: 20,
+    });
+
+    return { success: true as const, employees };
+  } catch (error) {
+    console.error("Error searching salary employees:", error);
+    return { success: false as const, error: getErrorMessage(error) };
   }
 }
 
@@ -971,6 +1292,25 @@ export async function approveSalarySlipAction(input: unknown) {
       return { success: false, error: "Invalid salary slip.", details: parsed.error.issues };
     }
 
+    const existing = await prisma.salarySlip.findUnique({
+      where: { id: parsed.data.slipId },
+      include: {
+        adjustments: {
+          where: { removedAt: null },
+          select: { id: true },
+        },
+      },
+    });
+    if (!existing || existing.status !== "GENERATED") {
+      return { success: false, error: "Only generated salary slips can be reviewed." };
+    }
+    if (!hasManualSalaryAdjustments(existing)) {
+      return { success: false, error: "This salary slip has no manual adjustments to approve." };
+    }
+    if (existing.approvedAt) {
+      return { success: false, error: "This salary slip has already been approved." };
+    }
+
     const approvedAt = new Date();
     const result = await prisma.salarySlip.updateMany({
       where: {
@@ -1036,16 +1376,22 @@ export async function sendSalarySlipEmailAction(input: unknown) {
         year: true,
         status: true,
         approvedAt: true,
-        netSalary: true,
+        medicalReimbursement: true,
+        extraEarnings: true,
+        extraDeductions: true,
+        adjustments: {
+          where: { removedAt: null },
+          select: { id: true },
+        },
         user: { select: { name: true, email: true } },
       },
     });
     if (!slip) return { success: false, error: "Salary slip not found." };
-    if (
-      !(slip.status === "GENERATED" && slip.approvedAt) &&
-      slip.status !== "PAID"
-    ) {
-      return { success: false, error: "Approve the salary slip before emailing it." };
+    if (slip.status !== "GENERATED" && slip.status !== "PAID") {
+      return { success: false, error: "Only generated or paid salary slips can be emailed." };
+    }
+    if (requiresSalarySlipReview(slip)) {
+      return { success: false, error: "Approve manual salary adjustments before emailing the slip." };
     }
     if (!slip.user.email) {
       return { success: false, error: "The employee does not have an email address." };
@@ -1091,6 +1437,14 @@ export async function sendSalarySlipEmailAction(input: unknown) {
         id: slip.id,
         OR: [
           { status: "GENERATED", approvedAt: { not: null } },
+          {
+            status: "GENERATED",
+            approvedAt: null,
+            medicalReimbursement: 0,
+            extraEarnings: 0,
+            extraDeductions: 0,
+            adjustments: { none: { removedAt: null } },
+          },
           { status: "PAID" },
         ],
       },
@@ -1131,14 +1485,26 @@ export async function updateSalarySlipStatusAction(input: unknown) {
 
     const existing = await prisma.salarySlip.findUnique({
       where: { id: validated.slipId },
+      include: {
+        adjustments: {
+          where: { removedAt: null },
+          select: { id: true },
+        },
+      },
     });
 
     if (!existing) {
       return { success: false, error: "Salary slip not found." };
     }
 
-    if (existing.status !== "GENERATED" || !existing.approvedAt) {
-      return { success: false, error: "Approve the salary slip before marking it as paid." };
+    if (existing.status !== "GENERATED") {
+      return { success: false, error: "Only generated salary slips can be marked as paid." };
+    }
+    if (requiresSalarySlipReview(existing)) {
+      return {
+        success: false,
+        error: "Approve manual salary adjustments before marking the slip as paid.",
+      };
     }
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -1146,7 +1512,16 @@ export async function updateSalarySlipStatusAction(input: unknown) {
         where: {
           id: validated.slipId,
           status: "GENERATED",
-          approvedAt: { not: null },
+          OR: [
+            { approvedAt: { not: null } },
+            {
+              approvedAt: null,
+              medicalReimbursement: 0,
+              extraEarnings: 0,
+              extraDeductions: 0,
+              adjustments: { none: { removedAt: null } },
+            },
+          ],
         },
         data: {
           status: "PAID",

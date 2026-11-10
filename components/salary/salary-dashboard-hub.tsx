@@ -6,12 +6,21 @@ import { IndianRupee, FileTextIcon, UsersRound, WalletCards, WalletIcon } from "
 import { Card } from "@/components/ui/card";
 import { SalaryStructuresTab } from "./salary-structures-tab";
 import { SalarySlipsTab } from "./salary-slips-tab";
-import type { SalaryEmployee, SalarySlipRecord } from "./types";
+import type {
+  SalaryEmployee,
+  SalaryManagementSummary,
+  SalaryRosterPageInfo,
+  SalarySlipPageInfo,
+  SalarySlipRecord,
+} from "./types";
 import { StaffSalaryWorkspace } from "./staff-salary-workspace";
 
 interface SalaryDashboardHubProps {
-  users: SalaryEmployee[];
+  initialUsers: SalaryEmployee[];
+  initialRoster: SalaryRosterPageInfo;
+  summary: SalaryManagementSummary;
   initialSlips: SalarySlipRecord[];
+  initialSlipPage: SalarySlipPageInfo;
   isHrOrAdmin: boolean;
   staffProfile?: {
     name: string;
@@ -27,20 +36,23 @@ interface SalaryDashboardHubProps {
 }
 
 export function SalaryDashboardHub({
-  users,
+  initialUsers,
+  initialRoster,
+  summary,
   initialSlips,
+  initialSlipPage,
   isHrOrAdmin,
   staffProfile,
   staffLeaveSummary,
 }: SalaryDashboardHubProps) {
   const [activeTab, setActiveTab] = useState<"structures" | "slips">(isHrOrAdmin ? "structures" : "slips");
-  const payrollUsers = users.filter((user) => user.includeInPayroll);
 
   if (!isHrOrAdmin && staffProfile && staffLeaveSummary) {
     return (
       <StaffSalaryWorkspace
         profile={staffProfile}
         slips={initialSlips}
+        slipPage={initialSlipPage}
         leaveSummary={staffLeaveSummary}
       />
     );
@@ -49,7 +61,7 @@ export function SalaryDashboardHub({
   return (
     <div className="w-full min-w-0 space-y-5 sm:space-y-6">
       {isHrOrAdmin && (
-        <AdminPayrollSummary users={users} slips={initialSlips} />
+        <AdminPayrollSummary summary={summary} />
       )}
       {isHrOrAdmin && (
         <div
@@ -90,13 +102,17 @@ export function SalaryDashboardHub({
 
       <div>
         {activeTab === "structures" && isHrOrAdmin && (
-          <SalaryStructuresTab users={users} />
+          <SalaryStructuresTab
+            initialUsers={initialUsers}
+            initialPage={initialRoster}
+            summary={summary}
+          />
         )}
 
         {activeTab === "slips" && (
           <SalarySlipsTab 
-            users={payrollUsers}
             initialSlips={initialSlips} 
+            initialPage={initialSlipPage}
             isHrOrAdmin={isHrOrAdmin}
           />
         )}
@@ -106,29 +122,21 @@ export function SalaryDashboardHub({
 }
 
 function AdminPayrollSummary({
-  users,
-  slips,
+  summary,
 }: {
-  users: SalaryEmployee[];
-  slips: SalarySlipRecord[];
+  summary: SalaryManagementSummary;
 }) {
-  const latestSlip = [...slips].sort((a, b) => b.year - a.year || b.month - a.month)[0];
-  const latestPeriodSlips = latestSlip
-    ? slips.filter((slip) => slip.year === latestSlip.year && slip.month === latestSlip.month)
-    : [];
-  const monthlyTotal = latestPeriodSlips.reduce((total, slip) => total + Number(slip.netSalary), 0);
-  const paidCount = latestPeriodSlips.filter((slip) => slip.status === "PAID").length;
-  const includedUsers = users.filter((user) => user.includeInPayroll);
-  const configuredCount = includedUsers.filter((user) => user.hasSalaryStructure).length;
-  const periodLabel = latestSlip
-    ? new Intl.DateTimeFormat("en-US", { month: "long" }).format(new Date(2000, latestSlip.month - 1, 1))
+  const periodLabel = summary.latestMonth
+    ? new Intl.DateTimeFormat("en-US", { month: "long", timeZone: "UTC" }).format(
+        new Date(Date.UTC(2000, summary.latestMonth - 1, 1)),
+      )
     : "No payroll yet";
 
   const items = [
-    { label: "Monthly payroll", value: monthlyTotal ? `₹${monthlyTotal.toLocaleString("en-IN")}` : "₹0", detail: periodLabel, icon: IndianRupee },
-    { label: "Configured staff", value: `${configuredCount}/${includedUsers.length}`, detail: "Included payroll profiles", icon: WalletCards },
-    { label: "Paid slips", value: `${paidCount}/${latestPeriodSlips.length}`, detail: periodLabel, icon: FileTextIcon },
-    { label: "Employees", value: String(includedUsers.length), detail: `${users.length - includedUsers.length} excluded from payroll`, icon: UsersRound },
+    { label: "Monthly payroll", value: `₹${Number(summary.monthlyTotal).toLocaleString("en-IN")}`, detail: periodLabel, icon: IndianRupee },
+    { label: "Configured staff", value: `${summary.configuredCount}/${summary.includedCount}`, detail: "Included payroll profiles", icon: WalletCards },
+    { label: "Paid slips", value: `${summary.paidCount}/${summary.slipCount}`, detail: periodLabel, icon: FileTextIcon },
+    { label: "Employees", value: String(summary.includedCount), detail: `${summary.excludedCount} excluded from payroll`, icon: UsersRound },
   ];
 
   return (

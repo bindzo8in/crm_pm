@@ -418,6 +418,7 @@ export async function createInvoice(input: CreateInvoiceInput) {
         createdById: user.id,
         notes: validated.data.notes || null,
         terms: validated.data.terms || null,
+        issueDate: validated.data.issueDate || undefined,
         dueDate: validated.data.dueDate || null,
         bankAccountId: validated.data.bankAccountId || null,
         currency: validated.data.currency || "INR",
@@ -489,7 +490,7 @@ export async function updateInvoice(input: UpdateInvoiceInput) {
       return errorResponse("Invalid input data", validated.error.issues);
     }
 
-    const { id, customerId, notes, terms, dueDate, bankAccountId, currency, exchangeRate, placeOfSupply, discount, lineItems, status } = validated.data;
+    const { id, customerId, notes, terms, issueDate, dueDate, bankAccountId, currency, exchangeRate, placeOfSupply, discount, lineItems, status } = validated.data;
 
     const existing = await (prisma as any).invoice.findFirst({
       where: { id, deletedAt: null },
@@ -569,6 +570,7 @@ export async function updateInvoice(input: UpdateInvoiceInput) {
           ...(customerId ? { customerId, customerDisplayName, customerCompanyName } : {}),
           ...(notes !== undefined ? { notes } : {}),
           ...(terms !== undefined ? { terms } : {}),
+          ...(issueDate !== undefined ? { issueDate } : {}),
           ...(dueDate !== undefined ? { dueDate } : {}),
           ...(bankAccountId !== undefined ? { bankAccountId } : {}),
           ...(currency ? { currency } : {}),
@@ -820,6 +822,7 @@ export async function searchServicePackages(searchQuery: string) {
         OR: [
           { name: { contains: searchQuery, mode: "insensitive" } },
           { service: { name: { contains: searchQuery, mode: "insensitive" } } },
+          { items: { some: { name: { contains: searchQuery, mode: "insensitive" } } } },
         ],
       },
       include: {

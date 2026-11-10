@@ -10,6 +10,21 @@ services:
       - .env
 
     networks:
+      web_network:
+        aliases:
+          - ${CONTAINER_NAME}
+
+  attendance-reminder-scheduler:
+    image: ghcr.io/${GHCR_IMAGE_REPO}:${IMAGE_TAG}-scheduler
+    restart: unless-stopped
+    depends_on:
+      - web
+    environment:
+      ATTENDANCE_REMINDER_URL: http://${CONTAINER_NAME}:3000/api/attendance/reminders/cron
+      SALARY_CRON_URL: http://${CONTAINER_NAME}:3000/api/salary/cron
+      SALARY_CRON_SECRET: ${SALARY_CRON_SECRET:?SALARY_CRON_SECRET must be set}
+      TZ: Asia/Kolkata
+    networks:
       - web_network
 
 networks:

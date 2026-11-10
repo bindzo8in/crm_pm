@@ -127,6 +127,9 @@ COPY --from=builder \
     --chown=nextjs:nodejs \
     /app/.next/static ./.next/static
 
+COPY --chown=nextjs:nodejs \
+    server.mjs ./server.mjs
+
 
 # ============================================================
 # Application Runtime Files
@@ -170,4 +173,4 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "server.js"]
+CMD ["node", "server.mjs"]

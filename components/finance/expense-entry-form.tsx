@@ -2,19 +2,25 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Check, ChevronsUpDown, Plus, Search, X } from "lucide-react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import { Check, ChevronsUpDown, Search, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { createExpense, createExpenseCategory } from "@/actions/finance";
+import { createExpense, createExpenseCategory, updateExpense } from "@/actions/finance";
 import { CustomerForm } from "@/components/customers/create-edit";
 import { CustomerCombobox, type CustomerOption } from "@/components/customers/customer-combobox";
 import { ExpenseCategoryCombobox, type ExpenseCategoryOption } from "@/components/finance/expense-category-combobox";
 import { ExpenseAttachmentUpload } from "@/components/finance/expense-attachment-upload";
 import {
   calculateExpenseTotals,
+  formatExpenseAmountCents,
+  getExpenseEnteredAmountCents,
   MAX_EXPENSE_TOTAL_CENTS,
   parseExpenseAmountCents,
 } from "@/lib/expense-tax";
+import { getAttendanceDate } from "@/lib/date";
+import { expenseSchema, type ExpenseFormInput, type ExpenseInput } from "@/lib/schemas/finance";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,6 +54,29 @@ type Account = {
 
 type Props = {
   accounts: Account[];
+  expense?: {
+    id: string;
+    expenseDate: Date | string;
+    description: string;
+    amount: string | number;
+    category: { id: string; name: string; isActive: boolean };
+    financialAccountId: string;
+    paymentMethod: string;
+    vendorName: string | null;
+    referenceNumber: string | null;
+    notes: string | null;
+    status: string;
+    receiptUrl: string | null;
+    expenseType: string;
+    sacCode: string | null;
+    gstTreatment: string | null;
+    sourceOfSupply: string | null;
+    destinationOfSupply: string | null;
+    reverseCharge: boolean;
+    taxRate: number | null;
+    taxInclusive: boolean;
+    customer: { id: string; companyName: string | null; primaryContactName: string | null } | null;
+  };
 };
 
 const supplyStates: ReadonlyArray<readonly [string, string]> = [
@@ -155,25 +184,72 @@ function CreateExpenseCategoryDialog({
   );
 }
 
-export function ExpenseEntryForm({ accounts }: Props) {
+export function ExpenseEntryForm({ accounts, expense }: Props) {
   const router = useRouter();
+  const initialAmount = expense
+    ? formatExpenseAmountCents(getExpenseEnteredAmountCents(
+      parseExpenseAmountCents(String(expense.amount)),
+      expense.taxRate,
+      expense.taxInclusive,
+    ))
+    : "";
+  const form = useForm<ExpenseFormInput, undefined, ExpenseInput>({
+    resolver: zodResolver(expenseSchema),
+    mode: "onBlur",
+    defaultValues: {
+      description: expense?.description ?? "",
+      amount: initialAmount,
+      expenseDate: expense ? new Date(expense.expenseDate).toISOString().slice(0, 10) : getAttendanceDate(),
+      paymentMethod: expense?.paymentMethod as ExpenseInput["paymentMethod"] | undefined ?? "BANK_TRANSFER",
+      financialAccountId: expense?.financialAccountId ?? "",
+      categoryId: expense?.category.id ?? "",
+      vendorName: expense?.vendorName ?? "",
+      customerId: expense?.customer?.id ?? "",
+      referenceNumber: expense?.referenceNumber ?? "",
+      notes: expense?.notes ?? "",
+      status: expense?.status as ExpenseInput["status"] | undefined ?? "COMPLETED",
+      receiptUrl: expense?.receiptUrl ?? "",
+      expenseType: expense?.expenseType === "GOODS" ? "GOODS" : "SERVICES",
+      sacCode: expense?.sacCode ?? "",
+      gstTreatment: expense?.gstTreatment as ExpenseInput["gstTreatment"] | undefined ?? undefined,
+      sourceOfSupply: expense?.sourceOfSupply ?? "",
+      destinationOfSupply: expense?.destinationOfSupply ?? "TN",
+      reverseCharge: expense?.reverseCharge ?? false,
+      taxRate: expense?.taxRate ?? undefined,
+      taxInclusive: expense?.taxInclusive ?? false,
+    },
+  });
   const [createCustomerOpen, setCreateCustomerOpen] = React.useState(false);
   const [createCategoryOpen, setCreateCategoryOpen] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
-  const [selectedCustomer, setSelectedCustomer] = React.useState<CustomerOption | null>(null);
-  const [selectedCategory, setSelectedCategory] = React.useState<ExpenseCategoryOption | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = React.useState<CustomerOption | null>(
+    expense?.customer
+      ? {
+          id: expense.customer.id,
+          customerNumber: 0,
+          displayName: expense.customer.companyName ?? expense.customer.primaryContactName ?? "Customer",
+          companyName: expense.customer.companyName,
+          primaryContactName: expense.customer.primaryContactName,
+        }
+      : null,
+  );
+  const [selectedCategory, setSelectedCategory] = React.useState<ExpenseCategoryOption | null>(
+    expense ? { id: expense.category.id, name: expense.category.name, isActive: expense.category.isActive } : null,
+  );
   const [attachment, setAttachment] = React.useState<{
     url: string;
     publicId: string;
     resourceType: "image" | "raw";
-  } | null>(null);
-  const [expenseType, setExpenseType] = React.useState<"GOODS" | "SERVICES">("SERVICES");
-  const [amount, setAmount] = React.useState("");
-  const [sourceOfSupply, setSourceOfSupply] = React.useState("");
-  const [destinationOfSupply, setDestinationOfSupply] = React.useState("TN");
-  const [taxRate, setTaxRate] = React.useState("");
-  const [taxInclusive, setTaxInclusive] = React.useState("false");
-  const [gstTreatment, setGstTreatment] = React.useState("");
+  } | null>(expense?.receiptUrl ? { url: expense.receiptUrl, publicId: "", resourceType: "image" } : null);
+  const [expenseType, setExpenseType] = React.useState<"GOODS" | "SERVICES">(
+    expense?.expenseType === "GOODS" ? "GOODS" : "SERVICES",
+  );
+  const [amount, setAmount] = React.useState(initialAmount);
+  const [sourceOfSupply, setSourceOfSupply] = React.useState(expense?.sourceOfSupply ?? "");
+  const [destinationOfSupply, setDestinationOfSupply] = React.useState(expense?.destinationOfSupply ?? "TN");
+  const [taxRate, setTaxRate] = React.useState(expense?.taxRate == null ? "" : String(expense.taxRate));
+  const [taxInclusive, setTaxInclusive] = React.useState(expense?.taxInclusive ? "true" : "false");
+  const [gstTreatment, setGstTreatment] = React.useState(expense?.gstTreatment ?? "");
   const [gstTreatmentOpen, setGstTreatmentOpen] = React.useState(false);
   const [gstTreatmentSearch, setGstTreatmentSearch] = React.useState("");
   const activeAccounts = accounts.filter((account) => account.isActive);
@@ -190,73 +266,45 @@ export function ExpenseEntryForm({ accounts }: Props) {
   const exceedsMaximum = expenseTotals !== null
     && expenseTotals.totalAmountCents > MAX_EXPENSE_TOTAL_CENTS;
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedCategory) {
-      toast.error("Select an expense category");
-      return;
-    }
-    if (!gstTreatment) {
-      toast.error("Select a GST treatment");
-      setGstTreatmentOpen(true);
-      return;
-    }
-    if (!sourceOfSupply || !destinationOfSupply) {
-      toast.error("Select both source and destination states");
-      return;
-    }
+  async function handleSubmit(values: ExpenseInput, event?: React.BaseSyntheticEvent) {
+    if (!selectedCategory) return;
     if (exceedsMaximum) {
       toast.error("Total expense amount including tax exceeds the maximum allowed amount");
       return;
     }
 
-    const form = event.currentTarget;
-    const formData = new FormData(form);
     const saveMode =
-      event.nativeEvent instanceof SubmitEvent
+      event?.nativeEvent instanceof SubmitEvent
       && event.nativeEvent.submitter instanceof HTMLButtonElement
         ? event.nativeEvent.submitter.value
         : "save";
-    const invoiceNumber = String(formData.get("invoiceNumber") ?? "").trim();
-    const taxRateValue = String(formData.get("taxRate") ?? "");
     setIsSaving(true);
 
     try {
-      const response = await createExpense({
-        description: selectedCategory.name,
-        amount: formData.get("amount"),
-        expenseDate: formData.get("expenseDate"),
+      const payload = {
+        ...values,
         categoryId: selectedCategory.id,
-        financialAccountId: formData.get("financialAccountId"),
-        paymentMethod: formData.get("paymentMethod"),
-        vendorName: formData.get("vendorName"),
-        referenceNumber: invoiceNumber,
-        notes: formData.get("notes"),
-        status: formData.get("status"),
-        customerId: selectedCustomer?.id ?? null,
+        description: selectedCategory.name,
         receiptUrl: attachment?.url ?? null,
-        expenseType,
-        sacCode: formData.get("sacCode"),
-        gstTreatment: formData.get("gstTreatment"),
-        sourceOfSupply,
-        destinationOfSupply,
-        reverseCharge: formData.get("reverseCharge") === "on",
-        taxRate: taxRateValue ? Number(taxRateValue) : null,
-        taxInclusive: taxInclusive === "true",
-      });
+      };
+      const response = expense
+        ? await updateExpense(expense.id, payload)
+        : await createExpense(payload);
 
       if (!response.success) {
         toast.error(response.message);
         return;
       }
 
-      toast.success("Expense recorded");
+      toast.success(expense ? "Expense updated" : "Expense recorded");
       if (saveMode === "new") {
         form.reset();
         setAmount("");
         setSourceOfSupply("");
         setDestinationOfSupply("TN");
         setSelectedCategory(null);
+        form.setValue("categoryId", "");
+        form.setValue("description", "");
         setSelectedCustomer(null);
         setAttachment(null);
         setExpenseType("SERVICES");
@@ -276,8 +324,15 @@ export function ExpenseEntryForm({ accounts }: Props) {
     }
   }
 
+  function handleInvalid() {
+    const firstError = Object.values(form.formState.errors)[0];
+    toast.error(firstError?.message ? String(firstError.message) : "Complete all required expense fields");
+  }
+
   function handleCategoryCreated(category: ExpenseCategoryOption) {
     setSelectedCategory(category);
+    form.setValue("categoryId", category.id, { shouldValidate: true });
+    form.setValue("description", category.name, { shouldValidate: true });
   }
 
   const fieldClassName = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -318,7 +373,7 @@ export function ExpenseEntryForm({ accounts }: Props) {
         </button>
       </div> */}
 
-      <form onSubmit={handleSubmit} className="flex flex-1 flex-col">
+      <form onSubmit={form.handleSubmit(handleSubmit, handleInvalid)} className="flex flex-1 flex-col">
         <div className="grid flex-1 content-start gap-x-10 gap-y-8 p-4 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[calc(7rem+env(safe-area-inset-bottom))] min-[900px]:grid-cols-[minmax(0,1.1fr)_minmax(22rem,0.95fr)] md:pb-20 lg:px-6 lg:pt-6 lg:pb-20">
           <section aria-label="Expense details" className="space-y-4">
             {activeAccounts.length === 0 && (
@@ -333,10 +388,10 @@ export function ExpenseEntryForm({ accounts }: Props) {
               </Label>
               <Input
                 id="expense-date"
-                name="expenseDate"
                 type="date"
-                defaultValue={getLocalDateInputValue()}
+                defaultValue={expense ? new Date(expense.expenseDate).toISOString().slice(0, 10) : getAttendanceDate()}
                 required
+                {...form.register("expenseDate")}
                 className="h-9 bg-background text-sm"
               />
             </div>
@@ -348,9 +403,16 @@ export function ExpenseEntryForm({ accounts }: Props) {
               <div className="space-y-1">
                 <ExpenseCategoryCombobox
                   selectedCategory={selectedCategory}
-                  onValueChange={setSelectedCategory}
+                  onValueChange={(category) => {
+                    setSelectedCategory(category);
+                    form.setValue("categoryId", category?.id ?? "", { shouldValidate: true });
+                    form.setValue("description", category?.name ?? "", { shouldValidate: true });
+                  }}
                   onCreateCategory={() => setCreateCategoryOpen(true)}
                 />
+                {form.formState.errors.categoryId && (
+                  <p className="text-xs text-destructive">{form.formState.errors.categoryId.message}</p>
+                )}
               </div>
             </div>
 
@@ -364,7 +426,6 @@ export function ExpenseEntryForm({ accounts }: Props) {
                 </span>
                 <Input
                   id="expense-amount"
-                  name="amount"
                   type="number"
                   min="0.01"
                   max="9999999999.99"
@@ -372,7 +433,11 @@ export function ExpenseEntryForm({ accounts }: Props) {
                   required
                   placeholder="0.00"
                   value={amount}
-                  onChange={(event) => setAmount(event.target.value)}
+                  {...form.register("amount")}
+                  onChange={(event) => {
+                    form.setValue("amount", event.target.value, { shouldValidate: true });
+                    setAmount(event.target.value);
+                  }}
                   className="h-9 min-w-0 rounded-l-none bg-background text-sm"
                 />
               </div>
@@ -390,7 +455,10 @@ export function ExpenseEntryForm({ accounts }: Props) {
                       name="expenseTypeChoice"
                       value={type}
                       checked={expenseType === type}
-                      onChange={() => setExpenseType(type)}
+                      onChange={() => {
+                        setExpenseType(type);
+                        form.setValue("expenseType", type, { shouldValidate: true });
+                      }}
                       className="accent-primary"
                     />
                     {type === "GOODS" ? "Goods" : "Services"}
@@ -402,14 +470,14 @@ export function ExpenseEntryForm({ accounts }: Props) {
 
             <div className={rowClassName}>
               <Label htmlFor="expense-sac" className="text-xs font-normal">SAC</Label>
-              <Input id="expense-sac" name="sacCode" maxLength={20} className="h-9 bg-background text-sm" />
+              <Input id="expense-sac" maxLength={20} {...form.register("sacCode")} className="h-9 bg-background text-sm" />
             </div>
 
             <div className={rowClassName}>
               <Label htmlFor="expense-gst-treatment" className="text-xs font-normal">
                 GST Treatment<span className="text-destructive">*</span>
               </Label>
-              <input type="hidden" name="gstTreatment" value={gstTreatment} />
+              <input type="hidden" {...form.register("gstTreatment")} value={gstTreatment} />
               <Popover
                 open={gstTreatmentOpen}
                 onOpenChange={(open) => {
@@ -458,6 +526,7 @@ export function ExpenseEntryForm({ accounts }: Props) {
                         className={`flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left text-xs hover:bg-accent hover:text-accent-foreground ${gstTreatment === value ? "bg-accent text-accent-foreground" : ""}`}
                         onClick={() => {
                           setGstTreatment(value);
+                          form.setValue("gstTreatment", value, { shouldValidate: true });
                           setGstTreatmentOpen(false);
                           setGstTreatmentSearch("");
                         }}
@@ -474,6 +543,9 @@ export function ExpenseEntryForm({ accounts }: Props) {
                   </div>
                 </PopoverContent>
               </Popover>
+              {form.formState.errors.gstTreatment && (
+                <p className="col-start-2 text-xs text-destructive">{form.formState.errors.gstTreatment.message}</p>
+              )}
             </div>
 
             <div className={rowClassName}>
@@ -484,9 +556,15 @@ export function ExpenseEntryForm({ accounts }: Props) {
                 id="expense-source-supply"
                 name="sourceOfSupply"
                 value={sourceOfSupply}
-                onValueChange={setSourceOfSupply}
+                onValueChange={(value) => {
+                  setSourceOfSupply(value);
+                  form.setValue("sourceOfSupply", value, { shouldValidate: true });
+                }}
                 placeholder="Select source state"
               />
+              {form.formState.errors.sourceOfSupply && (
+                <p className="col-start-2 text-xs text-destructive">{form.formState.errors.sourceOfSupply.message}</p>
+              )}
             </div>
 
             <div className={rowClassName}>
@@ -497,15 +575,21 @@ export function ExpenseEntryForm({ accounts }: Props) {
                 id="expense-destination-supply"
                 name="destinationOfSupply"
                 value={destinationOfSupply}
-                onValueChange={setDestinationOfSupply}
+                onValueChange={(value) => {
+                  setDestinationOfSupply(value);
+                  form.setValue("destinationOfSupply", value, { shouldValidate: true });
+                }}
                 placeholder="Select destination state"
               />
+              {form.formState.errors.destinationOfSupply && (
+                <p className="col-start-2 text-xs text-destructive">{form.formState.errors.destinationOfSupply.message}</p>
+              )}
             </div>
 
             <div className={rowClassName}>
               <Label htmlFor="expense-reverse-charge" className="text-xs font-normal">Reverse Charge</Label>
               <label className="flex min-h-9 items-center gap-2 text-xs">
-                <input id="expense-reverse-charge" name="reverseCharge" type="checkbox" className="size-4 accent-primary" />
+                <input id="expense-reverse-charge" type="checkbox" {...form.register("reverseCharge")} className="size-4 accent-primary" />
                 This transaction is applicable for reverse charge
               </label>
             </div>
@@ -516,7 +600,10 @@ export function ExpenseEntryForm({ accounts }: Props) {
                 id="expense-tax-rate"
                 name="taxRate"
                 value={taxRate}
-                onChange={(event) => setTaxRate(event.target.value)}
+                onChange={(event) => {
+                  setTaxRate(event.target.value);
+                  form.setValue("taxRate", event.target.value === "" ? undefined : Number(event.target.value), { shouldValidate: true });
+                }}
                 className={fieldClassName}
               >
                 <option value="">Select a Tax</option>
@@ -543,7 +630,10 @@ export function ExpenseEntryForm({ accounts }: Props) {
                         name="taxInclusiveChoice"
                         value={value}
                         checked={taxInclusive === value}
-                        onChange={() => setTaxInclusive(value)}
+                        onChange={() => {
+                          setTaxInclusive(value);
+                          form.setValue("taxInclusive", value === "true", { shouldValidate: true });
+                        }}
                         className="accent-primary"
                       />
                       {label}
@@ -583,25 +673,32 @@ export function ExpenseEntryForm({ accounts }: Props) {
 
             <div className={rowClassName}>
               <Label htmlFor="expense-invoice-number" className="text-xs font-normal">
-                Invoice #<span className="text-destructive">*</span>
+                Invoice #
               </Label>
-              <Input id="expense-invoice-number" name="invoiceNumber" required maxLength={120} className="h-9 bg-background text-sm" />
+              <Input id="expense-invoice-number" maxLength={120} {...form.register("referenceNumber")} className="h-9 bg-background text-sm" />
+              {form.formState.errors.referenceNumber && (
+                <p className="col-start-2 text-xs text-destructive">{form.formState.errors.referenceNumber.message}</p>
+              )}
             </div>
 
             <div className={rowClassName}>
               <Label htmlFor="expense-notes" className="text-xs font-normal">Notes</Label>
-              <Textarea id="expense-notes" name="notes" placeholder="Max. 500 characters" maxLength={500} rows={3} className="min-h-16 bg-background text-sm" />
+              <Textarea id="expense-notes" placeholder="Max. 500 characters" maxLength={500} rows={3} {...form.register("notes")} className="min-h-16 bg-background text-sm" />
             </div>
 
             <div className="mt-6 border-y py-4">
               <div className={rowClassName}>
-                <Label htmlFor="expense-customer" className="text-xs font-normal">Customer Name</Label>
+                <Label htmlFor="expense-customer" className="text-xs font-normal">Customer Name<span className="text-destructive">*</span></Label>
                 <div className="flex min-w-0 gap-1">
                   <div className="min-w-0 flex-1">
                     <CustomerCombobox
                       value={selectedCustomer?.id}
                       selectedCustomer={selectedCustomer}
-                      onValueChange={setSelectedCustomer}
+                      onCreateCustomer={() => setCreateCustomerOpen(true)}
+                      onValueChange={(customer) => {
+                        setSelectedCustomer(customer);
+                        form.setValue("customerId", customer?.id ?? "", { shouldValidate: true });
+                      }}
                     />
                   </div>
                   {selectedCustomer && (
@@ -610,22 +707,19 @@ export function ExpenseEntryForm({ accounts }: Props) {
                       variant="outline"
                       size="icon"
                       aria-label="Clear selected customer"
-                      onClick={() => setSelectedCustomer(null)}
+                      onClick={() => {
+                        setSelectedCustomer(null);
+                        form.setValue("customerId", "", { shouldValidate: true });
+                      }}
                     >
                       <X />
                     </Button>
                   )}
-                  <Button
-                    type="button"
-                    variant="default"
-                    size="icon"
-                    aria-label="Create customer"
-                    onClick={() => setCreateCustomerOpen(true)}
-                  >
-                    <Plus />
-                  </Button>
                 </div>
               </div>
+              {form.formState.errors.customerId && (
+                <p className="col-start-2 text-xs text-destructive">{form.formState.errors.customerId.message}</p>
+              )}
             </div>
           </section>
 
@@ -649,7 +743,7 @@ export function ExpenseEntryForm({ accounts }: Props) {
                   <Label htmlFor="expense-account" className="text-xs">
                     Paid from account<span className="text-destructive">*</span>
                   </Label>
-                  <select id="expense-account" name="financialAccountId" required defaultValue="" disabled={activeAccounts.length === 0} className={fieldClassName}>
+                  <select id="expense-account" required {...form.register("financialAccountId")} disabled={activeAccounts.length === 0} className={fieldClassName}>
                     <option value="" disabled>Select an account</option>
                     {activeAccounts.map((account) => (
                       <option key={account.id} value={account.id}>
@@ -657,6 +751,9 @@ export function ExpenseEntryForm({ accounts }: Props) {
                       </option>
                     ))}
                   </select>
+                  {form.formState.errors.financialAccountId && (
+                    <p className="text-xs text-destructive">{form.formState.errors.financialAccountId.message}</p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     Choose the cash or linked bank account whose tracked balance should reflect this expense.
                   </p>
@@ -665,19 +762,19 @@ export function ExpenseEntryForm({ accounts }: Props) {
                   <Label htmlFor="expense-payment-method" className="text-xs">
                     Payment method<span className="text-destructive">*</span>
                   </Label>
-                  <select id="expense-payment-method" name="paymentMethod" defaultValue="BANK_TRANSFER" className={fieldClassName}>
+                  <select id="expense-payment-method" {...form.register("paymentMethod")} className={fieldClassName}>
                     {paymentMethods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="expense-vendor" className="text-xs">Vendor or recipient</Label>
-                  <Input id="expense-vendor" name="vendorName" maxLength={160} placeholder="Business or person" className="h-9 bg-background text-sm" />
+                  <Input id="expense-vendor" maxLength={160} {...form.register("vendorName")} placeholder="Business or person" className="h-9 bg-background text-sm" />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="expense-status" className="text-xs">
                     Status<span className="text-destructive">*</span>
                   </Label>
-                  <select id="expense-status" name="status" defaultValue="COMPLETED" className={fieldClassName}>
+                  <select id="expense-status" {...form.register("status")} className={fieldClassName}>
                     <option value="COMPLETED">Completed — already paid</option>
                     <option value="PENDING">Pending — not paid yet</option>
                   </select>
@@ -692,17 +789,19 @@ export function ExpenseEntryForm({ accounts }: Props) {
           <Button type="button" variant="ghost" className="h-10 shrink-0 px-3" onClick={() => router.push("/dashboard/finance")}>
             Cancel
           </Button>
-          <Button type="submit" value="new" variant="outline" className="h-10 shrink-0 whitespace-nowrap px-3" disabled={isSaving || activeAccounts.length === 0}>
-            Save and New
-          </Button>
+          {!expense && (
+            <Button type="submit" value="new" variant="outline" className="h-10 shrink-0 whitespace-nowrap px-3" disabled={isSaving || activeAccounts.length === 0}>
+              Save and New
+            </Button>
+          )}
           <Button type="submit" value="save" className="h-10 shrink-0 px-4" disabled={isSaving || activeAccounts.length === 0}>
-            {isSaving ? "Saving…" : "Save"}
+            {isSaving ? "Saving…" : expense ? "Update expense" : "Save"}
           </Button>
         </footer>
       </form>
 
       <Dialog open={createCustomerOpen} onOpenChange={setCreateCustomerOpen}>
-        <DialogContent className="flex max-h-[94dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[530px]">
+        <DialogContent className="flex max-h-[94dvh] w-[calc(100vw-1rem)] max-w-[900px] flex-col gap-0 overflow-hidden p-0 sm:max-w-[900px]">
           <DialogHeader className="shrink-0 border-b bg-background px-5 py-4">
             <DialogTitle>New Customer</DialogTitle>
           </DialogHeader>
@@ -710,6 +809,7 @@ export function ExpenseEntryForm({ accounts }: Props) {
             presentation="dialog"
             onCreated={(customer) => {
               setSelectedCustomer(customer);
+              form.setValue("customerId", customer.id, { shouldValidate: true });
               setCreateCustomerOpen(false);
             }}
             onCancel={() => setCreateCustomerOpen(false)}
@@ -813,12 +913,4 @@ function SupplyStateCombobox({
       </Combobox>
     </>
   );
-}
-
-function getLocalDateInputValue() {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, "0");
-  const day = String(today.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }

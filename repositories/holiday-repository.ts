@@ -12,6 +12,7 @@ export type HolidayWriteData = {
   category: HolidayCategory;
   departments: Department[];
   notifyStaff: boolean;
+  isHalfDay: boolean;
   description: string | null;
 };
 
@@ -43,7 +44,14 @@ async function findHolidayAudience(
     role: UserRole.STAFF,
     AND: [
       { OR: [{ banned: false }, { banned: null }] },
-      ...(departments.length ? [{ department: { in: departments } }] : []),
+      ...(departments.length
+        ? [{
+            OR: [
+              { department: { in: departments } },
+              { additionalDepartments: { hasSome: departments } },
+            ],
+          }]
+        : []),
     ],
   };
   return transaction.user.findMany({
@@ -60,7 +68,7 @@ async function createStaffNotifications(
 ): Promise<void> {
   if (recipients.length === 0) return;
 
-  const dateLabel = formatHolidayDateRange(data.startDate, data.endDate);
+  const dateLabel = `${formatHolidayDateRange(data.startDate, data.endDate)}${data.isHalfDay ? " · Half-day holiday" : ""}`;
   const departmentLabel = formatHolidayDepartmentScope(data.departments);
   const categoryLabel = HOLIDAY_CATEGORY_LABELS[data.category];
   await transaction.notification.createMany({
@@ -82,6 +90,7 @@ function holidayRowsData(data: HolidayWriteData, eventId: string) {
     category: data.category,
     departments: data.departments,
     notifyStaff: data.notifyStaff,
+    isHalfDay: data.isHalfDay,
     description: data.description,
   }));
 }
@@ -89,15 +98,17 @@ function holidayRowsData(data: HolidayWriteData, eventId: string) {
 export function listHolidays(
   startDate: Date,
   endDate: Date,
-  department?: Department,
+  departments?: readonly Department[],
 ) {
   const where: Prisma.HolidayWhereInput = {
     date: { gte: startDate, lte: endDate },
-    ...(department
+    ...(departments
       ? {
           OR: [
             { departments: { isEmpty: true } },
-            { departments: { has: department } },
+            ...(departments.length
+              ? [{ departments: { hasSome: [...departments] } }]
+              : []),
           ],
         }
       : {}),
@@ -122,15 +133,20 @@ export function listHolidays(
   });
 }
 
-export function listUpcomingHolidays(today: Date, department?: Department) {
+export function listUpcomingHolidays(
+  today: Date,
+  departments?: readonly Department[],
+) {
   return prisma.holiday.findMany({
     where: {
       date: { gte: today },
-      ...(department
+      ...(departments
         ? {
             OR: [
               { departments: { isEmpty: true } },
-              { departments: { has: department } },
+              ...(departments.length
+                ? [{ departments: { hasSome: [...departments] } }]
+                : []),
             ],
           }
         : {}),

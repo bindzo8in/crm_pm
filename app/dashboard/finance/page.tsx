@@ -3,6 +3,7 @@ import {
   getFinanceCreators,
   getFinanceOverview,
   getFinanceReport,
+  getFinanceSetupStatus,
   getFinancialAccounts,
   listRecentInvoicePayments,
 } from "@/actions/finance";
@@ -13,13 +14,14 @@ import DashboardContainer from "@/app/dashboard/dashboard-container";
 export default async function FinancePage() {
   await requirePageAccess("/dashboard/finance");
 
-  const [overviewResult, accountsResult, categoriesResult, paymentsResult, creatorsResult, reportResult] = await Promise.all([
+  const [overviewResult, accountsResult, categoriesResult, paymentsResult, creatorsResult, reportResult, setupResult] = await Promise.all([
     getFinanceOverview("month"),
     getFinancialAccounts(),
     getExpenseCategories(),
     listRecentInvoicePayments(5),
     getFinanceCreators(),
     getFinanceReport(),
+    getFinanceSetupStatus(),
   ]);
 
   const overview = overviewResult.success && overviewResult.data
@@ -58,14 +60,27 @@ export default async function FinancePage() {
       ? reportResult.data
       : null;
 
-  const loadError = [
+  const setupStatus = setupResult.success && setupResult.data
+    ? {
+        ...setupResult.data,
+        hasActiveFinancialAccount: accounts.some((account) => account.isActive),
+      }
+    : null;
+  const errorMessages = [
     overviewResult.success ? null : overviewResult.message,
     accountsResult.success ? null : accountsResult.message,
     categoriesResult.success ? null : categoriesResult.message,
     paymentsResult.success ? null : paymentsResult.message,
     creatorsResult.success ? null : creatorsResult.message,
     reportResult.success ? null : reportResult.message,
-  ].filter((message): message is string => message !== null).join(" ");
+    setupResult.success ? null : setupResult.message,
+  ].filter((message): message is string => message !== null);
+  const loadError = [...new Set(errorMessages)]
+    .filter((message) => !(
+      setupStatus?.companyProfileExists === false &&
+      message.toLowerCase().includes("company profile")
+    ))
+    .join(" ");
 
   return (
     <DashboardContainer title="Finance">
@@ -76,6 +91,7 @@ export default async function FinancePage() {
         invoicePayments={invoicePayments}
         creators={creators}
         report={report}
+        setupStatus={setupStatus}
         loadError={loadError || null}
       />
     </DashboardContainer>

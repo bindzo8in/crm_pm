@@ -14,6 +14,7 @@ import {
 import { Save, Check, FileText, Building, Calendar, User } from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
+import { formatInIST, getAttendanceDate } from "@/lib/date";
 
 interface CoverBlockContent {
   subtitle?: string;
@@ -39,23 +40,14 @@ interface CoverBlockEditorProps {
 }
 
 function toDateInputValue(value?: string) {
-  if (!value) {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, "0");
-    const day = String(today.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  }
+  if (!value) return getAttendanceDate();
 
   const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (dateOnlyMatch) return value;
 
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "";
-  const year = parsed.getFullYear();
-  const month = String(parsed.getMonth() + 1).padStart(2, "0");
-  const day = String(parsed.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return formatInIST(parsed, "yyyy-MM-dd");
 }
 
 export function CoverBlockEditor({ block, proposal, onSave }: CoverBlockEditorProps) {

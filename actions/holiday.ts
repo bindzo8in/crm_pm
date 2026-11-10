@@ -1,7 +1,7 @@
 "use server";
 
 import {
-  getHolidayDepartment,
+  getHolidayDepartments,
   requireHolidayManager,
   requireHolidayUser,
 } from "@/lib/leave-access";
@@ -55,6 +55,7 @@ const holidayFieldsSchema = z.object({
     ]),
   ),
   notifyStaff: z.boolean(),
+  isHalfDay: z.boolean().default(false),
   description: z.string().trim().max(500).nullable().optional(),
 });
 
@@ -112,7 +113,7 @@ export async function getHolidaysAction(input: unknown = {}) {
   const year = parsed.year ?? Number(formatInIST(new Date(), "yyyy"));
   return {
     success: true,
-    holidays: await getHolidaysForYear(year, getHolidayDepartment(user)),
+    holidays: await getHolidaysForYear(year, await getHolidayDepartments(user)),
     weekendDays: await getWeekendDays(),
     year,
   };
@@ -134,7 +135,7 @@ export async function getUpcomingHolidaysAction() {
   const user = await requireHolidayUser();
   return {
     success: true,
-    holidays: await getUpcomingHolidays(getHolidayDepartment(user)),
+    holidays: await getUpcomingHolidays(await getHolidayDepartments(user)),
   };
 }
 
@@ -148,6 +149,7 @@ export async function createHolidayAction(input: unknown) {
     category: parsed.category,
     departments: parsed.departments,
     notifyStaff: parsed.notifyStaff,
+    isHalfDay: parsed.isHalfDay,
     description: parsed.description || null,
   });
 
@@ -167,6 +169,7 @@ export async function updateHolidayAction(input: unknown) {
     category: parsed.category,
     departments: parsed.departments,
     notifyStaff: parsed.notifyStaff,
+    isHalfDay: parsed.isHalfDay,
     description: parsed.description || null,
   });
 

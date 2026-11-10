@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   calculateExpenseTotals,
+  formatExpenseAmountCents,
+  getExpenseEnteredAmountCents,
   MAX_EXPENSE_TOTAL_CENTS,
   parseExpenseAmountCents,
 } from "../lib/expense-tax";
@@ -13,6 +15,9 @@ const validExpense = {
   expenseDate: "2026-10-31",
   financialAccountId: "account-1",
   categoryId: "category-1",
+  customerId: "customer-1",
+  referenceNumber: "",
+  gstTreatment: "UNREGISTERED",
   sourceOfSupply: "TN",
   destinationOfSupply: "TN",
 };
@@ -63,6 +68,18 @@ test("expense totals extract tax from tax-inclusive amounts", () => {
     taxAmountCents: 5_955,
     totalAmountCents: 125_050,
   });
+});
+
+test("editing a tax-exclusive expense restores the entered base amount", () => {
+  const savedTotal = calculateExpenseTotals(125_050, 5, false).totalAmountCents;
+
+  assert.equal(savedTotal, 131_303);
+  assert.equal(getExpenseEnteredAmountCents(savedTotal, 5, false), 125_050);
+  assert.equal(formatExpenseAmountCents(getExpenseEnteredAmountCents(savedTotal, 5, false)), "1250.50");
+});
+
+test("editing a tax-inclusive expense preserves its saved total as the entered amount", () => {
+  assert.equal(getExpenseEnteredAmountCents(125_050, 5, true), 125_050);
 });
 
 test("expense totals preserve the entered amount when no tax rate is selected", () => {

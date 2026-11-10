@@ -20,6 +20,7 @@ interface ImageUploadProps {
   scope: UploadScope;
   ownerId?: string;
   disabled?: boolean;
+  compact?: boolean;
 }
 
 export function ImageUpload({
@@ -28,6 +29,7 @@ export function ImageUpload({
   value,
   scope,
   ownerId,
+  compact = false,
 }: ImageUploadProps) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = React.useState(false);
@@ -56,55 +58,48 @@ export function ImageUpload({
     }
   }
 
-  return (
-    <div className="w-full max-w-sm space-y-3">
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        className="sr-only"
-        aria-label="Choose an image to upload"
-        disabled={disabled || isUploading}
-        onChange={(event) => {
-          void handleFile(event.currentTarget.files?.[0]);
-          event.currentTarget.value = "";
-        }}
-      />
+  const dropZone = (
+    <div
+      className={`relative flex items-center justify-center overflow-hidden border bg-muted/30 p-3 ${
+        compact
+          ? "size-20 shrink-0 rounded-full"
+          : "aspect-[4/3] w-full rounded-xl"
+      }`}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => {
+        event.preventDefault();
+        if (!disabled && !isUploading) void handleFile(event.dataTransfer.files[0]);
+      }}
+    >
+      {value?.url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={value.url}
+          alt="Uploaded image preview"
+          className={`max-h-full max-w-full ${compact ? "size-full rounded-full object-cover" : "object-contain"}`}
+        />
+      ) : (
+        <div className="space-y-2 text-center text-muted-foreground">
+          <ImagePlus className="mx-auto size-8" aria-hidden="true" />
+          {!compact && <p className="text-sm">Drop an image here or choose a file</p>}
+        </div>
+      )}
+      {isUploading && (
+        <div
+          className={`absolute inset-x-0 bottom-0 flex items-center gap-2 bg-background/95 px-3 py-2 text-xs ${compact ? "justify-center" : ""}`}
+          role="status"
+          aria-live="polite"
+        >
+          <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
+          {!compact && <span className="flex-1">Uploading image</span>}
+          <span>{uploadProgress}%</span>
+        </div>
+      )}
+    </div>
+  );
 
-      <div
-        className="relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-xl border bg-muted/30 p-3"
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={(event) => {
-          event.preventDefault();
-          if (!disabled && !isUploading) void handleFile(event.dataTransfer.files[0]);
-        }}
-      >
-        {value?.url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={value.url}
-            alt="Uploaded image preview"
-            className="max-h-full max-w-full object-contain"
-          />
-        ) : (
-          <div className="space-y-2 text-center text-muted-foreground">
-            <ImagePlus className="mx-auto size-8" aria-hidden="true" />
-            <p className="text-sm">Drop an image here or choose a file</p>
-          </div>
-        )}
-        {isUploading && (
-          <div
-            className="absolute inset-x-0 bottom-0 flex items-center gap-2 bg-background/95 px-3 py-2 text-xs"
-            role="status"
-            aria-live="polite"
-          >
-            <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
-            <span className="flex-1">Uploading image</span>
-            <span>{uploadProgress}%</span>
-          </div>
-        )}
-      </div>
-
+  const uploadActions = (
+    <>
       <div className="flex flex-wrap gap-2">
         <Button
           type="button"
@@ -114,7 +109,7 @@ export function ImageUpload({
           onClick={() => fileInputRef.current?.click()}
         >
           {isUploading ? <LoaderCircle className="animate-spin" /> : <ImagePlus />}
-          {value?.url ? "Replace image" : "Choose image"}
+          {value?.url ? "Replace photo" : "Choose photo"}
         </Button>
         {value?.url && (
           <>
@@ -144,6 +139,38 @@ export function ImageUpload({
       <p className="text-xs text-muted-foreground">
         JPG, PNG, or WebP. Maximum file size: 10 MB.
       </p>
+    </>
+  );
+
+  return (
+    <div className={`w-full ${compact ? "" : "max-w-sm space-y-3"}`}>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="sr-only"
+        aria-label="Choose an image to upload"
+        disabled={disabled || isUploading}
+        onChange={(event) => {
+          void handleFile(event.currentTarget.files?.[0]);
+          event.currentTarget.value = "";
+        }}
+      />
+
+      {compact ? (
+        <div className="flex min-w-0 items-center gap-4">
+          {dropZone}
+          <div className="min-w-0 space-y-2">
+            <p className="text-sm font-medium text-foreground">Profile photo</p>
+            {uploadActions}
+          </div>
+        </div>
+      ) : (
+        <>
+          {dropZone}
+          {uploadActions}
+        </>
+      )}
 
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
         <DialogContent className="flex h-[min(85dvh,48rem)] max-w-4xl flex-col sm:max-w-4xl">

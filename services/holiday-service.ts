@@ -6,6 +6,7 @@ import { sendHolidayAnnouncementEmails } from "@/lib/email";
 import webpush from "web-push";
 import prisma from "@/lib/prisma";
 import { env } from "@/lib/env";
+import { broadcastNotificationUpdates } from "@/lib/notification-realtime";
 import {
   createHolidayEvent,
   deleteHolidayEvent,
@@ -31,6 +32,7 @@ async function sendHolidayEmails(
     endDate: data.endDate,
     category: data.category,
     departments: data.departments,
+    isHalfDay: data.isHalfDay,
   });
 }
 
@@ -68,7 +70,7 @@ async function sendHolidayPushNotifications(
   });
   const payload = JSON.stringify({
     title: `Holiday: ${data.name}`,
-    body: `${formatHolidayDateRange(data.startDate, data.endDate)} · ${data.description || "Holiday announcement"}`,
+    body: `${formatHolidayDateRange(data.startDate, data.endDate)}${data.isHalfDay ? " · Half-day holiday; work the other half" : ""} · ${data.description || "Holiday announcement"}`,
     url: "/dashboard/holidays",
   });
   const deliveries = await Promise.all(
@@ -113,23 +115,26 @@ async function sendHolidayPushNotifications(
 
 export async function getHolidaysForYear(
   year: number,
-  department?: Department,
+  departments?: readonly Department[],
 ) {
   return listHolidays(
     new Date(Date.UTC(year, 0, 1)),
     new Date(Date.UTC(year + 1, 0, 1) - 1),
-    department,
+    departments,
   );
 }
 
-export async function getUpcomingHolidays(department?: Department) {
+export async function getUpcomingHolidays(departments?: readonly Department[]) {
   const today = parseDateOnly(getAttendanceDate());
-  return listUpcomingHolidays(today, department);
+  return listUpcomingHolidays(today, departments);
 }
 
 export async function addHoliday(data: HolidayWriteData) {
   try {
     const result = await createHolidayEvent(data);
+    await broadcastNotificationUpdates(
+      data.notifyStaff ? result.recipients.map(({ id }) => id) : [],
+    );
     const [emailDelivery, pushDelivery] = await Promise.all([
       sendHolidayEmails(result, data),
       sendHolidayPushNotifications(result, data),
@@ -154,6 +159,9 @@ export async function addHoliday(data: HolidayWriteData) {
 export async function editHoliday(id: string, data: HolidayWriteData) {
   try {
     const result = await updateHolidayEvent(id, data);
+    await broadcastNotificationUpdates(
+      data.notifyStaff ? result.recipients.map(({ id }) => id) : [],
+    );
     const [emailDelivery, pushDelivery] = await Promise.all([
       sendHolidayEmails(result, data),
       sendHolidayPushNotifications(result, data),

@@ -108,13 +108,17 @@ export type CreateManualAttendanceInput = z.infer<typeof createManualAttendanceS
 export const advancedAttendanceReportSchema = z.object({
   startDate: z.string().optional(),
   endDate: z.string().optional(),
-  department: z.enum(Department).optional(),
-  userId: z.string().optional(),
+  department: z.union([z.enum(Department), z.array(z.enum(Department))]).optional(),
+  userId: z.union([z.string(), z.array(z.string())]).optional(),
   status: z.union([
     z.enum(AttendanceStatus),
     z.enum(["HOLIDAY", "WEEKEND", "AWAITING_ATTENDANCE"]),
+    z.array(z.union([
+      z.enum(AttendanceStatus),
+      z.enum(["HOLIDAY", "WEEKEND", "AWAITING_ATTENDANCE"]),
+    ])),
   ]).optional(),
-  workMode: z.enum(WorkMode).optional(),
+  workMode: z.union([z.enum(WorkMode), z.array(z.enum(WorkMode))]).optional(),
   onlyLate: z.boolean().optional(),
   minLateMinutes: z.number().int().min(0).optional(),
   onlyEarlyLeave: z.boolean().optional(),

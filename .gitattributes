@@ -1,0 +1,2 @@
+attendance-reminder-scheduler/*.sh text eol=lf
+attendance-reminder-scheduler/crontab text eol=lf

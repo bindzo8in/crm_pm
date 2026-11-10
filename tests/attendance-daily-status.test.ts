@@ -112,6 +112,44 @@ test("daily timeline resolves actual shifts, approved leave, holidays, and absen
   assert.equal(statusByDate.get("2026-10-09"), "ABSENT");
 });
 
+test("half-day holidays expect a half-day shift and exclude only half of leave", () => {
+  const timeline = buildResolvedAttendanceTimeline(
+    [employee],
+    [],
+    [],
+    [{ date: date(5), name: "Company half-day", departments: [], isHalfDay: true }],
+    date(5),
+    date(5),
+    date(6),
+  );
+
+  assert.equal(timeline[0]?.status, "HALF_DAY");
+  assert.equal("holidayName" in (timeline[0] ?? {}) && timeline[0]?.holidayName, "Company half-day");
+  assert.equal(
+    isScheduledAttendanceShift({
+      date: date(5),
+      status: timeline[0]?.status ?? "",
+      holidayName: "Company half-day",
+      holidayIsHalfDay: true,
+    }),
+    true,
+  );
+});
+
+test("holidays for any current department membership apply to the employee", () => {
+  const timeline = buildResolvedAttendanceTimeline(
+    [{ ...employee, additionalDepartments: ["DESIGN"] }],
+    [],
+    [],
+    [{ date: date(5), name: "Design holiday", departments: ["DESIGN"] }],
+    date(5),
+    date(5),
+    date(6),
+  );
+
+  assert.equal(timeline[0]?.status, "HOLIDAY");
+});
+
 test("pending leave does not override actual attendance or inferred absence", () => {
   const timeline = buildResolvedAttendanceTimeline(
     [employee],

@@ -20,6 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { ManagerLeaveRequestRow } from "@/lib/types/leave";
+import { formatDepartmentMemberships } from "@/lib/departments";
 
 function formatDate(date: Date): string {
   return new Intl.DateTimeFormat("en-IN", {
@@ -78,7 +79,9 @@ export function LeaveReviewDialog({ leave }: { leave: ManagerLeaveRequestRow }) 
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground">Employee</p>
                 <p className="mt-1 break-words font-medium">{leave.user.name || leave.user.email}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{leave.user.department ?? "No department"}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {formatDepartmentMemberships(leave.user)}
+                </p>
               </div>
             </div>
             <div className="flex min-w-0 items-start gap-3 rounded-lg border p-4">
@@ -100,6 +103,11 @@ export function LeaveReviewDialog({ leave }: { leave: ManagerLeaveRequestRow }) 
               <p className="text-xs text-muted-foreground">Requested dates</p>
               <p className="mt-2 text-sm font-medium">{formatDate(leave.startDate)}</p>
               <p className="text-sm text-muted-foreground">to {formatDate(leave.endDate)}</p>
+              {leave.isHalfDay && (
+                <p className="mt-2 text-xs font-medium text-primary">
+                  {leave.halfDayPeriod === "AFTERNOON" ? "Afternoon" : "Morning"} half-day leave
+                </p>
+              )}
             </div>
             <div className="rounded-lg bg-muted/40 p-4">
               <p className="flex items-center gap-2 text-xs text-muted-foreground">

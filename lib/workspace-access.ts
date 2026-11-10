@@ -3,6 +3,7 @@ import { Department, UserRole } from "@/app/generated/prisma/enums";
 export type WorkspaceActor = {
   role?: UserRole | string | null;
   department?: Department | string | null;
+  additionalDepartments?: readonly (Department | string)[];
 };
 
 export const BUSINESS_WORKSPACE_DEPARTMENTS = [Department.HR, Department.SALES] as const;

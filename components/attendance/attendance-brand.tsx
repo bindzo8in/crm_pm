@@ -3,7 +3,13 @@
 import { env } from "@/lib/env";
 import Image from "next/image";
 
-export function AttendanceBrand({ subtitle }: { subtitle: string }) {
+export function AttendanceBrand({
+  subtitle,
+  hideSubtitleOnMobile = false,
+}: {
+  subtitle: string;
+  hideSubtitleOnMobile?: boolean;
+}) {
   return (
     <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
       <Image
@@ -17,7 +23,7 @@ export function AttendanceBrand({ subtitle }: { subtitle: string }) {
         <p className="truncate text-sm font-extrabold tracking-tight sm:text-base">
           {env.NEXT_PUBLIC_APP_NAME}
         </p>
-        <p className="truncate whitespace-nowrap text-[11px] font-medium text-muted-foreground sm:text-xs">
+        <p className={`truncate whitespace-nowrap text-[11px] font-medium text-muted-foreground sm:text-xs ${hideSubtitleOnMobile ? "hidden sm:block" : ""}`}>
           {subtitle}
         </p>
       </div>

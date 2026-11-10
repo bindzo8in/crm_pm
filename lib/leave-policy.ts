@@ -40,7 +40,7 @@ export function toDateKey(date: Date): string {
 export function calculateLeaveDayBreakdown(
   startDate: Date,
   endDate: Date,
-  holidayDateKeys: ReadonlySet<string>,
+  holidayDateKeys: ReadonlySet<string> | ReadonlyMap<string, number>,
   weekendDays: ReadonlySet<number> = new Set(DEFAULT_WEEKEND_DAYS),
 ): LeaveDayBreakdown {
   const start = Date.UTC(
@@ -62,17 +62,31 @@ export function calculateLeaveDayBreakdown(
   const weekendCount = countWeekendDays(start, end, weekendDays);
   const holidayCountsByMonth = new Map<string, number>();
 
-  for (const dateKey of holidayDateKeys) {
+  const holidayEntries: Array<[string, number]> = [];
+  for (const holidayEntry of holidayDateKeys) {
+    holidayEntries.push(
+      typeof holidayEntry === "string"
+        ? [holidayEntry, 1]
+        : holidayEntry,
+    );
+  }
+
+  for (const [dateKey, dayValue] of holidayEntries) {
     const holiday = parseDateOnly(dateKey);
     const timestamp = holiday.getTime();
     const weekday = holiday.getUTCDay();
-    if (timestamp < start || timestamp > end || weekendDays.has(weekday)) {
+    if (
+      timestamp < start ||
+      timestamp > end ||
+      weekendDays.has(weekday) ||
+      (dayValue !== 0.5 && dayValue !== 1)
+    ) {
       continue;
     }
     const monthKey = dateKey.slice(0, 7);
     holidayCountsByMonth.set(
       monthKey,
-      (holidayCountsByMonth.get(monthKey) ?? 0) + 1,
+      (holidayCountsByMonth.get(monthKey) ?? 0) + dayValue,
     );
   }
 
@@ -123,6 +137,19 @@ export function calculateLeaveDayBreakdown(
   return breakdown;
 }
 
+export function calculateHalfDayLeaveBreakdown(
+  breakdown: LeaveDayBreakdown,
+  date: Date,
+): LeaveDayBreakdown {
+  const isChargeableDate = breakdown.netLeaveDays > 0;
+  const month = toDateKey(date).slice(0, 7);
+  return {
+    ...breakdown,
+    netLeaveDays: isChargeableDate ? 0.5 : 0,
+    monthlyBreakdown: isChargeableDate ? { [month]: 0.5 } : {},
+  };
+}
+
 function countSundays(start: number, end: number): number {
   return countWeekdays(start, end, 0);
 }
@@ -164,7 +191,8 @@ export function parseMonthlyLeaveBreakdown(value: unknown): MonthlyLeaveBreakdow
       ([month, days]) =>
         MONTH_KEY_PATTERN.test(month) &&
         typeof days === "number" &&
-        Number.isSafeInteger(days) &&
+        Number.isFinite(days) &&
+        Number.isSafeInteger(days * 2) &&
         days > 0,
     ),
   );
