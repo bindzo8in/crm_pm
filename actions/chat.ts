@@ -9,7 +9,7 @@ import prisma from "@/lib/prisma";
 const attachmentSchema = z.object({
   url: z.string().url(),
   publicId: z.string().min(1).max(500),
-  resourceType: z.enum(["image", "video", "raw"]),
+  resourceType: z.enum(["image", "video", "audio", "raw"]),
   mimeType: z.string().min(1).max(200),
   fileName: z.string().min(1).max(255),
   fileSize: z.number().int().positive().max(25 * 1024 * 1024),
@@ -100,7 +100,13 @@ export async function sendProjectMessageAction(input: unknown) {
         create: attachments.map((attachment) => ({
           url: attachment.url,
           publicId: attachment.publicId,
-          resourceType: attachment.resourceType === "image" ? "IMAGE" : attachment.resourceType === "video" ? "VIDEO" : "RAW",
+          resourceType: attachment.resourceType === "image"
+            ? "IMAGE"
+            : attachment.resourceType === "audio"
+              ? "AUDIO"
+              : attachment.resourceType === "video"
+                ? "VIDEO"
+                : "RAW",
           mimeType: attachment.mimeType,
           fileName: attachment.fileName,
           fileSize: attachment.fileSize,
@@ -115,6 +121,7 @@ export async function sendProjectMessageAction(input: unknown) {
       body: true,
       createdAt: true,
       editedAt: true,
+      deletedAt: true,
       sender: { select: { id: true, name: true, image: true } },
       replyTo: {
         select: {
@@ -196,6 +203,74 @@ export async function toggleProjectMessageReactionAction(input: unknown) {
   };
 }
 
+export async function editProjectMessageAction(input: unknown) {
+  const { projectId, messageId, body } = z.object({
+    projectId: z.string().min(1),
+    messageId: z.string().min(1),
+    body: z.string().trim().min(1).max(5000),
+  }).parse(input);
+  const user = await currentUser();
+  await requireProjectMember(projectId, user.id);
+  const conversation = await prisma.conversation.findUnique({
+    where: { projectId },
+    select: { id: true },
+  });
+  if (!conversation) throw new Error("Project conversation not found.");
+
+  const result = await prisma.chatMessage.updateMany({
+    where: {
+      id: messageId,
+      conversationId: conversation.id,
+      senderId: user.id,
+      deletedAt: null,
+    },
+    data: { body, editedAt: new Date() },
+  });
+  if (result.count !== 1) {
+    throw new Error("This message can no longer be edited.");
+  }
+
+  return { success: true };
+}
+
+export async function deleteProjectMessageAction(input: unknown) {
+  const { projectId, messageId } = z.object({
+    projectId: z.string().min(1),
+    messageId: z.string().min(1),
+  }).parse(input);
+  const user = await currentUser();
+  await requireProjectMember(projectId, user.id);
+  const conversation = await prisma.conversation.findUnique({
+    where: { projectId },
+    select: { id: true },
+  });
+  if (!conversation) throw new Error("Project conversation not found.");
+
+  const deletedAt = new Date();
+  await prisma.$transaction(async (transaction) => {
+    const result = await transaction.chatMessage.updateMany({
+      where: {
+        id: messageId,
+        conversationId: conversation.id,
+        senderId: user.id,
+        deletedAt: null,
+      },
+      data: { deletedAt },
+    });
+    if (result.count !== 1) {
+      throw new Error("This message can no longer be deleted.");
+    }
+
+    await transaction.chatMessageAttachment.updateMany({
+      where: { messageId, deletedAt: null },
+      data: { deletedAt },
+    });
+    await transaction.chatMessageReaction.deleteMany({ where: { messageId } });
+  });
+
+  return { success: true };
+}
+
 async function markConversationRead(conversationId: string, userId: string) {
   await prisma.conversationMember.upsert({
     where: { conversationId_userId: { conversationId, userId } },
@@ -215,7 +290,7 @@ export async function markProjectChatReadAction(projectId: string) {
 async function getConversationMessages(conversationId: string, userId: string) {
   await markConversationRead(conversationId, userId);
   const recentMessages = await prisma.chatMessage.findMany({
-    where: { conversationId, deletedAt: null },
+    where: { conversationId },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: 100,
     select: {
@@ -223,6 +298,7 @@ async function getConversationMessages(conversationId: string, userId: string) {
       body: true,
       createdAt: true,
       editedAt: true,
+      deletedAt: true,
       sender: { select: { id: true, name: true, image: true } },
       replyTo: {
         select: {
@@ -249,7 +325,9 @@ async function getConversationMessages(conversationId: string, userId: string) {
     conversationId,
     messages: recentMessages.reverse().map(({ reactions, ...message }) => ({
       ...message,
-      reactions: summarizeReactions(reactions, userId),
+      body: message.deletedAt ? "" : message.body,
+      attachments: message.deletedAt ? [] : message.attachments,
+      reactions: message.deletedAt ? [] : summarizeReactions(reactions, userId),
       mine: message.sender.id === userId,
     })),
   };

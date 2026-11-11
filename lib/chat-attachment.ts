@@ -1,4 +1,7 @@
-export function createAttachmentContentDisposition(fileName: string) {
+export function createAttachmentContentDisposition(
+  fileName: string,
+  disposition: "attachment" | "inline" = "attachment",
+) {
   const safeFileName = fileName
     .replace(/[\\/\u0000-\u001f\u007f]/g, "_")
     .trim()
@@ -8,5 +11,5 @@ export function createAttachmentContentDisposition(fileName: string) {
     `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
   );
 
-  return `attachment; filename="${asciiFileName}"; filename*=UTF-8''${encodedFileName}`;
+  return `${disposition}; filename="${asciiFileName}"; filename*=UTF-8''${encodedFileName}`;
 }

@@ -518,7 +518,7 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
         </div>
       </section>
 
-      <nav aria-label="Project workspace views" className="-mx-1 flex gap-1 overflow-x-auto border-b px-1">
+      <nav aria-label="Project workspace views" className="-mx-1 grid grid-cols-3 gap-x-1 border-b px-1 sm:flex sm:gap-1">
         {([
           { tab: "overview", label: "Overview", icon: LayoutDashboard },
           { tab: "tasks", label: "Tasks", icon: ListTodo },
@@ -532,7 +532,7 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
             type="button"
             aria-pressed={activeTab === tab}
             onClick={() => setActiveTab(tab)}
-            className={`min-h-11 shrink-0 border-b-2 px-3 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+            className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 border-b-2 px-2 py-2 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-11 sm:shrink-0 sm:flex-row sm:gap-0 sm:px-3 sm:py-0 sm:text-sm ${
               activeTab === tab
                 ? "border-primary text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground"

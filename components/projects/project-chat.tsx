@@ -5,15 +5,18 @@ import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { CheckCheck, FileText, Paperclip, Reply, Send, SmilePlus, X } from "lucide-react";
+import { CheckCheck, FileText, Mic, MoreHorizontal, Paperclip, Pencil, Reply, Send, SmilePlus, Square, Trash2, X } from "lucide-react";
 import EmojiPicker from "emoji-picker-react";
-import { getProjectConversationAction, markProjectChatReadAction, sendProjectMessageAction, toggleProjectMessageReactionAction } from "@/actions/chat";
+import { deleteProjectMessageAction, editProjectMessageAction, getProjectConversationAction, markProjectChatReadAction, sendProjectMessageAction, toggleProjectMessageReactionAction } from "@/actions/chat";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { ChatMedia, ChatMediaItem } from "@/components/chat/chat-media";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { createVoiceNoteWav } from "@/lib/voice-note-audio";
 
 const chatSchema = z.object({ body: z.string().trim().max(5000) });
 type ChatInput = z.input<typeof chatSchema>;
@@ -44,6 +47,12 @@ export function ProjectChat({ projectId }: { projectId: string }) {
   const [replyTo, setReplyTo] = useState<ProjectChatMessage | null>(null);
   const [reactingMessageId, setReactingMessageId] = useState<string | null>(null);
   const [openReactionMessageId, setOpenReactionMessageId] = useState<string | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingBody, setEditingBody] = useState("");
+  const [messageToDeleteId, setMessageToDeleteId] = useState<string | null>(null);
+  const [isDeletingMessage, setIsDeletingMessage] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [isRefreshing, startRefresh] = useTransition();
   const endRef = useRef<HTMLDivElement>(null);
   const refreshSequenceRef = useRef(0);
@@ -55,8 +64,37 @@ export function ProjectChat({ projectId }: { projectId: string }) {
   const uploadControllersRef = useRef(new Map<string, AbortController>());
   const cancelledUploadKeysRef = useRef(new Set<string>());
   const realtimeSocketRef = useRef<WebSocket | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioInputRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const audioProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const muteGainRef = useRef<GainNode | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const recordedChunksRef = useRef<Float32Array[]>([]);
+  const discardRecordingRef = useRef(false);
   const form = useForm<ChatInput>({ resolver: zodResolver(chatSchema), defaultValues: { body: "" } });
   const messageBody = useWatch({ control: form.control, name: "body" });
+
+  const releaseVoiceCapture = useCallback(() => {
+    if (audioProcessorRef.current) {
+      audioProcessorRef.current.onaudioprocess = null;
+      audioProcessorRef.current.disconnect();
+      audioProcessorRef.current = null;
+    }
+    audioInputRef.current?.disconnect();
+    audioInputRef.current = null;
+    muteGainRef.current?.disconnect();
+    muteGainRef.current = null;
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+
+    const audioContext = audioContextRef.current;
+    audioContextRef.current = null;
+    if (audioContext && audioContext.state !== "closed") {
+      void audioContext.close().catch((error: unknown) => {
+        console.error("Could not close voice recording audio context:", error);
+      });
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     if (refreshInFlightRef.current) {
@@ -170,6 +208,20 @@ export function ProjectChat({ projectId }: { projectId: string }) {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
+  useEffect(() => {
+    if (!isRecording) return;
+    const timer = window.setInterval(() => {
+      setRecordingSeconds((seconds) => seconds + 1);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isRecording]);
+
+  useEffect(() => () => {
+    discardRecordingRef.current = true;
+    releaseVoiceCapture();
+    recordedChunksRef.current = [];
+  }, [releaseVoiceCapture]);
+
   async function send(values: ChatInput) {
     if (!values.body.trim() && attachments.length === 0) return;
     try {
@@ -224,12 +276,14 @@ export function ProjectChat({ projectId }: { projectId: string }) {
     }
   }
 
-  async function uploadMedia(files: FileList | null) {
+  async function uploadMedia(files: FileList | File[] | null, sendAfterUpload = false) {
     if (!files?.length || !conversationId) return;
     setUploading(true);
+    let previews: LocalAttachmentPreview[] = [];
     try {
       const selectedFiles = Array.from(files).slice(0, 10);
-      const previews = selectedFiles.map((file) => ({
+      const uploadedAssets: PendingAttachment[] = [];
+      previews = selectedFiles.map((file) => ({
         key: crypto.randomUUID(),
         file,
         previewUrl: file.type.startsWith("image/") || file.type.startsWith("video/")
@@ -252,12 +306,38 @@ export function ProjectChat({ projectId }: { projectId: string }) {
         const payload = await response.json() as { asset?: PendingAttachment; message?: string };
         const asset = payload.asset;
         if (!response.ok || !asset) throw new Error(payload.message ?? "Media upload failed.");
+        uploadedAssets.push(asset);
         setAttachments((current) => [...current, asset].slice(0, 10));
         cancelledUploadKeysRef.current.delete(preview.key);
         if (preview.previewUrl) URL.revokeObjectURL(preview.previewUrl);
         setLocalAttachments((current) => current.filter((item) => item.key !== preview.key));
       }
+      if (sendAfterUpload && uploadedAssets.length > 0) {
+        const result = await sendProjectMessageAction({
+          projectId,
+          body: "",
+          attachments: uploadedAssets,
+          replyToId: replyTo?.id,
+        });
+        setMessages((current) => current.some((message) => message.id === result.message.id)
+          ? current
+          : [...current, result.message].sort((left, right) =>
+            new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+          ));
+        setReplyTo(null);
+        setAttachments((current) => current.filter((attachment) =>
+          !uploadedAssets.some((uploaded) => uploaded.publicId === attachment.publicId),
+        ));
+        publishChatChange();
+        void refresh();
+      }
     } catch (error) {
+      previews.forEach((preview) => {
+        if (preview.previewUrl) URL.revokeObjectURL(preview.previewUrl);
+      });
+      setLocalAttachments((current) =>
+        current.filter((preview) => !previews.some((failed) => failed.key === preview.key)),
+      );
       if (!isUploadCancellation(error)) {
         toast.error(error instanceof Error ? error.message : "Media upload failed.");
       }
@@ -265,6 +345,129 @@ export function ProjectChat({ projectId }: { projectId: string }) {
       uploadControllersRef.current.clear();
       setUploading(false);
     }
+  }
+
+  async function startVoiceRecording() {
+    if (!navigator.mediaDevices?.getUserMedia || typeof AudioContext === "undefined") {
+      toast.error("Voice recording is not supported in this browser.");
+      return;
+    }
+
+    try {
+      discardRecordingRef.current = false;
+      recordedChunksRef.current = [];
+      const audioContext = new AudioContext();
+      audioContextRef.current = audioContext;
+      await audioContext.resume();
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      const audioInput = audioContext.createMediaStreamSource(stream);
+      const audioProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+      const muteGain = audioContext.createGain();
+      muteGain.gain.value = 0;
+      audioProcessor.onaudioprocess = (event) => {
+        if (!discardRecordingRef.current) {
+          recordedChunksRef.current.push(
+            new Float32Array(event.inputBuffer.getChannelData(0)),
+          );
+        }
+      };
+      audioInput.connect(audioProcessor);
+      audioProcessor.connect(muteGain);
+      muteGain.connect(audioContext.destination);
+      audioInputRef.current = audioInput;
+      audioProcessorRef.current = audioProcessor;
+      muteGainRef.current = muteGain;
+      setRecordingSeconds(0);
+      setIsRecording(true);
+    } catch (error) {
+      releaseVoiceCapture();
+      recordedChunksRef.current = [];
+      setIsRecording(false);
+      toast.error(error instanceof Error ? error.message : "Unable to access the microphone.");
+    }
+  }
+
+  function stopVoiceRecording(discard = false) {
+    const audioContext = audioContextRef.current;
+    if (!audioContext || !audioProcessorRef.current) return;
+    discardRecordingRef.current = discard;
+    const sampleRate = audioContext.sampleRate;
+    const chunks = recordedChunksRef.current;
+    releaseVoiceCapture();
+    setIsRecording(false);
+    setRecordingSeconds(0);
+
+    if (discard) {
+      recordedChunksRef.current = [];
+      return;
+    }
+
+    try {
+      const wav = createVoiceNoteWav(chunks, sampleRate);
+      recordedChunksRef.current = [];
+      if (wav.size <= 44) {
+        toast.error("The recording was empty. Try recording again.");
+        return;
+      }
+
+      const voiceNote = new File(
+        [wav],
+        "voice-note.wav",
+        { type: wav.type },
+      );
+      void uploadMedia([voiceNote], true);
+    } catch (error) {
+      recordedChunksRef.current = [];
+      toast.error(error instanceof Error ? error.message : "Unable to process the voice note.");
+    }
+  }
+
+  function publishChatChange() {
+    if (realtimeSocketRef.current?.readyState === WebSocket.OPEN) {
+      realtimeSocketRef.current.send(JSON.stringify({ type: "publish", projectId }));
+    } else {
+      pendingPublishRef.current = true;
+    }
+  }
+
+  async function saveEditedMessage(messageId: string) {
+    try {
+      const body = editingBody.trim();
+      await editProjectMessageAction({ projectId, messageId, body });
+      setMessages((current) => current.map((message) =>
+        message.id === messageId ? { ...message, body, editedAt: new Date() } : message,
+      ));
+      setEditingMessageId(null);
+      setEditingBody("");
+      publishChatChange();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to edit this message.");
+    }
+  }
+
+  async function deleteMessage() {
+    if (!messageToDeleteId) return;
+    setIsDeletingMessage(true);
+    try {
+      await deleteProjectMessageAction({ projectId, messageId: messageToDeleteId });
+      setMessages((current) => current.map((message) =>
+        message.id === messageToDeleteId
+          ? { ...message, body: "", attachments: [], reactions: [], deletedAt: new Date() }
+          : message,
+      ));
+      setMessageToDeleteId(null);
+      publishChatChange();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to delete this message.");
+    } finally {
+      setIsDeletingMessage(false);
+    }
+  }
+
+  function formatRecordingTime(seconds: number) {
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
   }
 
   function cancelPreview(preview: LocalAttachmentPreview) {
@@ -303,20 +506,73 @@ export function ProjectChat({ projectId }: { projectId: string }) {
                 <div className={`group min-w-[80px] ${message.mine ? "max-w-[85%]" : "max-w-[82%]"}`}>
                   <div className={`text-[15px] leading-7 ${message.mine ? "rounded-[22px] bg-muted px-4 py-2.5" : "px-1 py-1"}`}>
                     {!message.mine && <p className="mb-0.5 text-xs font-medium">{message.sender.name}</p>}
-                    {message.replyTo && (
-                      <div className="mb-2 border-l-2 border-primary/60 pl-2 text-xs leading-5 text-muted-foreground">
-                        <p className="font-medium text-foreground/80">{message.replyTo.sender.name}</p>
-                        <p className="line-clamp-2">
-                          {message.replyTo.deletedAt
-                            ? "Message unavailable"
-                            : message.replyTo.body || message.replyTo.attachments[0]?.fileName || "Attachment"}
-                        </p>
-                      </div>
+                    {message.deletedAt ? (
+                      <p className="italic text-muted-foreground">This message was deleted</p>
+                    ) : (
+                      <>
+                        {message.replyTo && (
+                          <div className="mb-2 border-l-2 border-primary/60 pl-2 text-xs leading-5 text-muted-foreground">
+                            <p className="font-medium text-foreground/80">{message.replyTo.sender.name}</p>
+                            <p className="line-clamp-2">
+                              {message.replyTo.deletedAt
+                                ? "Message unavailable"
+                                : message.replyTo.body || message.replyTo.attachments[0]?.fileName || "Attachment"}
+                            </p>
+                          </div>
+                        )}
+                        {editingMessageId === message.id ? (
+                          <div className="space-y-2">
+                            <Textarea
+                              autoFocus
+                              value={editingBody}
+                              maxLength={5000}
+                              aria-label="Edit message"
+                              className="max-h-40 min-h-20 resize-y bg-background"
+                              onChange={(event) => setEditingBody(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Escape") {
+                                  setEditingMessageId(null);
+                                  setEditingBody("");
+                                }
+                                if (event.key === "Enter" && !event.shiftKey) {
+                                  event.preventDefault();
+                                  void saveEditedMessage(message.id);
+                                }
+                              }}
+                            />
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setEditingMessageId(null);
+                                  setEditingBody("");
+                                }}
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={!editingBody.trim() || editingBody.trim() === message.body}
+                                onClick={() => void saveEditedMessage(message.id)}
+                              >
+                                Save
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            {message.body && <p className="whitespace-pre-wrap break-words leading-relaxed">{message.body}</p>}
+                            {message.attachments.length > 0 && <ChatMedia items={message.attachments as ChatMediaItem[]} compact />}
+                          </>
+                        )}
+                      </>
                     )}
-                    {message.body && <p className="whitespace-pre-wrap break-words leading-relaxed">{message.body}</p>}
-                    {message.attachments.length > 0 && <ChatMedia items={message.attachments as ChatMediaItem[]} compact />}
                   </div>
-                  <div className={`mt-1 flex flex-wrap items-center gap-1 ${message.mine ? "justify-end" : "justify-start"}`}>
+                  {!message.deletedAt && editingMessageId !== message.id && (
+                    <div className={`mt-1 flex flex-wrap items-center gap-1 ${message.mine ? "justify-end" : "justify-start"}`}>
                     {message.reactions.map((reaction) => (
                       <button
                         key={reaction.emoji}
@@ -372,7 +628,42 @@ export function ProjectChat({ projectId }: { projectId: string }) {
                         />
                       </PopoverContent>
                     </Popover>
-                  </div>
+                    {message.editedAt && (
+                      <span className="px-1 text-[11px] text-muted-foreground">Edited</span>
+                    )}
+                    {message.mine && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 text-muted-foreground opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+                            aria-label="Message options"
+                          >
+                            <MoreHorizontal className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {message.body && (
+                            <DropdownMenuItem onSelect={() => {
+                              setEditingMessageId(message.id);
+                              setEditingBody(message.body);
+                            }}>
+                              <Pencil /> Edit message
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onSelect={() => setMessageToDeleteId(message.id)}
+                          >
+                            <Trash2 /> Delete message
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                    </div>
+                  )}
                 </div>
                 {message.mine && <Avatar className="mt-0.5 size-7 shrink-0"><AvatarImage src={message.sender.image ?? undefined} alt="" /><AvatarFallback className="text-[10px]">{message.sender.name.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar>}
               </div>
@@ -389,7 +680,7 @@ export function ProjectChat({ projectId }: { projectId: string }) {
                 ? <img src={preview.previewUrl} alt="" className="size-full object-cover" />
                 : preview.previewUrl && preview.file.type.startsWith("video/")
                   ? <video src={preview.previewUrl} muted preload="metadata" className="size-full object-cover" />
-                  : <div className="flex size-full flex-col items-center justify-center gap-1 text-muted-foreground"><FileText className="size-6" /><span className="max-w-16 truncate text-[10px]">{preview.file.name}</span></div>}
+                  : <div className="flex size-full flex-col items-center justify-center gap-1 text-muted-foreground">{preview.file.type.startsWith("audio/") ? <Mic className="size-6" /> : <FileText className="size-6" />}<span className="max-w-16 truncate text-[10px]">{preview.file.name}</span></div>}
               {preview.uploading && <span className="absolute inset-x-0 bottom-0 h-1 bg-primary/20"><span className="block h-full w-2/3 animate-pulse bg-primary" /></span>}
               <button type="button" className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-black/70 text-white" aria-label={`Cancel upload of ${preview.file.name}`} onClick={() => cancelPreview(preview)}><X className="size-3" /></button>
             </div>
@@ -402,6 +693,23 @@ export function ProjectChat({ projectId }: { projectId: string }) {
               <button type="button" className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-black/70 text-white" aria-label={`Remove ${attachment.fileName}`} onClick={() => setAttachments((current) => current.filter((item) => item.publicId !== attachment.publicId))}><X className="size-3" /></button>
             </div>
           ))}
+        </div>
+      )}
+      {isRecording && (
+        <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-4 pb-1 text-sm text-muted-foreground">
+          <span className="size-2 animate-pulse rounded-full bg-destructive" aria-hidden="true" />
+          <span>Recording voice note</span>
+          <span aria-live="off" className="tabular-nums">{formatRecordingTime(recordingSeconds)}</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="ml-auto size-7"
+            aria-label="Discard voice recording"
+            onClick={() => stopVoiceRecording(true)}
+          >
+            <X className="size-4" />
+          </Button>
         </div>
       )}
       <form
@@ -426,13 +734,48 @@ export function ProjectChat({ projectId }: { projectId: string }) {
         )}
         <div className="flex items-end gap-1 rounded-[26px] border bg-background px-2 py-2 shadow-[0_2px_12px_rgba(0,0,0,0.08)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.3)]">
           <input id="project-chat-media" className="hidden" type="file" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt" onChange={(event) => { void uploadMedia(event.currentTarget.files); event.currentTarget.value = ""; }} />
-          <Button type="button" variant="ghost" size="icon" className="size-9 shrink-0 rounded-full" disabled={uploading} asChild><label htmlFor="project-chat-media" aria-label="Attach media"><Paperclip /></label></Button>
+          <Button type="button" variant="ghost" size="icon" className="size-9 shrink-0 rounded-full" disabled={uploading || isRecording} asChild><label htmlFor="project-chat-media" aria-label="Attach media"><Paperclip /></label></Button>
           <Controller control={form.control} name="body" render={({ field, fieldState }) => (
-            <Field data-invalid={fieldState.invalid} className="min-w-0 flex-1"><FieldLabel htmlFor={field.name} className="sr-only">Message</FieldLabel><Textarea {...field} id={field.name} rows={1} aria-invalid={fieldState.invalid} className="max-h-32 min-h-9 resize-none border-0 bg-transparent py-2 shadow-none focus-visible:ring-0" placeholder={uploading ? "Uploading..." : "Message project members..."} disabled={uploading} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void form.handleSubmit(send)(); } }} />{fieldState.invalid && <FieldError errors={[fieldState.error]} />}</Field>
+            <Field data-invalid={fieldState.invalid} className="min-w-0 flex-1"><FieldLabel htmlFor={field.name} className="sr-only">Message</FieldLabel><Textarea {...field} id={field.name} rows={1} aria-invalid={fieldState.invalid} className="max-h-32 min-h-9 resize-none border-0 bg-transparent py-2 shadow-none focus-visible:ring-0" placeholder={isRecording ? "Recording voice note..." : uploading ? "Uploading..." : "Message project members..."} disabled={uploading || isRecording} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void form.handleSubmit(send)(); } }} />{fieldState.invalid && <FieldError errors={[fieldState.error]} />}</Field>
           )} />
-          <Button type="submit" size="icon" className="size-9 shrink-0 rounded-full bg-foreground text-background hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground" disabled={form.formState.isSubmitting || uploading || (!messageBody?.trim() && attachments.length === 0)} aria-label="Send message"><Send className="size-4" /></Button>
+          {isRecording ? (
+            <Button
+              type="button"
+              size="icon"
+              className="size-9 shrink-0 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              aria-label="Stop and send voice note"
+              onClick={() => stopVoiceRecording()}
+            >
+              <Square className="size-4 fill-current" />
+            </Button>
+          ) : messageBody?.trim() || attachments.length > 0 ? (
+            <Button type="submit" size="icon" className="size-9 shrink-0 rounded-full bg-foreground text-background hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground" disabled={form.formState.isSubmitting || uploading} aria-label="Send message"><Send className="size-4" /></Button>
+          ) : (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="size-9 shrink-0 rounded-full"
+              disabled={uploading || !conversationId}
+              aria-label="Record a voice note"
+              onClick={() => void startVoiceRecording()}
+            >
+              <Mic className="size-4" />
+            </Button>
+          )}
         </div>
       </form>
+      <ConfirmDialog
+        open={messageToDeleteId !== null}
+        onOpenChange={(open) => {
+          if (!open && !isDeletingMessage) setMessageToDeleteId(null);
+        }}
+        title="Delete this message?"
+        description="This message will be removed for everyone in the project conversation."
+        confirmLabel={isDeletingMessage ? "Deleting..." : "Delete message"}
+        disabled={isDeletingMessage}
+        onConfirm={() => void deleteMessage()}
+      />
     </section>
   );
 }

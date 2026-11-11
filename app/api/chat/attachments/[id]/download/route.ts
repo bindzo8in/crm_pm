@@ -53,6 +53,9 @@ export async function GET(
   if (!attachment) {
     return Response.json({ message: "Attachment not found." }, { status: 404 });
   }
+  const requestedInlineAudio = new URL(request.url).searchParams.get("inline") === "1"
+    && attachment.resourceType === "RAW"
+    && attachment.mimeType.startsWith("audio/");
 
   const conversation = attachment.message.conversation;
   let hasAccess = false;
@@ -108,7 +111,10 @@ export async function GET(
 
     const headers = new Headers({
       "Content-Type": attachment.mimeType,
-      "Content-Disposition": createAttachmentContentDisposition(attachment.fileName),
+      "Content-Disposition": createAttachmentContentDisposition(
+        attachment.fileName,
+        requestedInlineAudio ? "inline" : "attachment",
+      ),
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
     });

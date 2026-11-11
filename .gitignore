@@ -18,13 +18,17 @@
 # next.js
 /.next/
 /out/
+/.turbo/
 
 # production
 /build
 
 # misc
 .DS_Store
+Thumbs.db
 *.pem
+*.swp
+*.swo
 
 # debug
 npm-debug.log*
@@ -34,6 +38,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+!.env.*.example
 
 # vercel
 .vercel
@@ -42,10 +48,15 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-/app/generated/prisma
+# generated Prisma client
+/app/generated/prisma/
 
-#data
+# local data exports; keep the application location data
 /data/*
 !/data/countries.json
 !/data/states.json
-.tmp
+
+# test and local tooling output
+/.eslintcache
+/.tmp
+/scratch/

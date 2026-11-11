@@ -38,6 +38,10 @@ function configureCloudinary() {
   });
 }
 
+function positiveDimension(value: number | undefined) {
+  return value !== undefined && Number.isInteger(value) && value > 0 ? value : null;
+}
+
 export async function POST(request: Request) {
   if (!isSameOrigin(request)) {
     return Response.json({ message: "Upload requests must come from this site." }, { status: 403 });
@@ -56,41 +60,57 @@ export async function POST(request: Request) {
 
     const file = formData.get("file");
     if (!(file instanceof File)) return Response.json({ message: "Choose a file to upload." }, { status: 400 });
-    if (!allowedTypes.includes(file.type)) return Response.json({ message: "This file type is not supported." }, { status: 415 });
+    const mimeType = file.type.split(";")[0].trim().toLowerCase();
+    if (!allowedTypes.includes(mimeType)) return Response.json({ message: "This file type is not supported." }, { status: 415 });
     if (file.size === 0 || file.size > MAX_FILE_SIZE) return Response.json({ message: "Media must be between 1 byte and 25 MB." }, { status: 413 });
 
-    configureCloudinary();
-    const resourceType = file.type.startsWith("image/")
+    if (!env.CLOUDINARY_API_KEY || !env.CLOUDINARY_API_SECRET) {
+      return Response.json({ message: "File uploads are not configured. Contact your administrator." }, { status: 503 });
+    }
+
+    const cloudinaryResourceType = mimeType === "audio/webm"
+      ? "raw"
+      : mimeType.startsWith("image/")
       ? "image"
-      : file.type.startsWith("video/")
+      : mimeType.startsWith("video/")
         ? "video"
-        : file.type.startsWith("audio/")
+        : mimeType.startsWith("audio/")
           ? "video"
           : "raw";
     const buffer = Buffer.from(await file.arrayBuffer());
-    const result = await new Promise<{ secure_url: string; public_id: string; width?: number; height?: number; duration?: number }>((resolve, reject) => {
-      const stream = cloudinary.uploader.upload_stream(
-        {
-          folder: `crm/chat/${conversationId}`,
-          resource_type: resourceType,
-          max_bytes: MAX_FILE_SIZE,
-          use_filename: false,
-          unique_filename: true,
-        },
-        (error, uploadResult) => error || !uploadResult ? reject(error ?? new Error("Upload failed.")) : resolve(uploadResult),
-      );
-      stream.end(buffer);
-    });
+    let result: { secure_url: string; public_id: string; width?: number; height?: number; duration?: number };
+    try {
+      configureCloudinary();
+      result = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          {
+            folder: `crm/chat/${conversationId}`,
+            resource_type: cloudinaryResourceType,
+            max_bytes: MAX_FILE_SIZE,
+            use_filename: false,
+            unique_filename: true,
+          },
+          (error, uploadResult) => error || !uploadResult ? reject(error ?? new Error("Upload failed.")) : resolve(uploadResult),
+        );
+        stream.end(buffer);
+      });
+    } catch (error) {
+      console.error("Cloudinary chat media upload failed:", error);
+      return Response.json({ message: "Cloudinary could not upload this media. Try again." }, { status: 502 });
+    }
+
     return Response.json({
       asset: {
         url: result.secure_url,
         publicId: result.public_id,
-        resourceType,
+        resourceType: mimeType.startsWith("audio/") && cloudinaryResourceType === "video"
+          ? "audio"
+          : cloudinaryResourceType,
         mimeType: file.type,
         fileName: file.name,
         fileSize: file.size,
-        width: result.width ?? null,
-        height: result.height ?? null,
+        width: positiveDimension(result.width),
+        height: positiveDimension(result.height),
         duration: result.duration ? Math.round(result.duration) : null,
       },
     });

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { Download, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { VoiceNotePlayer } from "@/components/chat/voice-note-player";
 
 export type ChatMediaItem = {
   id: string;
@@ -48,12 +49,18 @@ export function ChatMedia({ items, compact = false }: { items: ChatMediaItem[]; 
           );
         }
         if (isAudio) {
+          const audioUrl = item.resourceType === "RAW"
+            ? `/api/chat/attachments/${encodeURIComponent(item.id)}/download?inline=1`
+            : item.url;
           return (
-            <div key={item.id} className="rounded-xl border bg-background/70 p-2">
-              <audio controls preload="metadata" className="w-full" aria-label={item.fileName}>
-                <source src={item.url} type={item.mimeType} />
-              </audio>
-            </div>
+            <VoiceNotePlayer
+              key={item.id}
+              src={audioUrl}
+              mimeType={item.mimeType}
+              fileName={item.fileName}
+              duration={item.duration}
+              downloadHref={`/api/chat/attachments/${encodeURIComponent(item.id)}/download`}
+            />
           );
         }
         return (
