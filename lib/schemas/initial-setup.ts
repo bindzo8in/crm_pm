@@ -9,20 +9,18 @@ const timeSchema = z
   }, "Enter a valid time.");
 
 const coordinate = (min: number, max: number, label: string) =>
-  z
-    .string()
-    .trim()
-    .min(1, `Enter the office ${label}.`)
-    .transform(Number)
-    .pipe(z.number().finite().min(min).max(max));
+  z.coerce
+    .number()
+    .finite()
+    .min(min, `Enter a valid office ${label}.`)
+    .max(max, `Enter a valid office ${label}.`);
 
 const integerInput = (min: number, max: number, label: string) =>
-  z
-    .string()
-    .trim()
-    .min(1, `Enter ${label}.`)
-    .transform(Number)
-    .pipe(z.number().int().min(min).max(max));
+  z.coerce
+    .number()
+    .int(`Enter a whole number for ${label}.`)
+    .min(min, `Minimum ${label} is ${min}.`)
+    .max(max, `Maximum ${label} is ${max}.`);
 
 export const initialSetupSchema = z
   .object({

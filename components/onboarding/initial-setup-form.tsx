@@ -70,6 +70,8 @@ export function InitialSetupForm({
     },
   });
 
+  console.log("form errors", form.formState.errors);
+
   const locateOffice = () => {
     setLocationMessage(null);
     if (!navigator.geolocation) {
@@ -97,6 +99,7 @@ export function InitialSetupForm({
   const onSubmit = form.handleSubmit(async (values) => {
     setError(null);
     const result = await completeInitialSetup(values);
+    console.log("completeInitialSetup result", result);
     if (!result.success) {
       setError(result.error ?? "Setup could not be completed.");
       return;
