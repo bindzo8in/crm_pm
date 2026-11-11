@@ -17,10 +17,7 @@ export async function completeInitialSetup(input: InitialSetupInput) {
   if ((await getInitialSetupStatus()).complete) {
     return { success: false, error: "Company setup has already been completed." };
   }
-  console.log("raw data received for initial setup", input);
-  
   const parsed = initialSetupSchema.safeParse(input);
-  console.log("parsed input", parsed);
   if (!parsed.success) {
     return {
       success: false,
