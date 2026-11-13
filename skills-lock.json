@@ -1,41 +1,41 @@
 {
-  "version": 1,
+  "version": 2,
   "skills": {
     "better-auth-best-practices": {
       "source": "better-auth/skills",
       "sourceType": "github",
       "skillPath": "better-auth/best-practices/SKILL.md",
-      "computedHash": "e8b46af23c6b1bc7aefdae3cf816368058c05e46eadb9bdca4f744b17d05a866"
+      "computedHash": "2773c3687f2cf96d659049ebf2d8c86058a33541b09360712df0dc6b1404c403"
     },
     "better-auth-security-best-practices": {
       "source": "better-auth/skills",
       "sourceType": "github",
       "skillPath": "security/SKILL.md",
-      "computedHash": "087c1094fa5f1834af4785c058dcc8c9abe4c1321b853883c76ea46c93a21cfe"
+      "computedHash": "36e9710eaa13c61c00bec00a4902fdc6ed829e6de13127238ae57494e93c1d9d"
     },
     "create-auth": {
       "source": "better-auth/skills",
       "sourceType": "github",
       "skillPath": "better-auth/create-auth/SKILL.md",
-      "computedHash": "cf5d2c852c66269dc350dec0db8cfb07634a2310aee5be1bfd7e643dca72f22e"
+      "computedHash": "6f68253a5ab812aa8c9b70c57609aca763093a594e3b07163142e0fa7d64904a"
     },
     "email-and-password-best-practices": {
       "source": "better-auth/skills",
       "sourceType": "github",
       "skillPath": "better-auth/emailAndPassword/SKILL.md",
-      "computedHash": "7786d722fa682b3d6a99793e73a9d51b59becefa595676134a993020633e068f"
+      "computedHash": "407c1244202876daa748818ed41dc55afde1b3f7aec48ae3a1f1c8a7ee40465e"
     },
     "organization-best-practices": {
       "source": "better-auth/skills",
       "sourceType": "github",
       "skillPath": "better-auth/organization/SKILL.md",
-      "computedHash": "f8ea75816a22992c1601c21c0ee3ff8209798065072d76aec3e31eea8295af57"
+      "computedHash": "e5b1238c3b62c789918fe397ed52787742e50944343de33f459629f29b0fe922"
     },
     "two-factor-authentication-best-practices": {
       "source": "better-auth/skills",
       "sourceType": "github",
       "skillPath": "better-auth/twoFactor/SKILL.md",
-      "computedHash": "cfe69aad10d4d7b397fbc101630afd9361b385b5f6f83056f33f36ab3b736fcb"
+      "computedHash": "89ca7fde92a69aec2cf7407d29058c5428e17d228e2578c79e0129d128524f38"
     }
   }
 }
