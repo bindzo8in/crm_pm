@@ -1,427 +1,362 @@
 "use client";
 
-import { getUsers } from "@/actions/user";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useDebounce } from "@/hooks/use-debounce";
+import Link from "next/link";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  BadgeCheck,
   Building2,
-  ChevronDown,
-  CircleCheck,
+  LoaderCircle,
   Search,
   ShieldCheck,
-  SlidersHorizontal,
-  UserRoundPlus,
   UsersRound,
   X,
 } from "lucide-react";
-import { useState } from "react";
-import { DataTable } from "./DataTable";
-import { columns } from "./columns";
-import { useSession } from "@/lib/auth-client";
+
+import { getUsers } from "@/actions/user";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import {
-  Department,
-  EmploymentStatus,
-  UserRole,
-  WorkMode,
-} from "@/app/generated/prisma/enums";
-import { canManageUserDirectory } from "@/lib/permissions";
-import { CreateStaffDialog } from "./create-staff-dialog";
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useDebounce } from "@/hooks/use-debounce";
+import { DataTable } from "./DataTable";
+import { createUserColumns } from "./columns";
 
 type UserFilters = {
-  role: UserRole | "ALL";
-  department: Department | "UNASSIGNED" | "ALL";
-  employmentStatus: EmploymentStatus | "ALL";
-  workMode: WorkMode | "ALL";
-  attendanceReport: "ALL" | "INCLUDED" | "EXCLUDED";
-  emailVerification: "ALL" | "VERIFIED" | "UNVERIFIED";
+  role: string;
+  teamId: string;
+  verification: "ALL" | "VERIFIED" | "UNVERIFIED";
 };
 
 const initialFilters: UserFilters = {
   role: "ALL",
-  department: "ALL",
-  employmentStatus: "ALL",
-  workMode: "ALL",
-  attendanceReport: "ALL",
-  emailVerification: "ALL",
+  teamId: "ALL",
+  verification: "ALL",
 };
 
-function formatOption(value: string) {
-  return value
-    .toLowerCase()
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+function formatRole(role: string) {
+  return role.replace(/[-_]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-export default function UsersTable() {
+export default function UsersTable({
+  canManageOrganization,
+}: {
+  canManageOrganization: boolean;
+}) {
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<UserFilters>(initialFilters);
-  const [filtersExpanded, setFiltersExpanded] = useState(false);
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const debouncedSearch = useDebounce(search, 350);
-  const { data: session } = useSession();
   const [pagination, setPagination] = useState({
     pageIndex: 0,
     pageSize: 10,
   });
-  const activeFilterCount =
-    Object.values(filters).filter((value) => value !== "ALL").length +
-    (search.trim() ? 1 : 0);
+  const debouncedSearch = useDebounce(search, 400);
+  const searchTerm = debouncedSearch.trim();
+  const columns = useMemo(
+    () => createUserColumns(canManageOrganization),
+    [canManageOrganization],
+  );
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isFetching, isError } = useQuery({
     queryKey: [
-      "users",
+      "organization-users",
       pagination.pageIndex,
       pagination.pageSize,
-      debouncedSearch,
-      filters,
+      searchTerm,
+      filters.role,
+      filters.teamId,
+      filters.verification,
     ],
-    queryFn: () => getUsers({
-      page: pagination.pageIndex,
-      pageSize: pagination.pageSize,
-      search: debouncedSearch,
-      ...(filters.role !== "ALL" ? { role: filters.role } : {}),
-      ...(filters.department !== "ALL" ? { department: filters.department } : {}),
-      ...(filters.employmentStatus !== "ALL"
-        ? { employmentStatus: filters.employmentStatus }
-        : {}),
-      ...(filters.workMode !== "ALL" ? { workMode: filters.workMode } : {}),
-      ...(filters.attendanceReport !== "ALL"
-        ? { includeInAttendanceReports: filters.attendanceReport === "INCLUDED" }
-        : {}),
-      ...(filters.emailVerification !== "ALL"
-        ? { emailVerified: filters.emailVerification === "VERIFIED" }
-        : {}),
-    }),
+    queryFn: () =>
+      getUsers({
+        page: pagination.pageIndex,
+        pageSize: pagination.pageSize,
+        search: searchTerm || undefined,
+        role: filters.role === "ALL" ? undefined : filters.role,
+        teamId: filters.teamId === "ALL" ? undefined : filters.teamId,
+        emailVerified:
+          filters.verification === "ALL"
+            ? undefined
+            : filters.verification === "VERIFIED",
+      }),
   });
-  const canCreateStaff =
-    session?.user.role &&
-    canManageUserDirectory(
-      session.user.role as UserRole,
-      session.user.department,
-    );
-  const stats = [
-    {
-      label: "Total people",
-      value: data?.total ?? 0,
-      detail: "In this directory",
-      icon: UsersRound,
-      iconClass: "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300",
-    },
-    {
-      label: "Active staff",
-      value: data?.stats.active ?? 0,
-      detail: "Currently employed",
-      icon: CircleCheck,
-      iconClass: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300",
-    },
-    {
-      label: "Departments",
-      value: data?.stats.departments.length ?? 0,
-      detail: data?.stats.departments.length === 1 ? "Team represented" : "Teams represented",
-      icon: Building2,
-      iconClass: "bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300",
-    },
-    {
-      label: "Email verified",
-      value: data?.stats.verified ?? 0,
-      detail: "Accounts confirmed",
-      icon: ShieldCheck,
-      iconClass: "bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300",
-    },
-  ];
+
+  const total = data?.total ?? 0;
+  const hasFilters =
+    Boolean(search.trim()) ||
+    filters.role !== "ALL" ||
+    filters.teamId !== "ALL" ||
+    filters.verification !== "ALL";
+  const activeFilterCount =
+    Number(filters.role !== "ALL") +
+    Number(filters.teamId !== "ALL") +
+    Number(filters.verification !== "ALL");
+
+  function updateFilter<Key extends keyof UserFilters>(
+    key: Key,
+    value: UserFilters[Key],
+  ) {
+    setFilters((current) => ({ ...current, [key]: value }));
+    setPagination((current) => ({ ...current, pageIndex: 0 }));
+  }
+
+  function clearFilters() {
+    setSearch("");
+    setFilters(initialFilters);
+    setPagination((current) => ({ ...current, pageIndex: 0 }));
+  }
 
   return (
-    <section className="min-w-0 space-y-5">
-      <div className="flex flex-col gap-4 rounded-2xl border bg-card px-4 py-5 shadow-sm sm:px-6 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-xs font-medium text-muted-foreground">People directory</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Users & staff</h1>
-          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Manage access, teams, employment, work arrangements, and attendance report inclusion.
+    <section className="flex flex-col gap-5" aria-labelledby="organization-members-title">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-1">
+          <h2
+            id="organization-members-title"
+            className="text-xl font-semibold tracking-tight"
+          >
+            Organization members
+          </h2>
+          <p className="max-w-2xl text-sm text-muted-foreground">
+            Find people in this organization and see the access they have.
           </p>
         </div>
-        {canCreateStaff && (
-          <Button
-            type="button"
-            onClick={() => setCreateDialogOpen(true)}
-            className="h-11 w-full gap-2 sm:w-auto"
-          >
-            <UserRoundPlus className="size-4" />
-            Create staff
+        {canManageOrganization && (
+          <Button asChild className="w-full sm:w-auto">
+            <Link href="/dashboard/organization-management#members">
+              <UsersRound data-icon="inline-start" />
+              Manage members &amp; access
+            </Link>
           </Button>
         )}
-      </div>
+      </header>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {stats.map((stat) => (
-          <div key={stat.label} className="min-w-0 rounded-xl border bg-card p-3.5 shadow-sm sm:p-4">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="truncate text-xs font-medium text-muted-foreground sm:text-sm">{stat.label}</p>
-                <p className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
-                  {isLoading ? "—" : stat.value}
-                </p>
-              </div>
-              <div className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${stat.iconClass}`}>
-                <stat.icon className="size-4" />
+      <Card>
+        <CardHeader>
+          <CardTitle>Access overview</CardTitle>
+          <CardDescription>
+            Member and email counts follow your filters; roles and teams show organization totals.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <div className="flex items-center gap-3">
+              <UsersRound className="text-muted-foreground" aria-hidden="true" />
+              <div>
+                <p className="text-lg font-semibold tabular-nums">{total}</p>
+                <p className="text-xs text-muted-foreground">Members</p>
               </div>
             </div>
-            <p className="mt-2 truncate text-xs text-muted-foreground">{stat.detail}</p>
+            <div className="flex items-center gap-3">
+              <BadgeCheck className="text-muted-foreground" aria-hidden="true" />
+              <div>
+                <p className="text-lg font-semibold tabular-nums">
+                  {data?.stats.verified ?? 0}
+                </p>
+                <p className="text-xs text-muted-foreground">Verified emails</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <ShieldCheck className="text-muted-foreground" aria-hidden="true" />
+              <div>
+                <p className="text-lg font-semibold tabular-nums">
+                  {data?.stats.customRoles ?? 0}
+                </p>
+                <p className="text-xs text-muted-foreground">Custom roles</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Building2 className="text-muted-foreground" aria-hidden="true" />
+              <div>
+                <p className="text-lg font-semibold tabular-nums">
+                  {data?.stats.teams ?? 0}
+                </p>
+                <p className="text-xs text-muted-foreground">Teams</p>
+              </div>
+            </div>
           </div>
-        ))}
-      </div>
+        </CardContent>
+      </Card>
 
-      <div className="space-y-4 rounded-xl border bg-card p-4 shadow-sm sm:p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="relative w-full sm:max-w-md">
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-            />
-            <Input
-              type="search"
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-                setPagination((current) => ({ ...current, pageIndex: 0 }));
+      <div className="rounded-xl border bg-card p-3 sm:p-4">
+        <FieldGroup className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(15rem,1fr)_repeat(3,minmax(9rem,12rem))_auto] lg:items-end">
+          <Field>
+            <FieldLabel htmlFor="organization-user-search">Search members</FieldLabel>
+            <div className="relative">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                id="organization-user-search"
+                type="search"
+                role="searchbox"
+                placeholder="Name or email"
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPagination((current) => ({ ...current, pageIndex: 0 }));
+                }}
+                className="h-11 pl-9 pr-10"
+              />
+              {search && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Clear search"
+                  onClick={() => {
+                    setSearch("");
+                    setPagination((current) => ({ ...current, pageIndex: 0 }));
+                  }}
+                  className="absolute right-1 top-1/2 size-9 -translate-y-1/2 text-muted-foreground"
+                >
+                  <X aria-hidden="true" />
+                </Button>
+              )}
+            </div>
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="organization-user-role">Role</FieldLabel>
+            <Select
+              value={filters.role}
+              onValueChange={(value) => updateFilter("role", value)}
+            >
+              <SelectTrigger id="organization-user-role" className="h-11 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="ALL">All roles</SelectItem>
+                  {(data?.roles ?? []).map((role) => (
+                    <SelectItem key={role} value={role}>
+                      {formatRole(role)}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="organization-user-team">Team</FieldLabel>
+            <Select
+              value={filters.teamId}
+              onValueChange={(value) => updateFilter("teamId", value)}
+            >
+              <SelectTrigger id="organization-user-team" className="h-11 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="ALL">All teams</SelectItem>
+                  {(data?.teams ?? []).map((team) => (
+                    <SelectItem key={team.id} value={team.id}>
+                      {team.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="organization-user-verification">Email status</FieldLabel>
+            <Select
+              value={filters.verification}
+              onValueChange={(value) => {
+                const verification =
+                  value === "VERIFIED" || value === "UNVERIFIED"
+                    ? value
+                    : "ALL";
+                updateFilter("verification", verification);
               }}
-              placeholder="Search by name or email"
-              aria-label="Search users by name or email"
-              className="h-11 bg-background pl-9"
-            />
-          </div>
-          <div className="flex items-center justify-between gap-3 sm:justify-end">
-            <p className="text-xs text-muted-foreground" aria-live="polite">
-              {data ? `${data.total} ${data.total === 1 ? "person" : "people"} found` : "Directory search"}
-            </p>
-            {activeFilterCount > 0 && (
+            >
+              <SelectTrigger
+                id="organization-user-verification"
+                className="h-11 w-full"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="ALL">All statuses</SelectItem>
+                  <SelectItem value="VERIFIED">Verified</SelectItem>
+                  <SelectItem value="UNVERIFIED">Unverified</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+
+          <div className="flex items-end">
+            {hasFilters && (
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
-                className="h-9 shrink-0 gap-1.5"
-                onClick={() => {
-                  setSearch("");
-                  setFilters(initialFilters);
-                  setPagination((current) => ({ ...current, pageIndex: 0 }));
-                }}
+                onClick={clearFilters}
+                className="h-11 w-full lg:w-auto"
               >
-                <X className="size-4" />
                 Clear filters
-                <span className="sr-only">({activeFilterCount} active)</span>
               </Button>
             )}
           </div>
-        </div>
+        </FieldGroup>
 
-        <button
-          type="button"
-          aria-expanded={filtersExpanded}
-          aria-controls="users-filter-controls"
-          onClick={() => setFiltersExpanded((expanded) => !expanded)}
-          className="flex min-h-10 w-full items-center justify-between rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        >
-          <span className="flex items-center gap-2 text-sm font-medium">
-            <SlidersHorizontal aria-hidden="true" className="size-4 text-muted-foreground" />
-            <span>Filter people</span>
-            {activeFilterCount > 0 && (
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                {activeFilterCount} active
+        <div className="mt-4 flex min-h-6 items-center justify-between border-t pt-3">
+          <p className="text-sm text-muted-foreground" aria-live="polite">
+            {isFetching && !isLoading ? (
+              <span className="inline-flex items-center gap-1.5">
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="size-3.5 animate-spin motion-reduce:animate-none"
+                />
+                Updating members
               </span>
+            ) : (
+              `${total} ${total === 1 ? "member" : "members"}`
             )}
-          </span>
-          <span className="flex items-center gap-2 text-sm text-muted-foreground">
-            {filtersExpanded ? "Hide filters" : "Show filters"}
-            <ChevronDown
-              aria-hidden="true"
-              className={`size-4 transition-transform motion-reduce:transition-none ${filtersExpanded ? "rotate-180" : ""}`}
-            />
-          </span>
-        </button>
-
-        {filtersExpanded && (
-        <div id="users-filter-controls" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
-          <div className="min-w-0 space-y-1.5">
-            <label htmlFor="user-role-filter" className="text-xs font-medium text-muted-foreground">Role</label>
-            <Select
-              value={filters.role}
-              onValueChange={(value) => {
-                setFilters((current) => ({ ...current, role: value as UserFilters["role"] }));
-                setPagination((current) => ({ ...current, pageIndex: 0 }));
-              }}
-            >
-              <SelectTrigger id="user-role-filter" aria-label="Filter by role" className="h-10 w-full bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All roles</SelectItem>
-                {Object.values(UserRole).map((role) => (
-                  <SelectItem key={role} value={role}>{formatOption(role)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="min-w-0 space-y-1.5">
-            <label htmlFor="user-department-filter" className="text-xs font-medium text-muted-foreground">Department membership</label>
-            <Select
-              value={filters.department}
-              onValueChange={(value) => {
-                setFilters((current) => ({ ...current, department: value as UserFilters["department"] }));
-                setPagination((current) => ({ ...current, pageIndex: 0 }));
-              }}
-            >
-              <SelectTrigger id="user-department-filter" aria-label="Filter by department" className="h-10 w-full bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All departments</SelectItem>
-                <SelectItem value="UNASSIGNED">Unassigned</SelectItem>
-                {Object.values(Department).map((department) => (
-                  <SelectItem key={department} value={department}>{formatOption(department)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="min-w-0 space-y-1.5">
-            <label htmlFor="user-employment-filter" className="text-xs font-medium text-muted-foreground">Employment</label>
-            <Select
-              value={filters.employmentStatus}
-              onValueChange={(value) => {
-                setFilters((current) => ({
-                  ...current,
-                  employmentStatus: value as UserFilters["employmentStatus"],
-                }));
-                setPagination((current) => ({ ...current, pageIndex: 0 }));
-              }}
-            >
-              <SelectTrigger id="user-employment-filter" aria-label="Filter by employment status" className="h-10 w-full bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All statuses</SelectItem>
-                {Object.values(EmploymentStatus).map((status) => (
-                  <SelectItem key={status} value={status}>{formatOption(status)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="min-w-0 space-y-1.5">
-            <label htmlFor="user-work-mode-filter" className="text-xs font-medium text-muted-foreground">Work mode</label>
-            <Select
-              value={filters.workMode}
-              onValueChange={(value) => {
-                setFilters((current) => ({ ...current, workMode: value as UserFilters["workMode"] }));
-                setPagination((current) => ({ ...current, pageIndex: 0 }));
-              }}
-            >
-              <SelectTrigger id="user-work-mode-filter" aria-label="Filter by work mode" className="h-10 w-full bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All work modes</SelectItem>
-                {Object.values(WorkMode).map((mode) => (
-                  <SelectItem key={mode} value={mode}>{formatOption(mode)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="min-w-0 space-y-1.5">
-            <label htmlFor="user-attendance-filter" className="text-xs font-medium text-muted-foreground">Attendance report</label>
-            <Select
-              value={filters.attendanceReport}
-              onValueChange={(value) => {
-                setFilters((current) => ({
-                  ...current,
-                  attendanceReport: value as UserFilters["attendanceReport"],
-                }));
-                setPagination((current) => ({ ...current, pageIndex: 0 }));
-              }}
-            >
-              <SelectTrigger id="user-attendance-filter" aria-label="Filter by attendance report inclusion" className="h-10 w-full bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All employees</SelectItem>
-                <SelectItem value="INCLUDED">Included</SelectItem>
-                <SelectItem value="EXCLUDED">Excluded</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="min-w-0 space-y-1.5">
-            <label htmlFor="user-email-filter" className="text-xs font-medium text-muted-foreground">Email verification</label>
-            <Select
-              value={filters.emailVerification}
-              onValueChange={(value) => {
-                setFilters((current) => ({
-                  ...current,
-                  emailVerification: value as UserFilters["emailVerification"],
-                }));
-                setPagination((current) => ({ ...current, pageIndex: 0 }));
-              }}
-            >
-              <SelectTrigger id="user-email-filter" aria-label="Filter by email verification" className="h-10 w-full bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All accounts</SelectItem>
-                <SelectItem value="VERIFIED">Verified</SelectItem>
-                <SelectItem value="UNVERIFIED">Not verified</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+          </p>
+          {activeFilterCount > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {activeFilterCount} {activeFilterCount === 1 ? "filter" : "filters"} applied
+            </span>
           )}
+        </div>
       </div>
 
-      <CreateStaffDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-      />
-
       {isError ? (
-        <Alert variant="destructive" className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <AlertTitle>Users could not be loaded</AlertTitle>
-            <AlertDescription>Check your connection and try again.</AlertDescription>
-          </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => refetch()}>
-            Try again
-          </Button>
+        <Alert variant="destructive">
+          <AlertTitle>Members could not be loaded</AlertTitle>
+          <AlertDescription>
+            Refresh the page or try again in a moment.
+          </AlertDescription>
         </Alert>
       ) : isLoading ? (
-        <div role="status" aria-live="polite" className="space-y-3">
-          <span className="sr-only">Loading users</span>
-          <div className="h-10 animate-pulse rounded-md bg-muted" />
-          <div className="space-y-2 rounded-lg border p-4">
-            {Array.from({ length: 5 }, (_, index) => (
-              <div key={index} className="h-10 animate-pulse rounded-md bg-muted/70" />
-            ))}
-          </div>
+        <div className="flex flex-col gap-3" aria-label="Loading members">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
         </div>
       ) : (
         <DataTable
           columns={columns}
           data={data?.users ?? []}
+          total={total}
           pagination={pagination}
           onPaginationChange={setPagination}
-          total={data?.total ?? 0}
-          emptyState={activeFilterCount > 0 ? "No users match these filters." : "No users found."}
+          emptyState={
+            hasFilters
+              ? "No members match these filters."
+              : "No organization members yet."
+          }
         />
       )}
     </section>

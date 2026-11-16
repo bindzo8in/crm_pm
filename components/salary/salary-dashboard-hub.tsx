@@ -13,7 +13,6 @@ import type {
   SalarySlipPageInfo,
   SalarySlipRecord,
 } from "./types";
-import { StaffSalaryWorkspace } from "./staff-salary-workspace";
 
 interface SalaryDashboardHubProps {
   initialUsers: SalaryEmployee[];
@@ -21,18 +20,7 @@ interface SalaryDashboardHubProps {
   summary: SalaryManagementSummary;
   initialSlips: SalarySlipRecord[];
   initialSlipPage: SalarySlipPageInfo;
-  isHrOrAdmin: boolean;
-  staffProfile?: {
-    name: string;
-    email: string;
-    department: string | null;
-    designation: string | null;
-    dateOfJoining: string | null;
-  };
-  staffLeaveSummary?: {
-    approvedDays: number;
-    pendingRequests: number;
-  };
+  canManageSalary: boolean;
 }
 
 export function SalaryDashboardHub({
@@ -41,67 +29,50 @@ export function SalaryDashboardHub({
   summary,
   initialSlips,
   initialSlipPage,
-  isHrOrAdmin,
-  staffProfile,
-  staffLeaveSummary,
+  canManageSalary,
 }: SalaryDashboardHubProps) {
-  const [activeTab, setActiveTab] = useState<"structures" | "slips">(isHrOrAdmin ? "structures" : "slips");
-
-  if (!isHrOrAdmin && staffProfile && staffLeaveSummary) {
-    return (
-      <StaffSalaryWorkspace
-        profile={staffProfile}
-        slips={initialSlips}
-        slipPage={initialSlipPage}
-        leaveSummary={staffLeaveSummary}
-      />
-    );
-  }
+  const [activeTab, setActiveTab] = useState<"structures" | "slips">("structures");
 
   return (
     <div className="w-full min-w-0 space-y-5 sm:space-y-6">
-      {isHrOrAdmin && (
-        <AdminPayrollSummary summary={summary} />
-      )}
-      {isHrOrAdmin && (
-        <div
-          role="group"
-          aria-label="Salary management sections"
-          className="grid w-full grid-cols-2 gap-1 rounded-xl border bg-muted/50 p-1 sm:w-fit"
+      <AdminPayrollSummary summary={summary} />
+      <div
+        role="group"
+        aria-label="Salary management sections"
+        className="grid w-full grid-cols-2 gap-1 rounded-xl border bg-muted/50 p-1 sm:w-fit"
+      >
+        <button
+          type="button"
+          onClick={() => setActiveTab("structures")}
+          aria-pressed={activeTab === "structures"}
+          className={cn(
+            "flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors sm:px-5",
+            activeTab === "structures"
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          )}
         >
-          <button
-            type="button"
-            onClick={() => setActiveTab("structures")}
-            aria-pressed={activeTab === "structures"}
-            className={cn(
-              "flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors sm:px-5",
-              activeTab === "structures"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <WalletIcon aria-hidden="true" className="size-4 shrink-0 text-primary" />
-            <span>Salary structures</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("slips")}
-            aria-pressed={activeTab === "slips"}
-            className={cn(
-              "flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium sm:flex-none sm:gap-2 sm:px-5 sm:text-sm",
-              activeTab === "slips"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <FileTextIcon aria-hidden="true" className="size-4 shrink-0 text-primary" />
-            <span>Salary slips</span>
-          </button>
-        </div>
-      )}
+          <WalletIcon aria-hidden="true" className="size-4 shrink-0 text-primary" />
+          <span>Salary structures</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("slips")}
+          aria-pressed={activeTab === "slips"}
+          className={cn(
+            "flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium sm:flex-none sm:gap-2 sm:px-5 sm:text-sm",
+            activeTab === "slips"
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <FileTextIcon aria-hidden="true" className="size-4 shrink-0 text-primary" />
+          <span>Salary slips</span>
+        </button>
+      </div>
 
       <div>
-        {activeTab === "structures" && isHrOrAdmin && (
+        {activeTab === "structures" && (
           <SalaryStructuresTab
             initialUsers={initialUsers}
             initialPage={initialRoster}
@@ -113,7 +84,7 @@ export function SalaryDashboardHub({
           <SalarySlipsTab 
             initialSlips={initialSlips} 
             initialPage={initialSlipPage}
-            isHrOrAdmin={isHrOrAdmin}
+            canManageSalary={canManageSalary}
           />
         )}
       </div>

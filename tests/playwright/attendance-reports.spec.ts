@@ -1,5 +1,14 @@
 import { test, expect, hasAuthenticatedState, isAttendanceManager } from "./support/fixtures";
+import {
+  attendanceE2EMonthRange,
+} from "./support/attendance-month-fixture";
+import {
+  getAttendanceDailyRecordCount,
+  setAttendanceDateRange,
+} from "./support/attendance-page";
 import ExcelJS from "exceljs";
+
+const monthRange = attendanceE2EMonthRange();
 
 test("manager reports support date ranges and expose Excel export", async ({
   attendancePage,
@@ -18,11 +27,10 @@ test("manager reports support date ranges and expose Excel export", async ({
   );
 
   await expect(page.getByRole("button", { name: "Export to Excel (.xlsx)" })).toBeVisible();
+  await page.getByRole("button", { name: "Show report filters" }).click();
   await page.getByRole("button", { name: "Custom Range" }).click();
-  const dateInputs = page.locator('input[type="date"]');
-  await expect(dateInputs).toHaveCount(2);
-  await dateInputs.nth(0).fill("2026-01-01");
-  await dateInputs.nth(1).fill("2026-01-31");
+  await setAttendanceDateRange(page, monthRange.start, monthRange.end);
+  await expect(page.getByText("Date range", { exact: true }).last()).toBeVisible();
   await expect(page.getByText("Detailed Attendance Reports")).toBeVisible();
 });
 
@@ -41,12 +49,13 @@ test("manager export is an XLSX workbook containing the filtered record count", 
     "Reports",
     /Detailed Attendance Reports/,
   );
+  await setAttendanceDateRange(page, monthRange.start, monthRange.end);
   await expect(page.getByRole("button", { name: "Refresh" })).toBeEnabled();
 
-  const reportSummary = page.getByText(/Showing \d+ of \d+ daily records/);
-  await expect(reportSummary).toBeVisible();
-  const summaryText = await reportSummary.textContent();
-  const totalRecords = Number(summaryText?.match(/of (\d+) daily records/)?.[1]);
+  await expect
+    .poll(() => getAttendanceDailyRecordCount(page))
+    .toBeGreaterThan(0);
+  const totalRecords = await getAttendanceDailyRecordCount(page);
   test.skip(totalRecords === 0, "Excel export is disabled because no records match the report.");
 
   const downloadPromise = page.waitForEvent("download");

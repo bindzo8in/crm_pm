@@ -14,29 +14,11 @@ import {
 } from "@/app/generated/prisma/enums";
 import { auth } from "@/lib/auth";
 import {
-  departmentMembershipWhere,
   normalizeAdditionalDepartments,
 } from "@/lib/departments";
-import {
-  canAssignUserDepartment,
-  canManageUser,
-  canManageUserDirectory,
-  canManageEmploymentStatus,
-  canManageAttendanceReportInclusion,
-  roleLevel,
-} from "@/lib/permissions";
+import { GlobalRole } from "@/lib/global-role";
+import { hasOrganizationPermission } from "@/lib/organization-authorization";
 
-function normalizePayrollPaymentMethod(method: PaymentMethod | null | undefined) {
-  switch (method) {
-    case "UPI":
-    case "CHEQUE":
-    case "CASH":
-    case "OTHER":
-      return method;
-    default:
-      return "BANK_TRANSFER" as const;
-  }
-}
 import { env } from "@/lib/env";
 import prisma from "@/lib/prisma";
 import { headers } from "next/headers";
@@ -46,11 +28,8 @@ const userListSchema = z.object({
   page: z.number().int().min(0),
   pageSize: z.number().int().min(1).max(100),
   search: z.string().trim().max(120).optional(),
-  role: z.enum(UserRole).optional(),
-  department: z.enum(Department).or(z.literal("UNASSIGNED")).optional(),
-  employmentStatus: z.enum(EmploymentStatus).optional(),
-  workMode: z.enum(WorkMode).optional(),
-  includeInAttendanceReports: z.boolean().optional(),
+  role: z.string().trim().regex(/^[a-z][a-z0-9_-]{0,62}$/).optional(),
+  teamId: z.string().trim().min(1).max(128).optional(),
   emailVerified: z.boolean().optional(),
 });
 
@@ -139,19 +118,41 @@ const openTaskWhere = {
 
 async function getCurrentActor() {
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) {
+  const organizationId = session?.session.activeOrganizationId;
+  if (!session?.user || !organizationId) {
     throw new Error("Unauthorized");
   }
 
-  const actor = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { id: true, role: true, department: true, employmentStatus: true },
+  const [user, membership] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { id: true, role: true, employmentStatus: true },
+    }),
+    prisma.member.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId,
+          userId: session.user.id,
+        },
+      },
+      select: { id: true },
+    }),
+  ]);
+  if (!user || !membership || user.employmentStatus !== EmploymentStatus.ACTIVE) {
+    throw new Error("Unauthorized");
+  }
+
+  return { ...user, organizationId };
+}
+
+async function requireOrganizationMember(organizationId: string, userId: string) {
+  const membership = await prisma.member.findUnique({
+    where: { organizationId_userId: { organizationId, userId } },
+    select: { id: true },
   });
-  if (!actor || actor.employmentStatus !== EmploymentStatus.ACTIVE) {
-    throw new Error("Unauthorized");
+  if (!membership) {
+    throw new Error("The user is not a member of the active organization.");
   }
-
-  return actor;
 }
 
 export async function getUsers({
@@ -159,20 +160,14 @@ export async function getUsers({
   pageSize,
   search,
   role,
-  department,
-  employmentStatus,
-  workMode,
-  includeInAttendanceReports,
+  teamId,
   emailVerified,
 }: {
   page: number;
   pageSize: number;
   search?: string;
-  role?: UserRole;
-  department?: Department | "UNASSIGNED";
-  employmentStatus?: EmploymentStatus;
-  workMode?: WorkMode;
-  includeInAttendanceReports?: boolean;
+  role?: string;
+  teamId?: string;
   emailVerified?: boolean;
 }) {
   const input = userListSchema.safeParse({
@@ -180,21 +175,34 @@ export async function getUsers({
     pageSize,
     search,
     role,
-    department,
-    employmentStatus,
-    workMode,
-    includeInAttendanceReports,
+    teamId,
     emailVerified,
   });
   if (!input.success) {
     throw new Error("Invalid user list filters.");
   }
   const actor = await getCurrentActor();
-  if (!canManageUserDirectory(actor.role, actor.department)) {
+  if (!(await hasOrganizationPermission("users", "read"))) {
     throw new Error("Unauthorized");
   }
 
   const where = {
+    organizationMemberships: {
+      some: {
+        organizationId: actor.organizationId,
+        ...(input.data.role ? { role: input.data.role } : {}),
+      },
+    },
+    ...(input.data.teamId
+      ? {
+          teamMemberships: {
+            some: {
+              teamId: input.data.teamId,
+              team: { organizationId: actor.organizationId },
+            },
+          },
+        }
+      : {}),
     ...(input.data.search
       ? {
           OR: [
@@ -203,26 +211,11 @@ export async function getUsers({
           ],
         }
       : {}),
-    ...(input.data.role ? { role: input.data.role } : {}),
-    ...(input.data.department === "UNASSIGNED"
-      ? {
-          AND: [{ department: null }, { additionalDepartments: { isEmpty: true } }],
-        }
-      : input.data.department
-        ? { AND: [departmentMembershipWhere(input.data.department)] }
-      : {}),
-    ...(input.data.employmentStatus
-      ? { employmentStatus: input.data.employmentStatus }
-      : {}),
-    ...(input.data.workMode ? { workMode: input.data.workMode } : {}),
-    ...(input.data.includeInAttendanceReports !== undefined
-      ? { includeInAttendanceReports: input.data.includeInAttendanceReports }
-      : {}),
     ...(input.data.emailVerified !== undefined
       ? { emailVerified: input.data.emailVerified }
       : {}),
   };
-  const [users, total, activeTotal, verifiedTotal, departmentRows] = await Promise.all([
+  const [users, total, verifiedTotal, teams, customRoles] = await Promise.all([
     prisma.user.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -235,93 +228,49 @@ export async function getUsers({
         emailVerified: true,
         image: true,
         createdAt: true,
-        updatedAt: true,
-        role: true,
-        employmentStatus: true,
-        employmentEndedAt: true,
-        banned: true,
-        banReason: true,
-        banExpires: true,
-        department: true,
-        additionalDepartments: true,
-        workMode: true,
-        includeInAttendanceReports: true,
+        organizationMemberships: {
+          where: { organizationId: actor.organizationId },
+          select: { role: true },
+        },
+        teamMemberships: {
+          where: { team: { organizationId: actor.organizationId } },
+          select: {
+            team: { select: { id: true, name: true } },
+          },
+        },
       },
     }),
     prisma.user.count({ where }),
-    prisma.user.count({ where: { ...where, employmentStatus: EmploymentStatus.ACTIVE } }),
     prisma.user.count({ where: { ...where, emailVerified: true } }),
-    Promise.all(
-      Object.values(Department).map(async (department) => ({
-        department,
-        count: await prisma.user.count({
-          where: { AND: [where, departmentMembershipWhere(department)] },
-        }),
-      })),
-    ),
+    prisma.team.findMany({
+      where: { organizationId: actor.organizationId },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+    prisma.organizationRole.findMany({
+      where: { organizationId: actor.organizationId },
+      orderBy: { role: "asc" },
+      select: { role: true },
+    }),
   ]);
-  const isPayrollManager =
-    actor.role === UserRole.SUPER_ADMIN || actor.role === UserRole.ADMIN;
-  const payrollUsers = isPayrollManager && users.length > 0
-    ? await prisma.user.findMany({
-        where: { id: { in: users.map(({ id }) => id) } },
-        select: {
-          id: true,
-          employeeId: true,
-          designation: true,
-          dateOfJoining: true,
-          employmentType: true,
-          annualCtc: true,
-          bankName: true,
-          bankAccountNo: true,
-          bankIfsc: true,
-          bankAccountType: true,
-          panNo: true,
-          aadhaarNo: true,
-          costCenter: true,
-          uanNo: true,
-          pfNo: true,
-          esiNo: true,
-          pfEligible: true,
-          esiEligible: true,
-          taxRegime: true,
-          paymentMethod: true,
-        },
-      })
-    : [];
-  const payrollByUserId = new Map(
-    payrollUsers.map(({ id, ...payroll }) => [id, payroll]),
-  );
   return {
-    users: users.map((user) => ({
+    users: users.map(({ organizationMemberships, teamMemberships, ...user }) => ({
       ...user,
-      workMode: user.workMode ?? WorkMode.OFFICE,
-      employeeId: payrollByUserId.get(user.id)?.employeeId ?? null,
-      designation: payrollByUserId.get(user.id)?.designation ?? null,
-      dateOfJoining: payrollByUserId.get(user.id)?.dateOfJoining ?? null,
-      employmentType: payrollByUserId.get(user.id)?.employmentType ?? null,
-      annualCtc: payrollByUserId.get(user.id)?.annualCtc?.toString() ?? null,
-      bankName: payrollByUserId.get(user.id)?.bankName ?? null,
-      bankAccountNo: payrollByUserId.get(user.id)?.bankAccountNo ?? null,
-      bankIfsc: payrollByUserId.get(user.id)?.bankIfsc ?? null,
-      bankAccountType: payrollByUserId.get(user.id)?.bankAccountType ?? null,
-      panNo: payrollByUserId.get(user.id)?.panNo ?? null,
-      aadhaarNo: payrollByUserId.get(user.id)?.aadhaarNo ?? null,
-      costCenter: payrollByUserId.get(user.id)?.costCenter ?? null,
-      uanNo: payrollByUserId.get(user.id)?.uanNo ?? null,
-      pfNo: payrollByUserId.get(user.id)?.pfNo ?? null,
-      esiNo: payrollByUserId.get(user.id)?.esiNo ?? null,
-      pfEligible: payrollByUserId.get(user.id)?.pfEligible ?? false,
-      esiEligible: payrollByUserId.get(user.id)?.esiEligible ?? false,
-      taxRegime: payrollByUserId.get(user.id)?.taxRegime ?? "NEW",
-      paymentMethod: normalizePayrollPaymentMethod(payrollByUserId.get(user.id)?.paymentMethod),
+      role: organizationMemberships[0]?.role ?? "member",
+      teams: teamMemberships.map(({ team }) => team),
     })),
+    roles: [
+      "owner",
+      "admin",
+      "member",
+      ...customRoles.map(({ role }) => role),
+    ],
+    teams,
     total,
     stats: {
-      active: activeTotal,
       verified: verifiedTotal,
-      departments: departmentRows
-        .filter((row) => row.count > 0),
+      customRoles: customRoles.length,
+      teams: teams.length,
     },
   };
 }
@@ -337,9 +286,15 @@ export async function createStaffAccount(input: {
     throw new Error("Enter a valid name, email, and department.");
   }
 
-  const actor = await getCurrentActor();
-  if (!canManageUserDirectory(actor.role, actor.department)) {
-    throw new Error("You are not allowed to create staff accounts.");
+  await getCurrentActor();
+  if (!(await hasOrganizationPermission("member", "create"))) {
+    throw new Error("You are not allowed to create organization members.");
+  }
+  const requestHeaders = await headers();
+  const session = await auth.api.getSession({ headers: requestHeaders });
+  const organizationId = session?.session.activeOrganizationId;
+  if (!organizationId) {
+    throw new Error("Select an organization before creating a staff account.");
   }
 
   const email = parsedInput.data.email.trim().toLowerCase();
@@ -357,10 +312,29 @@ export async function createStaffAccount(input: {
       name: parsedInput.data.name,
       email,
       password: randomBytes(32).toString("base64url"),
-      role: UserRole.STAFF,
       data: { department: parsedInput.data.department },
     },
   });
+
+  try {
+    await auth.api.addMember({
+      body: {
+        organizationId,
+        userId: created.user.id,
+        role: "member",
+      },
+      headers: requestHeaders,
+    });
+  } catch (error) {
+    console.error("New staff account organization membership assignment failed.", {
+      userId: created.user.id,
+      organizationId,
+      error,
+    });
+    throw new Error(
+      "The staff account was created, but its organization membership could not be saved. Review the account before sending an invitation.",
+    );
+  }
 
   try {
     await prisma.user.update({
@@ -405,45 +379,51 @@ export async function createStaffAccount(input: {
 
 export async function changeUserRole(
   userId: string,
-  newRole: UserRole
+  newRole: string
 ) {
   const parsedUserId = userIdSchema.safeParse(userId);
-  const parsedRole = z.enum(UserRole).safeParse(newRole);
+  const parsedRole = z.string().trim().min(1).max(64).safeParse(newRole);
   if (!parsedUserId.success || !parsedRole.success) {
     throw new Error("Invalid user or role.");
   }
-  const actor = await getCurrentActor();
-
-  const targetUser = await prisma.user.findUnique({
-    where: { id: parsedUserId.data },
-    select: {
-      role: true,
+  const organizationRole =
+    parsedRole.data === "ADMIN"
+      ? "admin"
+      : parsedRole.data === "STAFF"
+        ? "member"
+        : parsedRole.data.toLowerCase();
+  if (!/^[a-z][a-z0-9_-]*$/.test(organizationRole)) {
+    throw new Error("Invalid organization role.");
+  }
+  if (parsedRole.data.toUpperCase() === GlobalRole.SUPER_ADMIN) {
+    throw new Error("Platform super-admin access cannot be assigned as an organization role.");
+  }
+  const requestHeaders = await headers();
+  const session = await auth.api.getSession({ headers: requestHeaders });
+  const organizationId = session?.session.activeOrganizationId;
+  if (!session?.user || !organizationId) {
+    throw new Error("Select an organization before changing member roles.");
+  }
+  const targetMember = await prisma.member.findUnique({
+    where: {
+      organizationId_userId: {
+        organizationId,
+        userId: parsedUserId.data,
+      },
     },
+    select: { id: true },
   });
-
-  if (!targetUser) {
-    throw new Error("User not found");
+  if (!targetMember) {
+    throw new Error("The user is not a member of the active organization.");
   }
 
-  const actorRole = actor.role;
-  const targetRole = targetUser.role;
-  if (!canManageUser(actorRole, targetRole)) {
-    throw new Error("You cannot modify this user.");
-  }
-
-  if (
-    actorRole !== UserRole.SUPER_ADMIN &&
-    (actorRole === UserRole.STAFF || !canManageUser(actorRole, parsedRole.data))
-  ) {
-    throw new Error("You cannot assign this role.");
-  }
-
-  await auth.api.setRole({
+  await auth.api.updateMemberRole({
     body: {
-      userId: parsedUserId.data,
-      role: parsedRole.data,
+      memberId: targetMember.id,
+      role: organizationRole,
+      organizationId,
     },
-    headers: await headers()
+    headers: requestHeaders,
   });
 
   return {
@@ -465,29 +445,18 @@ export async function assignUserDepartment(
   }
 
   const actor = await getCurrentActor();
-  if (!canManageUserDirectory(actor.role, actor.department)) {
+  if (!(await hasOrganizationPermission("users", "assign-department"))) {
     throw new Error("You are not allowed to assign user departments.");
   }
+  await requireOrganizationMember(actor.organizationId, parsedUserId.data);
 
   const targetUser = await prisma.user.findUnique({
     where: { id: parsedUserId.data },
-    select: {
-      role: true,
-    },
+    select: { id: true },
   });
 
   if (!targetUser) {
     throw new Error("User not found");
-  }
-
-  if (
-    !canAssignUserDepartment(
-      actor.role,
-      actor.department,
-      targetUser.role,
-    )
-  ) {
-    throw new Error("You cannot modify this user's department.");
   }
 
   await prisma.user.update({
@@ -517,35 +486,23 @@ export async function assignUserWorkMode(
   userId: string,
   workMode: WorkMode
 ) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session) {
-    throw new Error("Unauthorized");
+  const actor = await getCurrentActor();
+  if (!(await hasOrganizationPermission("users", "update"))) {
+    throw new Error("You are not allowed to assign user work mode.");
   }
 
-  const actorRole = session.user.role as UserRole;
-  if (actorRole !== UserRole.SUPER_ADMIN && actorRole !== UserRole.ADMIN) {
-    throw new Error("Only admins can assign user work mode.");
-  }
-
+  await requireOrganizationMember(actor.organizationId, userId);
   const targetUser = await prisma.user.findUnique({
     where: { id: userId },
-    select: {
-      role: true,
-    },
+    select: { role: true },
   });
 
   if (!targetUser) {
     throw new Error("User not found");
   }
 
-  const targetRole = targetUser.role;
-
-  // Cannot modify user with same or higher role
-  if (roleLevel[actorRole] <= roleLevel[targetRole]) {
-    throw new Error("You cannot modify this user's work mode");
+  if (targetUser.role === UserRole.SUPER_ADMIN && actor.role !== UserRole.SUPER_ADMIN) {
+    throw new Error("You cannot modify this user's work mode.");
   }
 
   await prisma.user.update({
@@ -569,18 +526,19 @@ export async function setUserAttendanceReportInclusion(
   }
 
   const actor = await getCurrentActor();
-  if (!canManageUserDirectory(actor.role, actor.department)) {
+  if (!(await hasOrganizationPermission("attendance", "manage"))) {
     throw new Error("You are not allowed to manage attendance report inclusion.");
   }
+  await requireOrganizationMember(actor.organizationId, parsedUserId.data);
 
   const target = await prisma.user.findUnique({
     where: { id: parsedUserId.data },
-    select: { role: true },
+    select: { id: true, role: true },
   });
   if (!target) {
     throw new Error("User not found.");
   }
-  if (!canManageAttendanceReportInclusion(actor.role, actor.department, target.role)) {
+  if (target.role === UserRole.SUPER_ADMIN && actor.role !== UserRole.SUPER_ADMIN) {
     throw new Error("You cannot modify this user's attendance report setting.");
   }
 
@@ -618,19 +576,12 @@ export async function updateUserPayrollDetails(
     paymentMethod?: "BANK_TRANSFER" | "UPI" | "CHEQUE" | "CASH" | "OTHER";
   }
 ) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session) {
-    throw new Error("Unauthorized");
+  const actor = await getCurrentActor();
+  if (!(await hasOrganizationPermission("salary", "update"))) {
+    throw new Error("You are not allowed to update user payroll details.");
   }
 
-  const actorRole = session.user.role as UserRole;
-  if (actorRole !== UserRole.SUPER_ADMIN && actorRole !== UserRole.ADMIN) {
-    throw new Error("Only admins can update user payroll details.");
-  }
-
+  await requireOrganizationMember(actor.organizationId, userId);
   const targetUser = await prisma.user.findUnique({
     where: { id: userId },
     select: {
@@ -642,10 +593,7 @@ export async function updateUserPayrollDetails(
     throw new Error("User not found");
   }
 
-  const targetRole = targetUser.role;
-  console.log("Actor Role:", actorRole, "Target Role:", targetRole, "Role Levels:", roleLevel[actorRole], roleLevel[targetRole]);
-  // Cannot modify user with same or higher role
-  if (actorRole !== "SUPER_ADMIN" && roleLevel[actorRole] <= roleLevel[targetRole]) {
+  if (targetUser.role === UserRole.SUPER_ADMIN && actor.role !== UserRole.SUPER_ADMIN) {
     throw new Error("You cannot modify this user's payroll details");
   }
 
@@ -691,6 +639,10 @@ export async function getEmployeeOffboardingPreview(userId: string) {
   }
 
   const actor = await getCurrentActor();
+  if (!(await hasOrganizationPermission("users", "update"))) {
+    throw new Error("You are not allowed to manage this employee.");
+  }
+  await requireOrganizationMember(actor.organizationId, parsedUserId.data);
   const target = await prisma.user.findUnique({
     where: { id: parsedUserId.data },
     select: {
@@ -708,7 +660,7 @@ export async function getEmployeeOffboardingPreview(userId: string) {
   }
   if (
     actor.id === target.id ||
-    !canManageEmploymentStatus(actor.role, actor.department, target.role)
+    (target.role === UserRole.SUPER_ADMIN && actor.role !== UserRole.SUPER_ADMIN)
   ) {
     throw new Error("You are not allowed to manage this employee.");
   }
@@ -749,10 +701,12 @@ export async function getEmployeeOffboardingPreview(userId: string) {
         id: { not: target.id },
         employmentStatus: EmploymentStatus.ACTIVE,
         banned: { not: true },
-        role:
-          actor.role === UserRole.SUPER_ADMIN
-            ? { in: Object.values(UserRole) }
-            : UserRole.STAFF,
+        organizationMemberships: {
+          some: { organizationId: actor.organizationId },
+        },
+        ...(actor.role === UserRole.SUPER_ADMIN
+          ? {}
+          : { role: { not: UserRole.SUPER_ADMIN } }),
       },
       orderBy: [{ name: "asc" }, { email: "asc" }],
       take: 100,
@@ -774,15 +728,15 @@ export async function getEmployeeStatusHistory(userId: string) {
   }
 
   const actor = await getCurrentActor();
+  if (!(await hasOrganizationPermission("users", "read"))) {
+    throw new Error("You are not allowed to view this employee's status history.");
+  }
+  await requireOrganizationMember(actor.organizationId, parsedUserId.data);
   const target = await prisma.user.findUnique({
     where: { id: parsedUserId.data },
-    select: { id: true, role: true },
+    select: { id: true },
   });
-  if (
-    !target ||
-    actor.id === target.id ||
-    !canManageEmploymentStatus(actor.role, actor.department, target.role)
-  ) {
+  if (!target || actor.id === target.id) {
     throw new Error("You are not allowed to view this employee's status history.");
   }
 
@@ -818,6 +772,9 @@ export async function deactivateEmployee(input: {
   }
 
   const actor = await getCurrentActor();
+  if (!(await hasOrganizationPermission("users", "update"))) {
+    throw new Error("You are not allowed to deactivate this employee.");
+  }
   const effectiveAt = parseEffectiveDate(parsedInput.data.effectiveDate);
 
   await prisma.$transaction(async (tx) => {
@@ -828,9 +785,19 @@ export async function deactivateEmployee(input: {
     if (!target) {
       throw new Error("User not found.");
     }
+    const targetMembership = await tx.member.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: actor.organizationId,
+          userId: target.id,
+        },
+      },
+      select: { id: true },
+    });
     if (
+      !targetMembership ||
       actor.id === target.id ||
-      !canManageEmploymentStatus(actor.role, actor.department, target.role)
+      (target.role === UserRole.SUPER_ADMIN && actor.role !== UserRole.SUPER_ADMIN)
     ) {
       throw new Error("You are not allowed to deactivate this employee.");
     }
@@ -866,13 +833,25 @@ export async function deactivateEmployee(input: {
         where: { id: reassignmentUserId },
         select: { id: true, role: true, employmentStatus: true, banned: true },
       });
+      const replacementMembership = replacement
+        ? await tx.member.findUnique({
+            where: {
+              organizationId_userId: {
+                organizationId: actor.organizationId,
+                userId: replacement.id,
+              },
+            },
+            select: { id: true },
+          })
+        : null;
       if (
         !replacement ||
+        !replacementMembership ||
         replacement.id === target.id ||
         replacement.employmentStatus !== EmploymentStatus.ACTIVE ||
         replacement.banned === true ||
-        (actor.role !== UserRole.SUPER_ADMIN &&
-          replacement.role !== UserRole.STAFF)
+        (replacement.role === UserRole.SUPER_ADMIN &&
+          actor.role !== UserRole.SUPER_ADMIN)
       ) {
         throw new Error("Choose an eligible, active employee for reassignment.");
       }
@@ -962,6 +941,9 @@ export async function reactivateEmployee(input: {
   }
 
   const actor = await getCurrentActor();
+  if (!(await hasOrganizationPermission("users", "update"))) {
+    throw new Error("You are not allowed to reactivate this employee.");
+  }
   const effectiveAt = parseEffectiveDate(parsedInput.data.effectiveDate);
 
   await prisma.$transaction(async (tx) => {
@@ -972,9 +954,19 @@ export async function reactivateEmployee(input: {
     if (!target) {
       throw new Error("User not found.");
     }
+    const targetMembership = await tx.member.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: actor.organizationId,
+          userId: target.id,
+        },
+      },
+      select: { id: true },
+    });
     if (
+      !targetMembership ||
       actor.id === target.id ||
-      !canManageEmploymentStatus(actor.role, actor.department, target.role)
+      (target.role === UserRole.SUPER_ADMIN && actor.role !== UserRole.SUPER_ADMIN)
     ) {
       throw new Error("You are not allowed to reactivate this employee.");
     }

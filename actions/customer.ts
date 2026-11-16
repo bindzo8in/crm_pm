@@ -1,5 +1,6 @@
 'use server'
 
+import { checkOrganizationPermission } from "@/lib/organization-authorization";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@/app/generated/prisma/client";
@@ -10,19 +11,40 @@ import {
   CustomerSchema,
 } from "@/lib/schemas/customer-schema";
 import { headers } from "next/headers";
-import { hasBusinessWorkspaceAccess } from "@/lib/workspace-access";
 import { findActiveCustomerByDisplayName } from "@/repositories/customer-repository";
+import { customerReadFilter, type CustomerReadScope } from "@/lib/customer-permissions";
 
 type CustomerAction = "create" | "read" | "update" | "delete";
+
+async function getCustomerReadScope(): Promise<CustomerReadScope | null> {
+  const requestHeaders = await headers();
+  const session = await auth.api.getSession({ headers: requestHeaders });
+  if (!session?.user) return null;
+
+  const [readAll, readOwn] = await Promise.all([
+    checkOrganizationPermission({
+      headers: requestHeaders,
+      body: { permissions: { customers: ["read"] } },
+    }),
+    checkOrganizationPermission({
+      headers: requestHeaders,
+      body: { permissions: { customers: ["read-own"] } },
+    }),
+  ]);
+  if (!readAll.success && !readOwn.success) return null;
+
+  return {
+    userId: session.user.id,
+    canReadAll: readAll.success,
+  };
+}
 
 async function hasCustomerPermission(action: CustomerAction): Promise<boolean> {
   const requestHeaders = await headers();
   const session = await auth.api.getSession({ headers: requestHeaders });
-  if (!session?.user || !hasBusinessWorkspaceAccess(session.user)) {
-    return false;
-  }
+  if (!session?.user) return false;
 
-  const permission = await auth.api.userHasPermission({
+  const permission = await checkOrganizationPermission({
     headers: requestHeaders,
     body: { permissions: { customers: [action] } },
   });
@@ -77,6 +99,10 @@ export async function CreateCustomer(data: CustomerSchema) {
     if (!(await hasCustomerPermission("create"))) {
       return { error: "Unauthorized", message: "You do not have permission to create a customer" }
     }
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) {
+      return { error: "Unauthorized", message: "Sign in before creating a customer" };
+    }
 
     // Validate the input data
     const validatedData = customerSchema.safeParse(data);
@@ -95,6 +121,7 @@ export async function CreateCustomer(data: CustomerSchema) {
       data: {
         ...customerData,
         documents: documents as Prisma.InputJsonValue,
+        createdById: session.user.id,
       },
     })
 
@@ -163,15 +190,18 @@ export async function UpdateCustomer(data: CustomerSchema) {
 
 export async function GetCustomer(id: string) {
   try {
-    if (!(await hasCustomerPermission("read"))) {
+    const readScope = await getCustomerReadScope();
+    if (!readScope) {
       return { error: "Unauthorized", message: "You do not have permission to view this customer" };
     }
 
-    const customer = await prisma.customer.findUnique({
+    const customer = await prisma.customer.findFirst({
       where: {
-        id
-      }
-    })
+        id,
+        deletedAt: null,
+        ...customerReadFilter(readScope),
+      },
+    });
 
     return { success: true, customer }
   } catch (error) {
@@ -184,7 +214,8 @@ export async function GetCustomers(
   query: CustomerQuerySchema
 ) {
   try {
-    if (!(await hasCustomerPermission("read"))) {
+    const readScope = await getCustomerReadScope();
+    if (!readScope) {
       throw new Error("You do not have permission to view customers");
     }
 
@@ -199,8 +230,9 @@ export async function GetCustomers(
     const normalizedSearch = search?.trim();
     const customerNumberSearch = normalizedSearch?.match(/^(?:CUS-)?(\d+)$/i);
 
-    const where = {
+    const where: Prisma.CustomerWhereInput = {
       deletedAt: null,
+      ...customerReadFilter(readScope),
       ...(customerType ? { customerType } : {}),
 
       ...(normalizedSearch && {
@@ -320,13 +352,15 @@ export async function DeleteCustomer(id: string) {
 
 export async function GetCustomerOptions(search?: string) {
   try {
-    if (!(await hasCustomerPermission("read"))) {
+    const readScope = await getCustomerReadScope();
+    if (!readScope) {
       throw new Error("You do not have permission to view customers");
     }
 
     const customers = await prisma.customer.findMany({
       where: {
         deletedAt: null,
+        ...customerReadFilter(readScope),
 
         ...(search
           ? {

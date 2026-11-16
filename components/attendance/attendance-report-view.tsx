@@ -99,12 +99,7 @@ function formatLocalDateInput(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-interface AttendanceReportViewProps {
-  userRole: string;
-  userDepartment?: string;
-}
-
-export function AttendanceReportView({ userRole, userDepartment }: AttendanceReportViewProps) {
+export function AttendanceReportView() {
   const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isExporting, startExportTransition] = useTransition();
@@ -428,9 +423,6 @@ export function AttendanceReportView({ userRole, userDepartment }: AttendanceRep
         <div>
           <div className="flex items-center gap-2.5">
             <h2 className="text-xl font-extrabold tracking-tight">Detailed Attendance Reports</h2>
-            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px] font-bold">
-              ADMIN / HR
-            </Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
             Filter multi-department shift logs, punctuality metrics, and export formatted Excel workbooks.

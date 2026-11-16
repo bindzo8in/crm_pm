@@ -19,6 +19,7 @@ import {
 import {
   Banknote,
   BookUser,
+  Building2,
   CalendarDays,
   CalendarHeart,
   CalendarOff,
@@ -34,6 +35,7 @@ import {
   ReceiptText,
   ScrollText,
   Settings2Icon,
+  ShieldCheck,
   Tags,
   UsersIcon,
   WalletIcon,
@@ -55,6 +57,12 @@ const data = {
         <LayoutDashboardIcon
         />
       ),
+    },
+    {
+      title: "People & access",
+      section: "Organization",
+      url: "/dashboard/organization-management",
+      icon: <ShieldCheck />,
     },
     {
       title: "Attendance",
@@ -138,18 +146,6 @@ const data = {
       icon: <BookUser />
     },
     {
-      title: "Projects",
-      section: "Business",
-      url: "/dashboard/projects",
-      icon: <FolderKanban />
-    },
-    {
-      title: "Tasks",
-      section: "Business",
-      url: "/dashboard/tasks",
-      icon: <ListTodo />
-    },
-    {
       title: "Invoices",
       section: "Business",
       url: "/dashboard/invoices",
@@ -168,6 +164,18 @@ const data = {
       section: "Business",
       url: "/dashboard/reports",
       icon: <ChartNoAxesCombined />
+    },
+    {
+      title: "Projects",
+      section: "Activities",
+      url: "/dashboard/projects",
+      icon: <FolderKanban />
+    },
+    {
+      title: "Tasks",
+      section: "Activities",
+      url: "/dashboard/tasks",
+      icon: <ListTodo />
     },
     {
       title: "Issues & suggestions",
@@ -198,12 +206,18 @@ const data = {
 
 export function AppSidebar({
   userRole,
+  displayRole,
   department,
+  canReadAttendance,
+  canManageAttendance,
   user,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   userRole: UserRole
+  displayRole: "Owner" | "Admin" | "Staff"
   department?: string | null
+  canReadAttendance: boolean
+  canManageAttendance: boolean
   user: { name: string; email: string; avatar: string }
 }) {
   const isMobile = useIsMobile()
@@ -232,6 +246,11 @@ export function AppSidebar({
     userRole !== UserRole.STAFF || Boolean(department?.trim())
   const navMainItems = data.navMain.filter((item) => {
     if (item.url === "/dashboard") return true
+    if (item.url === "/dashboard/organization-management") {
+      return displayRole === "Owner" || displayRole === "Admin"
+    }
+    if (item.url === "/attendance") return canReadAttendance
+    if (item.url === "/dashboard/attendance/schedule") return canManageAttendance
     if (!hasWorkspaceAccess && item.url !== "/dashboard/issues") return false
     if (item.url === "/dashboard/salary" && userRole === UserRole.STAFF && department !== "HR") {
       return canAccessRoute("/dashboard/my-salary", userRole, department)
@@ -259,7 +278,7 @@ export function AppSidebar({
         items={navMainItems}
         secondaryItems={navSecondaryItems}
         user={user}
-        role={userRole}
+        role={displayRole}
         department={department}
       />
     )
@@ -284,6 +303,14 @@ export function AppSidebar({
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild>
+              <a href="/dashboard/organizations">
+                <Building2 />
+                <span>Switch organization</span>
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
@@ -294,7 +321,7 @@ export function AppSidebar({
         <NavSecondary items={navSecondaryItems} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={user} role={userRole} department={department} />
+        <NavUser user={user} role={displayRole} department={department} />
       </SidebarFooter>
     </Sidebar>
   )

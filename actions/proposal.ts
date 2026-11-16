@@ -1,5 +1,6 @@
 "use server"
 
+import { checkOrganizationPermission } from "@/lib/organization-authorization";
 import { Prisma } from "@/app/generated/prisma/client";
 import { ProposalWhereInput } from "@/app/generated/prisma/models";
 import { errorResponse, successResponse } from "@/lib/action-response";
@@ -16,19 +17,30 @@ import { addDays } from "date-fns";
 import { headers } from "next/headers";
 import { sendProposalLinkEmail } from "@/lib/email";
 import { syncProposalComposerTermsAndFeatures } from "@/actions/proposal-composer";
-import { hasBusinessWorkspaceAccess } from "@/lib/workspace-access";
 import { z } from "zod";
+import { getProposalPermissionScope } from "@/lib/proposal-permissions";
+import { getActiveOrganizationId } from "@/lib/organization-authorization";
+import { isActiveOrganizationMember } from "@/repositories/organization-member-repository";
 
-type ProposalPermission = "create" | "read" | "update" | "delete" | "send";
+type ProposalPermission =
+    | "create"
+    | "read"
+    | "read-own"
+    | "update"
+    | "update-own"
+    | "delete"
+    | "delete-own"
+    | "send"
+    | "send-own"
+    | "accept"
+    | "accept-own";
 
 async function hasProposalPermission(permission: ProposalPermission): Promise<boolean> {
     const requestHeaders = await headers();
     const session = await auth.api.getSession({ headers: requestHeaders });
-    if (!session?.user || !hasBusinessWorkspaceAccess(session.user)) {
-        return false;
-    }
+    if (!session?.user) return false;
 
-    const result = await auth.api.userHasPermission({
+    const result = await checkOrganizationPermission({
         headers: requestHeaders,
         body: { permissions: { proposals: [permission] } },
     });
@@ -38,20 +50,15 @@ async function hasProposalPermission(permission: ProposalPermission): Promise<bo
 export async function createProposal(proposal: ProposalSchema) {
     try {
 
-        const session = await auth.api.getSession({
-            headers: await headers()
-        })
+        const requestHeaders = await headers();
+        const session = await auth.api.getSession({ headers: requestHeaders });
         if (!session?.user) {
             return errorResponse(
                 "You don't have permission to create a proposal"
             );
         }
-        if (!hasBusinessWorkspaceAccess(session.user)) {
-            return errorResponse("Proposals are available to administrators and staff in HR or Sales.");
-        }
-
-        const hasPermission = await auth.api.userHasPermission({
-            headers: await headers(),
+        const hasPermission = await checkOrganizationPermission({
+            headers: requestHeaders,
             body: {
                 permissions: {
                     proposals: ["create"]
@@ -71,7 +78,26 @@ export async function createProposal(proposal: ProposalSchema) {
             );
         }
 
-        const { customerDisplayName, customerCompanyName, title, customerId, validUntil, currency, exchangeRate, placeOfSupply, notes } = validatedData.data
+        const {
+            customerDisplayName,
+            customerCompanyName,
+            title,
+            customerId,
+            validUntil,
+            currency,
+            exchangeRate,
+            placeOfSupply,
+            notes,
+            assignedToId,
+        } = validatedData.data;
+        const organizationId = await getActiveOrganizationId(requestHeaders);
+        if (
+            assignedToId &&
+            (!organizationId ||
+                !(await isActiveOrganizationMember(organizationId, assignedToId)))
+        ) {
+            return errorResponse("Choose an active member of this workspace.");
+        }
 
         const validityDays = {
             "07_Days": 7,
@@ -86,11 +112,13 @@ export async function createProposal(proposal: ProposalSchema) {
 
         const proposalRes = await prisma.proposal.create({
             data: {
+                organizationId,
                 customerId,
                 customerDisplayName,
                 customerCompanyName,
                 preparedById: session.user.id,
                 preparedByName: session.user.name,
+                assignedToId: assignedToId || null,
                 title: title || "",
                 notes,
                 validUntil: validUntilDate,
@@ -116,32 +144,37 @@ export async function createProposal(proposal: ProposalSchema) {
 
 export async function updateProposalStatus(proposalId: string, status: "DRAFT" | "SENT" | "ACCEPTED" | "REJECTED" | "EXPIRED") {
     try {
-        const session = await auth.api.getSession({
-            headers: await headers()
-        })
-        if (!session?.user) {
+        const permissionPair = status === "SENT"
+            ? ["send", "send-own"] as const
+            : status === "ACCEPTED"
+                ? ["accept", "accept-own"] as const
+                : ["update", "update-own"] as const;
+        const access = await getProposalPermissionScope(
+            permissionPair[0],
+            permissionPair[1],
+            proposalId,
+        );
+        if (!access) {
             return errorResponse("You don't have permission to update this proposal");
         }
-        if (!hasBusinessWorkspaceAccess(session.user)) {
-            return errorResponse("Proposals are available to administrators and staff in HR or Sales.");
-        }
 
-        const hasPermission = await auth.api.userHasPermission({
-            headers: await headers(),
-            body: {
-                permissions: {
-                    proposals: ["update"]
-                }
-            }
-        })
-        if (!hasPermission.success) {
-            return errorResponse<string>("You don't have permission to update this proposal");
-        }
-
-        await prisma.proposal.update({
-            where: { id: proposalId },
-            data: { status }
+        const updated = await prisma.proposal.updateMany({
+            where: {
+                ...access.where,
+                ...(status === "ACCEPTED" ? { status: "SENT" as const } : {}),
+            },
+            data: {
+                status,
+                ...(status === "ACCEPTED" ? { acceptedAt: new Date() } : {}),
+            },
         });
+        if (updated.count === 0) {
+            return errorResponse(
+                status === "ACCEPTED"
+                    ? "Only sent proposals can be accepted."
+                    : "Proposal not found.",
+            );
+        }
 
         return successResponse("Proposal status updated successfully");
     } catch (error) {
@@ -157,12 +190,11 @@ export async function manuallyAcceptProposal(proposalId: string) {
             return errorResponse("Invalid proposal");
         }
 
-        if (!(await hasProposalPermission("update"))) {
-            return errorResponse("You don't have permission to update proposals");
-        }
+        const access = await getProposalPermissionScope("accept", "accept-own", validatedProposalId.data);
+        if (!access) return errorResponse("You don't have permission to accept this proposal");
 
         const result = await prisma.proposal.updateMany({
-            where: { id: validatedProposalId.data, status: "SENT" },
+            where: { ...access.where, status: "SENT" },
             data: { status: "ACCEPTED", acceptedAt: new Date() },
         });
 
@@ -187,7 +219,8 @@ export async function manuallyAcceptProposal(proposalId: string) {
 
 export async function updateProposal(id: string, data: ProposalSchema) {
     try {
-        if (!(await hasProposalPermission("update"))) {
+        const access = await getProposalPermissionScope("update", "update-own", id);
+        if (!access) {
             return errorResponse<string>("You don't have permission to update proposals");
         }
 
@@ -197,8 +230,8 @@ export async function updateProposal(id: string, data: ProposalSchema) {
             return errorResponse("Invalid proposal data", validated.error.issues);
         }
 
-        const existingProposal = await prisma.proposal.findUnique({
-            where: { id }
+        const existingProposal = await prisma.proposal.findFirst({
+            where: access.where,
         });
 
         if (!existingProposal) {
@@ -210,6 +243,14 @@ export async function updateProposal(id: string, data: ProposalSchema) {
         }
 
         const { validUntil, ...restData } = validated.data;
+        const organizationId = await getActiveOrganizationId();
+        if (
+            restData.assignedToId &&
+            (!organizationId ||
+                !(await isActiveOrganizationMember(organizationId, restData.assignedToId)))
+        ) {
+            return errorResponse("Choose an active member of this workspace.");
+        }
         const validityDays: Record<string, number> = {
             "07_Days": 7,
             "15_Days": 15,
@@ -231,8 +272,8 @@ export async function updateProposal(id: string, data: ProposalSchema) {
             validityDays[validUntil] ?? 7
         );
 
-        const updatedProposal = await prisma.proposal.update({
-            where: { id },
+        const updatedProposal = await prisma.proposal.updateMany({
+            where: { ...access.where, status: "DRAFT" },
             data: {
                 customerId: restData.customerId,
                 customerDisplayName: restData.customerDisplayName,
@@ -243,8 +284,14 @@ export async function updateProposal(id: string, data: ProposalSchema) {
                 ...(restData.currency ? { currency: restData.currency } : {}),
                 ...(restData.exchangeRate !== undefined ? { exchangeRate: restData.exchangeRate !== null ? new Prisma.Decimal(restData.exchangeRate) : null } : {}),
                 ...(restData.placeOfSupply !== undefined ? { placeOfSupply: restData.placeOfSupply } : {}),
+                ...(restData.assignedToId !== undefined
+                    ? { assignedToId: restData.assignedToId }
+                    : {}),
             }
         });
+        if (updatedProposal.count === 0) {
+            return errorResponse("Proposal is no longer available for editing.");
+        }
 
         try {
             await syncProposalComposerTermsAndFeatures(id, true);
@@ -253,7 +300,7 @@ export async function updateProposal(id: string, data: ProposalSchema) {
         }
 
         return successResponse<{ id: string }>("Proposal updated successfully", {
-            id: updatedProposal.id
+            id,
         });
     } catch (error) {
         console.error("Failed to update proposal:", error);
@@ -263,15 +310,20 @@ export async function updateProposal(id: string, data: ProposalSchema) {
 
 export async function DeleteProposal(id: string) {
     try {
-        if (!(await hasProposalPermission("delete"))) {
+        const access = await getProposalPermissionScope("delete", "delete-own", id);
+        if (!access) {
             return errorResponse<string>("You don't have permission to delete this proposal");
         }
 
-        await prisma.proposal.delete({
+        const deleted = await prisma.proposal.deleteMany({
             where: {
-                id, status: { notIn: ["SENT", "ACCEPTED", "REJECTED", "EXPIRED"] },
+                ...access.where,
+                status: { notIn: ["SENT", "ACCEPTED", "REJECTED", "EXPIRED"] },
             },
         });
+        if (deleted.count === 0) {
+            return errorResponse("Proposal not found or it can no longer be deleted.");
+        }
 
         return successResponse("Proposal deleted successfully");
     } catch (error) {
@@ -285,9 +337,11 @@ export async function DuplicateProposal(id: string) {
         if (!(await hasProposalPermission("create"))) {
             return errorResponse<string>("You don't have permission to duplicate this proposal");
         }
+        const access = await getProposalPermissionScope("read", "read-own", id);
+        if (!access) return errorResponse("You don't have permission to duplicate this proposal");
 
-        const existingProposal = await prisma.proposal.findUnique({
-            where: { id },
+        const existingProposal = await prisma.proposal.findFirst({
+            where: access.where,
             include: {
                 proposalBlocks: true,
                 proposalServices: {
@@ -305,11 +359,13 @@ export async function DuplicateProposal(id: string) {
 
         const newProposal = await prisma.proposal.create({
             data: {
+                organizationId: await getActiveOrganizationId(),
                 customerId: existingProposal.customerId,
                 customerDisplayName: existingProposal.customerDisplayName,
                 customerCompanyName: existingProposal.customerCompanyName,
-                preparedById: existingProposal.preparedById,
-                preparedByName: existingProposal.preparedByName,
+                preparedById: access.userId,
+                preparedByName: (await auth.api.getSession({ headers: await headers() }))?.user.name ?? existingProposal.preparedByName,
+                assignedToId: existingProposal.assignedToId,
                 title: `${existingProposal.title} (Copy)`,
                 notes: existingProposal.notes,
                 validUntil: existingProposal.validUntil,
@@ -399,9 +455,34 @@ export async function DuplicateProposal(id: string) {
 
 export async function getProposals(query: ProposalQuerySchema) {
     try {
-        if (!(await hasProposalPermission("read"))) {
+        const access = await getProposalPermissionScope("read", "read-own");
+        if (!access) {
             return errorResponse("Your account is not allowed to read proposals.");
         }
+        const [
+            canUpdateAll,
+            canUpdateOwn,
+            canDeleteAll,
+            canDeleteOwn,
+            canSendAll,
+            canSendOwn,
+            canAcceptAll,
+            canAcceptOwn,
+            canCreate,
+        ] = await Promise.all([
+            hasProposalPermission("update"),
+            hasProposalPermission("update-own"),
+            hasProposalPermission("delete"),
+            hasProposalPermission("delete-own"),
+            hasProposalPermission("send"),
+            hasProposalPermission("send-own"),
+            hasProposalPermission("accept"),
+            hasProposalPermission("accept-own"),
+            hasProposalPermission("create"),
+        ]);
+        const invoiceCreate = await checkOrganizationPermission({
+            body: { permissions: { invoices: ["create"] } },
+        });
 
         const validatedQuery = proposalQuerySchema.safeParse(query);
         if (!validatedQuery.success) {
@@ -423,32 +504,20 @@ export async function getProposals(query: ProposalQuerySchema) {
                 }
                 : undefined
 
+        const searchFilters: ProposalWhereInput[] = search
+            ? [{
+                OR: [
+                    { customerDisplayName: { contains: search, mode: "insensitive" } },
+                    { customerCompanyName: { contains: search, mode: "insensitive" } },
+                    { title: { contains: search, mode: "insensitive" } },
+                ],
+            }]
+            : [];
         const where: ProposalWhereInput = {
             status: status ? { equals: status } : undefined,
             customerId: customerId ? { equals: customerId } : undefined,
             validUntil,
-            ...(search && {
-                OR: [
-                    {
-                        customerDisplayName: {
-                            contains: search,
-                            mode: "insensitive",
-                        },
-                    },
-                    {
-                        customerCompanyName: {
-                            contains: search,
-                            mode: "insensitive",
-                        },
-                    },
-                    {
-                        title: {
-                            contains: search,
-                            mode: "insensitive",
-                        },
-                    }
-                ]
-            })
+            AND: [access.where, ...searchFilters],
         }
 
         const [proposals, total] = await prisma.$transaction([
@@ -458,6 +527,8 @@ export async function getProposals(query: ProposalQuerySchema) {
 
                 select: {
                     id: true,
+                    preparedById: true,
+                    assignedToId: true,
                     customerId: true,
                     customerDisplayName: true,
                     customerCompanyName: true,
@@ -491,6 +562,18 @@ export async function getProposals(query: ProposalQuerySchema) {
             customerEmail: proposal.customer.primaryContactEmail,
             customerPhone: proposal.customer.primaryContactPhone,
             grandTotal: proposal.grandTotal.toNumber(),
+            permissions: {
+                canUpdate: canUpdateAll ||
+                    (canUpdateOwn && (proposal.preparedById === access.userId || proposal.assignedToId === access.userId)),
+                canDelete: canDeleteAll ||
+                    (canDeleteOwn && (proposal.preparedById === access.userId || proposal.assignedToId === access.userId)),
+                canSend: canSendAll ||
+                    (canSendOwn && (proposal.preparedById === access.userId || proposal.assignedToId === access.userId)),
+                canAccept: canAcceptAll ||
+                    (canAcceptOwn && (proposal.preparedById === access.userId || proposal.assignedToId === access.userId)),
+                canCreate,
+                canCreateInvoice: invoiceCreate.success,
+            },
         }));
 
         return successResponse("Proposals fetched successfully", { data, pagination: { page, pageSize, total, pageCount: Math.ceil(total / pageSize) } });
@@ -504,18 +587,44 @@ export async function getProposals(query: ProposalQuerySchema) {
     }
 }
 
+export async function getProposalForEdit(id: string) {
+    try {
+        const access = await getProposalPermissionScope("read", "read-own", id);
+        if (!access) return errorResponse("Proposal not found or you do not have access.");
+
+        const proposal = await prisma.proposal.findFirst({
+            where: access.where,
+            select: {
+                id: true,
+                customerId: true,
+                title: true,
+                customerCompanyName: true,
+                customerDisplayName: true,
+                notes: true,
+                validUntil: true,
+                createdAt: true,
+                currency: true,
+                exchangeRate: true,
+                placeOfSupply: true,
+                assignedToId: true,
+                status: true,
+            },
+        });
+        if (!proposal) return errorResponse("Proposal not found or you do not have access.");
+
+        return successResponse("Proposal loaded.", {
+            ...proposal,
+            exchangeRate: proposal.exchangeRate?.toNumber() ?? 83.5,
+        });
+    } catch (error) {
+        return errorResponse("Unable to load proposal.", getErrorMessage(error));
+    }
+}
+
 export async function sendProposalEmailAction(proposalId: string, email: string, proposalUrl: string) {
     try {
-        const session = await auth.api.getSession({
-            headers: await headers()
-        });
-        if (!session?.user) {
-            return errorResponse("You don't have permission to send emails");
-        }
-        if (
-            !hasBusinessWorkspaceAccess(session.user) ||
-            !(await hasProposalPermission("send"))
-        ) {
+        const access = await getProposalPermissionScope("send", "send-own", proposalId);
+        if (!access) {
             return errorResponse("You don't have permission to send proposal emails");
         }
 

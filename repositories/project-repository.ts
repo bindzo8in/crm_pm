@@ -49,6 +49,23 @@ function assignedProjectFilter(userId: string): Prisma.ProjectWhereInput {
   };
 }
 
+function taskAccessFilter(actor: {
+  id: string;
+  canReadAll: boolean;
+  canReadAssigned?: boolean;
+  canReadOwn?: boolean;
+}): Prisma.ProjectTaskWhereInput {
+  if (actor.canReadAll) return {};
+  const conditions: Prisma.ProjectTaskWhereInput[] = [];
+  if (actor.canReadAssigned || actor.canReadOwn) {
+    conditions.push({ assigneeId: actor.id });
+  }
+  if (actor.canReadOwn) {
+    conditions.push({ createdById: actor.id });
+  }
+  return conditions.length > 0 ? { OR: conditions } : { id: "__no_access__" };
+}
+
 function projectFilters(query: ProjectQuery): Prisma.ProjectWhereInput {
   const conditions: Prisma.ProjectWhereInput[] = [];
 
@@ -265,13 +282,18 @@ export async function getProjectPage(
 
 export async function getProjectTaskWorkspacePage(
   query: ProjectTaskWorkspaceQuery,
-  actor: { id: string; canReadAll: boolean },
+  actor: {
+    id: string;
+    canReadAll: boolean;
+    canReadAssigned: boolean;
+    canReadOwn: boolean;
+  },
 ) {
   const today = new Date(`${getAttendanceDate()}T00:00:00.000Z`);
   const nextWeek = new Date(today.getTime() + 8 * 24 * 60 * 60 * 1000);
   const accessWhere: Prisma.ProjectTaskWhereInput = {
     project: { deletedAt: null },
-    ...(!actor.canReadAll ? { assigneeId: actor.id } : {}),
+    ...taskAccessFilter(actor),
   };
   const filters: Prisma.ProjectTaskWhereInput[] = [];
 
@@ -1163,6 +1185,7 @@ export async function findTaskForProject(taskId: string) {
       id: true,
       projectId: true,
       assigneeId: true,
+      createdById: true,
       status: true,
       title: true,
       parentTaskId: true,
@@ -1235,10 +1258,19 @@ export async function getProjectTaskWorkflow(projectId: string) {
 
 export async function getProjectTaskPreview(
   taskId: string,
-  actor: { id: string; canReadAll: boolean },
+  actor: {
+    id: string;
+    canReadAll: boolean;
+    canReadAssigned?: boolean;
+    canReadOwn?: boolean;
+  },
 ) {
   const task = await prisma.projectTask.findFirst({
-    where: { id: taskId, project: { deletedAt: null } },
+    where: {
+      id: taskId,
+      project: { deletedAt: null },
+      ...taskAccessFilter(actor),
+    },
     select: {
       id: true,
       projectId: true,
@@ -1282,7 +1314,7 @@ export async function getProjectTaskPreview(
             where: {
               id: { not: taskId },
               parentTaskId: null,
-              ...(!actor.canReadAll ? { assigneeId: actor.id } : {}),
+              ...taskAccessFilter(actor),
             },
             select: { id: true, title: true, status: true, statusGroup: true },
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -1291,7 +1323,7 @@ export async function getProjectTaskPreview(
         },
       },
       subtasks: {
-        where: actor.canReadAll ? {} : { assigneeId: actor.id },
+        where: taskAccessFilter(actor),
         select: {
           id: true,
           title: true,
@@ -1303,7 +1335,9 @@ export async function getProjectTaskPreview(
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       },
       dependencies: {
-        where: actor.canReadAll ? {} : { dependsOnTask: { assigneeId: actor.id } },
+        where: actor.canReadAll
+          ? {}
+          : { dependsOnTask: taskAccessFilter(actor) },
         select: {
           id: true,
           relationType: true,
@@ -1314,7 +1348,10 @@ export async function getProjectTaskPreview(
         orderBy: { createdAt: "asc" },
       },
       blockedTasks: {
-        where: { relationType: "BLOCKED_BY", ...(!actor.canReadAll ? { task: { assigneeId: actor.id } } : {}) },
+        where: {
+          relationType: "BLOCKED_BY",
+          ...(actor.canReadAll ? {} : { task: taskAccessFilter(actor) }),
+        },
         select: {
           id: true,
           task: { select: { id: true, title: true, status: true, statusGroup: true } },
@@ -1664,6 +1701,17 @@ export async function getProjectAssignment(projectId: string, userId: string) {
 export async function getTaskProjectAssignment(taskId: string, userId: string) {
   return prisma.projectTask.findFirst({
     where: { id: taskId, assigneeId: userId, project: { deletedAt: null } },
+    select: { id: true, projectId: true },
+  });
+}
+
+export async function getTaskOwnerAssignment(taskId: string, userId: string) {
+  return prisma.projectTask.findFirst({
+    where: {
+      id: taskId,
+      project: { deletedAt: null },
+      OR: [{ createdById: userId }, { assigneeId: userId }],
+    },
     select: { id: true, projectId: true },
   });
 }

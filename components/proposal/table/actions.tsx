@@ -55,6 +55,14 @@ interface ProposalActionsProps {
     customerDisplayName: string;
     customerEmail: string | null;
     customerPhone: string | null;
+    permissions: {
+      canUpdate: boolean;
+      canDelete: boolean;
+      canSend: boolean;
+      canAccept: boolean;
+      canCreate: boolean;
+      canCreateInvoice: boolean;
+    };
   };
 }
 
@@ -185,19 +193,21 @@ export function ProposalActions({
             </Link>
           </DropdownMenuItem>
 
-          <DropdownMenuItem onSelect={() => setIsShareDialogOpen(true)}>
-            <Share2 />
-            Share
-          </DropdownMenuItem>
+          {proposal.permissions.canSend && (
+            <DropdownMenuItem onSelect={() => setIsShareDialogOpen(true)}>
+              <Share2 />
+              Share
+            </DropdownMenuItem>
+          )}
 
-          {proposal.status === "SENT" && (
+          {proposal.status === "SENT" && proposal.permissions.canAccept && (
             <DropdownMenuItem onSelect={() => setIsApprovalDialogOpen(true)}>
               <CheckCircle2 />
               Mark as accepted
             </DropdownMenuItem>
           )}
 
-          {proposal.status === "ACCEPTED" && (
+          {proposal.status === "ACCEPTED" && proposal.permissions.canCreateInvoice && (
             <DropdownMenuItem onClick={handleGenerateInvoice} disabled={isGenerating}>
               <ReceiptText />
               {isGenerating ? "Generating..." : "Generate Invoice"}
@@ -213,7 +223,7 @@ export function ProposalActions({
             </DropdownMenuItem>
           )}
 
-          {proposal.status === "DRAFT" && (
+          {proposal.status === "DRAFT" && proposal.permissions.canUpdate && (
             <DropdownMenuItem asChild>
               <Link href={`/dashboard/proposals/${proposal.id}/edit`}>
                 <Pencil />
@@ -222,12 +232,15 @@ export function ProposalActions({
             </DropdownMenuItem>
           )}
 
-          <DropdownMenuSeparator />
-
-          <DropdownMenuItem onClick={handleDuplicate}>
-            <CopyPlus />
-            Duplicate
-          </DropdownMenuItem>
+          {proposal.permissions.canCreate && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleDuplicate}>
+                <CopyPlus />
+                Duplicate
+              </DropdownMenuItem>
+            </>
+          )}
 
           <DropdownMenuSeparator />
 
@@ -238,28 +251,32 @@ export function ProposalActions({
 
           <DropdownMenuSeparator />
 
-          <DropdownMenuItem
-            onClick={handleDelete}
-            className="text-destructive focus:text-destructive"
-          >
-            <Trash2 />
-            Delete
-          </DropdownMenuItem>
+          {proposal.permissions.canDelete && proposal.status === "DRAFT" && (
+            <DropdownMenuItem
+              onClick={handleDelete}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash2 />
+              Delete
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <ProposalShareDialog
-        proposal={{
-          id: proposal.id,
-          proposalNumber: proposal.proposalNumber,
-          title: proposal.title,
-          customerName: proposal.customerDisplayName,
-          customerEmail: proposal.customerEmail,
-          status: proposal.status,
-        }}
-        open={isShareDialogOpen}
-        onOpenChange={setIsShareDialogOpen}
-      />
+      {proposal.permissions.canSend && (
+        <ProposalShareDialog
+          proposal={{
+            id: proposal.id,
+            proposalNumber: proposal.proposalNumber,
+            title: proposal.title,
+            customerName: proposal.customerDisplayName,
+            customerEmail: proposal.customerEmail,
+            status: proposal.status,
+          }}
+          open={isShareDialogOpen}
+          onOpenChange={setIsShareDialogOpen}
+        />
+      )}
 
       <AlertDialog open={isApprovalDialogOpen} onOpenChange={setIsApprovalDialogOpen}>
         <AlertDialogContent>

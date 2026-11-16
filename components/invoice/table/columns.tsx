@@ -36,6 +36,12 @@ export type InvoiceRow = {
     displayName: string;
     companyName: string | null;
   };
+  permissions: {
+    canUpdate: boolean;
+    canDelete: boolean;
+    canSend: boolean;
+    canRecordPayment: boolean;
+  };
 };
 
 export const columns: ColumnDef<InvoiceRow>[] = [
@@ -165,7 +171,7 @@ function InvoiceActions({ row }: { row: InvoiceRow }) {
           </Link>
         </DropdownMenuItem>
 
-        {row.status !== "PAID" && (
+        {row.permissions.canUpdate && row.status !== "PAID" && (
           <DropdownMenuItem asChild>
             <Link href={`/dashboard/invoices/${row.id}/edit`} className="cursor-pointer">
               <PencilIcon className="mr-2 h-4 w-4" /> Edit Invoice
@@ -173,7 +179,7 @@ function InvoiceActions({ row }: { row: InvoiceRow }) {
           </DropdownMenuItem>
         )}
 
-        {row.status === "DRAFT" && (
+        {row.permissions.canSend && row.status === "DRAFT" && (
           <DropdownMenuItem
             onClick={() => statusMutation.mutate("SENT")}
             disabled={statusMutation.isPending}
@@ -189,7 +195,7 @@ function InvoiceActions({ row }: { row: InvoiceRow }) {
           </a>
         </DropdownMenuItem>
 
-        {row.status !== "VOID" && row.grandTotal > row.amountPaid && (
+        {row.permissions.canRecordPayment && row.status !== "VOID" && row.grandTotal > row.amountPaid && (
           <DropdownMenuItem asChild>
             <Link
               href={`/dashboard/invoices/${row.id}?action=record-payment`}
@@ -200,7 +206,7 @@ function InvoiceActions({ row }: { row: InvoiceRow }) {
           </DropdownMenuItem>
         )}
 
-        {row.status !== "PAID" && (
+        {row.permissions.canDelete && row.status !== "PAID" && (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem

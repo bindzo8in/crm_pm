@@ -77,7 +77,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const callbackURL = new URL("/onboarding", env.NEXT_PUBLIC_SITE_URL).toString();
+    const callbackURL = new URL(
+      "/dashboard/organizations",
+      env.NEXT_PUBLIC_SITE_URL,
+    ).toString();
     await auth.api.signUpEmail({
       body: {
         name: input.data.name,

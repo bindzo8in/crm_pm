@@ -98,7 +98,7 @@ export function AttendanceSettingsDialog({
             ) : (
               <div className="flex items-start gap-2 text-xs text-muted-foreground">
                 <AlertCircleIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-                <p>Only attendance administrators can change shift rules.</p>
+                <p>A role with attendance management permission can change shift rules.</p>
               </div>
             )}
           </section>

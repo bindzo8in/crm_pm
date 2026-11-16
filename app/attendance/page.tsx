@@ -11,7 +11,7 @@ import {
   ShieldAlertIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { UserRole, WorkMode } from "@/app/generated/prisma/enums";
+import { WorkMode } from "@/app/generated/prisma/enums";
 
 export const metadata: Metadata = {
   title: "Attendance Kiosk & Portal | CRM",
@@ -19,8 +19,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AttendancePage() {
-  const { user, isAuthorized, hasDepartment } =
-    await requireAttendanceAccess();
+  const { user, isAuthorized } = await requireAttendanceAccess();
 
   if (!isAuthorized) {
     return (
@@ -36,19 +35,8 @@ export default async function AttendancePage() {
             </h1>
 
             <p className="text-sm leading-relaxed text-muted-foreground">
-              {!hasDepartment ? (
-                <>
-                  You are not currently assigned to any{" "}
-                  <strong>department</strong>. Access to the Attendance Portal
-                  is only permitted for staff members belonging to an active
-                  department.
-                </>
-              ) : (
-                <>
-                  Your user role does not have permission to access the
-                  Attendance Portal.
-                </>
-              )}
+              Your organization role does not include access to the Attendance
+              Portal.
             </p>
           </div>
 
@@ -58,9 +46,8 @@ export default async function AttendancePage() {
             <div className="min-w-0 space-y-1">
               <p className="text-sm font-bold">Need Access?</p>
               <p className="text-xs leading-relaxed sm:text-sm">
-                Please contact an Administrator or HR manager to assign your
-                account to a department, such as Sales, Development, Design,
-                SEO, Marketing, HR, or Operations.
+                Ask your organization owner or administrator to grant you the
+                attendance read permission for your role.
               </p>
             </div>
           </div>
@@ -82,7 +69,10 @@ export default async function AttendancePage() {
   let record = null;
   let settings = null;
   let dayStatus = null;
-  let userRole = (user.role || "STAFF") as UserRole;
+  let canManageAttendance = false;
+  let canViewAnalytics = false;
+  let canViewReports = false;
+  let canViewAuditLogs = false;
 
   try {
     const res = await getTodayAttendanceAction();
@@ -90,7 +80,10 @@ export default async function AttendancePage() {
     record = res.record;
     settings = res.settings;
     dayStatus = res.dayStatus ?? null;
-    userRole = res.userRole as UserRole;
+    canManageAttendance = res.canManageAttendance;
+    canViewAnalytics = res.canViewAnalytics;
+    canViewReports = res.canViewReports;
+    canViewAuditLogs = res.canViewAuditLogs;
   } catch (error) {
     console.error("Failed to load today's attendance record:", error);
   }
@@ -149,8 +142,10 @@ export default async function AttendancePage() {
             initialRecord={record}
             settings={settings}
             dayStatus={dayStatus}
-            userRole={userRole}
-            userDepartment={user.department || ""}
+            canManageAttendance={canManageAttendance}
+            canViewAnalytics={canViewAnalytics}
+            canViewReports={canViewReports}
+            canViewAuditLogs={canViewAuditLogs}
             workMode={workMode}
           />
         </div>

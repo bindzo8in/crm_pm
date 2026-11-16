@@ -2,7 +2,6 @@ import { Metadata } from "next";
 import { redirect } from "next/navigation";
 import DashboardContainer from "@/app/dashboard/dashboard-container";
 import { getSalarySlipsAction } from "@/actions/salary";
-import { UserRole } from "@/app/generated/prisma/enums";
 import { requirePageAccess } from "@/lib/auth-guard";
 import prisma from "@/lib/prisma";
 import { StaffSalaryWorkspace } from "@/components/salary/staff-salary-workspace";
@@ -25,7 +24,7 @@ export default async function MySalaryPage() {
         dateOfJoining: true,
       },
     }),
-    getSalarySlipsAction({ page: 0, pageSize: 20 }),
+    getSalarySlipsAction({ page: 0, pageSize: 20, userId: currentUserId }),
     prisma.leaveRequest.findMany({
       where: {
         userId: currentUserId,
@@ -43,13 +42,6 @@ export default async function MySalaryPage() {
     redirect("/dashboard");
   }
 
-  if (
-    session.user.role !== UserRole.STAFF ||
-    session.user.department === "HR"
-  ) {
-    redirect("/dashboard/salary");
-  }
-
   return (
     <DashboardContainer title="My Salary">
       <main className="mx-auto w-full max-w-7xl space-y-5 px-4 pb-8 sm:px-6">
@@ -62,6 +54,7 @@ export default async function MySalaryPage() {
         </header>
         <StaffSalaryWorkspace
           profile={{
+            userId: currentUserId,
             ...profile,
             dateOfJoining: profile.dateOfJoining?.toISOString().slice(0, 10) ?? null,
           }}

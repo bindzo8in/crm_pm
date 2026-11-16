@@ -1,3 +1,5 @@
+"use client"
+
 import { EyeIcon, EyeOffIcon } from 'lucide-react'
 import { useState } from 'react'
 import {
@@ -20,7 +22,11 @@ export function Password(props: React.ComponentProps<typeof InputGroupInput>) {
 				{...props}
 			/>
 			<InputGroupAddon align="inline-end">
-				<InputGroupButton onClick={toggleVisibility}>
+				<InputGroupButton
+					aria-label={isVisible ? 'Hide password' : 'Show password'}
+					aria-pressed={isVisible}
+					onClick={toggleVisibility}
+				>
 					{isVisible ? (
 						<EyeOffIcon size={16} aria-hidden="true" />
 					) : (

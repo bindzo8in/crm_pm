@@ -88,7 +88,6 @@ async function ensurePersona(
         email,
         name: persona.name,
         password,
-        role: persona.role,
         data: {
           emailVerified: true,
           workMode: WorkMode.OFFICE,
@@ -97,6 +96,10 @@ async function ensurePersona(
       },
     });
     userId = created.user.id;
+    await prisma.user.update({
+      where: { id: userId },
+      data: { role: persona.role },
+    });
   }
 
   const { start } = attendanceE2EMonthRange();

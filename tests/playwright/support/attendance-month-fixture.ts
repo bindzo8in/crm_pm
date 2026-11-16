@@ -3,7 +3,7 @@ export const attendanceE2ERoster = [
     key: "ceo",
     name: "E2E Founder CEO",
     designation: "Founder / CEO",
-    role: "SUPER_ADMIN",
+    role: "ADMIN",
     department: null,
   },
   {
@@ -65,6 +65,25 @@ export const attendanceE2ERoster = [
 ] as const;
 
 export type AttendanceE2EPersona = (typeof attendanceE2ERoster)[number];
+
+function getOfficeCoordinate(name: string, fallback: number): number {
+  const value = process.env[name]?.trim();
+  if (!value) return fallback;
+
+  const coordinate = Number(value);
+  if (!Number.isFinite(coordinate)) {
+    throw new Error(`${name} must be a finite number.`);
+  }
+
+  return coordinate;
+}
+
+export function getAttendanceE2EOfficeLocation() {
+  return {
+    latitude: getOfficeCoordinate("ATTENDANCE_E2E_LOCATION_LAT", 13.0827),
+    longitude: getOfficeCoordinate("ATTENDANCE_E2E_LOCATION_LNG", 80.2707),
+  };
+}
 
 export function attendanceE2EEmail(persona: AttendanceE2EPersona): string {
   return `attendance-e2e+${persona.key}@bindzo8.invalid`;

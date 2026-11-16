@@ -4,6 +4,7 @@ import {
   createBootstrapSignupSignature,
   isValidBootstrapSignupSignature,
 } from "../lib/bootstrap-signup";
+import { isOrganizationSetupOwner } from "../lib/organization-setup-access";
 import { initialSetupSchema } from "../lib/schemas/initial-setup";
 
 const validSetup = {
@@ -72,4 +73,11 @@ test("initial setup rejects invalid office coordinates and reminder times", () =
 
   assert.equal(invalidLocation.success, false);
   assert.equal(invalidReminder.success, false);
+});
+
+test("only the active organization's owner may access its setup", () => {
+  assert.equal(isOrganizationSetupOwner("owner"), true);
+  assert.equal(isOrganizationSetupOwner("admin"), false);
+  assert.equal(isOrganizationSetupOwner("member"), false);
+  assert.equal(isOrganizationSetupOwner(null), false);
 });

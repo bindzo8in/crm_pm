@@ -20,6 +20,7 @@ const months = [
 ];
 
 type StaffProfile = {
+  userId: string;
   name: string;
   email: string;
   department: string | null;
@@ -50,7 +51,11 @@ export function StaffSalaryWorkspace({
   const slipsQuery = useQuery({
     queryKey: ["salary-slips", page, pageSize, "", "ALL"],
     queryFn: async () => {
-      const result = await getSalarySlipsAction({ page, pageSize });
+      const result = await getSalarySlipsAction({
+        page,
+        pageSize,
+        userId: profile.userId,
+      });
       if (!result.success) throw new Error(result.error);
       return result;
     },

@@ -6,13 +6,10 @@ import {
   getSalarySlipsAction,
 } from "@/actions/salary";
 import { requirePageAccess } from "@/lib/auth-guard";
-import { UserRole } from "@/app/generated/prisma/enums";
-import prisma from "@/lib/prisma";
 import DashboardContainer from "@/app/dashboard/dashboard-container";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { hasSalaryPin, isSalaryPinSessionValid } from "@/lib/salary-pin";
 import { SalaryPinGate } from "@/components/salary/salary-pin-gate";
 
@@ -23,15 +20,6 @@ export const metadata: Metadata = {
 export default async function SalaryDashboardPage() {
   const session = await requirePageAccess("/dashboard/salary");
   const user = session.user;
-
-  const isHrOrAdmin = 
-    user.role === UserRole.SUPER_ADMIN || 
-    user.role === UserRole.ADMIN || 
-    (user.role === UserRole.STAFF && user.department === 'HR');
-
-  if (!isHrOrAdmin) {
-    redirect("/dashboard/my-salary");
-  }
 
   const isPinConfigured = await hasSalaryPin(user.id);
   const isPinUnlocked =
@@ -55,53 +43,6 @@ export default async function SalaryDashboardPage() {
     getSalarySlipsAction({ page: 0, pageSize: 20 }),
     getSalaryManagementSummaryAction(),
   ]);
-  let staffProfile: {
-    name: string;
-    email: string;
-    department: string | null;
-    designation: string | null;
-    dateOfJoining: string | null;
-  } | undefined;
-  let staffLeaveSummary: { approvedDays: number; pendingRequests: number } | undefined;
-
-  if (!isHrOrAdmin) {
-    const [profile, approvedLeaves, pendingLeaveCount] = await Promise.all([
-      prisma.user.findUnique({
-        where: { id: user.id },
-        select: {
-          name: true,
-          email: true,
-          department: true,
-          designation: true,
-          dateOfJoining: true,
-        },
-      }),
-      prisma.leaveRequest.findMany({
-        where: {
-          userId: user.id,
-          status: "APPROVED",
-          startDate: { gte: new Date(`${new Date().getFullYear()}-01-01T00:00:00.000Z`) },
-        },
-        select: { netLeaveDays: true },
-      }),
-      prisma.leaveRequest.count({
-        where: {
-          userId: user.id,
-          status: "PENDING",
-        },
-      }),
-    ]);
-    if (profile) {
-      staffProfile = {
-        ...profile,
-        dateOfJoining: profile.dateOfJoining?.toISOString().slice(0, 10) ?? null,
-      };
-      staffLeaveSummary = {
-        approvedDays: approvedLeaves.reduce((total, leave) => total + leave.netLeaveDays, 0),
-        pendingRequests: pendingLeaveCount,
-      };
-    }
-  }
 
   if (!slipsRes.success || !rosterRes.success || !summaryRes.success) {
     return (
@@ -152,9 +93,7 @@ export default async function SalaryDashboardPage() {
               totalCount: slipsRes.totalCount,
               paidYtd: slipsRes.paidYtd,
             }}
-            isHrOrAdmin={isHrOrAdmin}
-            staffProfile={staffProfile}
-            staffLeaveSummary={staffLeaveSummary}
+            canManageSalary={true}
           />
         </div>
       </SalaryPinGate>

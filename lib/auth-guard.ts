@@ -1,9 +1,8 @@
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { canAccessRoute } from "@/lib/route-permissions";
-import { EmploymentStatus, UserRole } from "@/app/generated/prisma/enums";
-import { canReadDashboard } from "@/lib/permissions";
+import { getOrganizationRoutePermissions } from "@/lib/route-permissions";
+import { EmploymentStatus } from "@/app/generated/prisma/enums";
 import prisma from "@/lib/prisma";
 
 /**
@@ -31,18 +30,40 @@ export async function requirePageAccess(targetPath?: string) {
   }
 
   const pathname = targetPath || headersList.get("x-pathname") || "/dashboard";
-  const userRole = session.user.role as UserRole;
-  const dashboardAccess = canReadDashboard(userRole);
-  const staffHomeAccess = userRole === UserRole.STAFF;
-  const fallbackPath = dashboardAccess || staffHomeAccess ? "/dashboard" : "/attendance";
-
-  if (pathname === "/dashboard" && !dashboardAccess && !staffHomeAccess) {
-    redirect(fallbackPath);
+  const organizationId = session.session.activeOrganizationId;
+  if (!organizationId) {
+    redirect("/dashboard/organizations");
   }
 
-  if (!canAccessRoute(pathname, userRole, session.user.department)) {
-    console.log('Access denied for route:', pathname, 'User role:', userRole);
-    redirect(fallbackPath);
+  const member = await prisma.member.findUnique({
+    where: {
+      organizationId_userId: {
+        organizationId,
+        userId: session.user.id,
+      },
+    },
+    select: { id: true },
+  });
+  if (!member) {
+    redirect("/dashboard/organizations");
+  }
+
+  const requiredPermissions = getOrganizationRoutePermissions(pathname);
+  if (requiredPermissions) {
+    const permissionResults = await Promise.all(
+      requiredPermissions.map(({ resource, permission }) =>
+        auth.api.hasPermission({
+          headers: headersList,
+          body: {
+            organizationId,
+            permissions: { [resource]: [permission] },
+          },
+        }),
+      ),
+    );
+    if (!permissionResults.some((result) => result.success)) {
+      redirect("/attendance");
+    }
   }
 
   return session;

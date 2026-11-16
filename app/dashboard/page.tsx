@@ -1,5 +1,5 @@
 import { Prisma } from "@/app/generated/prisma/client";
-import { UserRole } from "@/app/generated/prisma/enums";
+import { redirect } from "next/navigation";
 import { DashboardOverview } from "@/components/dashboard/dashboard-overview";
 import { StaffDashboardHome } from "./staff-dashboard-home";
 import { requirePageAccess } from "@/lib/auth-guard";
@@ -94,10 +94,27 @@ export default async function Page({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const session = await requirePageAccess("/dashboard");
+  const activeOrganizationId = session.session.activeOrganizationId;
+  if (!activeOrganizationId) {
+    redirect("/dashboard/organizations");
+  }
+  const activeMembership = await prisma.member.findUnique({
+    where: {
+      organizationId_userId: {
+        organizationId: activeOrganizationId,
+        userId: session.user.id,
+      },
+    },
+    select: { role: true },
+  });
+  if (!activeMembership) {
+    redirect("/dashboard/organizations");
+  }
+
   const firstName = session.user.name?.trim().split(/\s+/)[0] || "there";
   const greeting = getGreeting(new Date().getHours());
 
-  if (!canReadDashboard(session.user.role as UserRole)) {
+  if (!canReadDashboard(activeMembership.role)) {
     return (
       <StaffDashboardHome
         firstName={firstName}

@@ -27,20 +27,28 @@ interface AttendanceClientHubProps {
     weekday: string;
     holidayName: string | null;
   } | null;
-  userRole: string;
-  userDepartment: string;
+  canManageAttendance: boolean;
+  canViewAnalytics: boolean;
+  canViewReports: boolean;
+  canViewAuditLogs: boolean;
   workMode: WorkMode;
 }
 
-export function AttendanceClientHub({ initialRecord, settings, dayStatus, userRole, userDepartment, workMode }: AttendanceClientHubProps) {
+export function AttendanceClientHub({
+  initialRecord,
+  settings,
+  dayStatus,
+  canManageAttendance,
+  canViewAnalytics,
+  canViewReports,
+  canViewAuditLogs,
+  workMode,
+}: AttendanceClientHubProps) {
   const [activeTab, setActiveTab] = useState<AttendanceTab>("kiosk");
   const record = initialRecord;
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  const isAdmin = userRole === "SUPER_ADMIN" || userRole === "ADMIN";
-  const isHrStaff = userRole === "STAFF" && userDepartment === "HR";
-  const canViewReports = isAdmin || isHrStaff;
-  const canManageShiftRules = isAdmin || isHrStaff;
+  const canManageShiftRules = canManageAttendance;
   const needsShiftSetup = !settings?.isConfigured;
 
   const handleRefresh = async () => {
@@ -81,7 +89,7 @@ export function AttendanceClientHub({ initialRecord, settings, dayStatus, userRo
             Attendance Logs
           </button>
 
-          {isAdmin && (
+          {canViewAnalytics && (
             <button
               type="button"
               onClick={() => setActiveTab("analytics")}
@@ -164,15 +172,18 @@ export function AttendanceClientHub({ initialRecord, settings, dayStatus, userRo
         )}
 
         {activeTab === "history" && (
-          <AttendanceTable userRole={userRole} userDepartment={userDepartment} />
+          <AttendanceTable
+            canManageAttendance={canManageAttendance}
+            canViewAuditLogs={canViewAuditLogs}
+          />
         )}
 
-        {activeTab === "analytics" && isAdmin && (
+        {activeTab === "analytics" && canViewAnalytics && (
           <AttendanceAnalytics />
         )}
 
         {activeTab === "reports" && canViewReports && (
-          <AttendanceReportView userRole={userRole} userDepartment={userDepartment} />
+          <AttendanceReportView />
         )}
       </div>
 
@@ -181,7 +192,7 @@ export function AttendanceClientHub({ initialRecord, settings, dayStatus, userRo
         activeTab={activeTab}
         onSelectTab={(tab) => setActiveTab(tab)}
         canViewReports={canViewReports}
-        canViewAnalytics={isAdmin}
+        canViewAnalytics={canViewAnalytics}
       />
 
       <AttendanceSettingsDialog
@@ -189,7 +200,7 @@ export function AttendanceClientHub({ initialRecord, settings, dayStatus, userRo
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
         canManageShiftRules={canManageShiftRules}
-        canManageReminderTime={isAdmin}
+        canManageReminderTime={canManageAttendance}
         onSuccess={handleRefresh}
       />
     </div>

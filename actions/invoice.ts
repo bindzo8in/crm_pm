@@ -1,5 +1,6 @@
 "use server";
 
+import { checkOrganizationPermission } from "@/lib/organization-authorization";
 import { Prisma } from "@/app/generated/prisma/client";
 import { errorResponse, successResponse } from "@/lib/action-response";
 import { auth } from "@/lib/auth";
@@ -20,7 +21,10 @@ import {
 import { headers } from "next/headers";
 import { sendInvoiceLinkEmail } from "@/lib/email";
 import { revalidatePath } from "next/cache";
-import { hasBusinessWorkspaceAccess } from "@/lib/workspace-access";
+import { getInvoicePermissionScope } from "@/lib/invoice-permissions";
+import { getActiveOrganizationId } from "@/lib/organization-authorization";
+import { isActiveOrganizationMember } from "@/repositories/organization-member-repository";
+import { getProposalPermissionScope } from "@/lib/proposal-permissions";
 
 const InvoiceStatus = {
   DRAFT: "DRAFT",
@@ -52,22 +56,30 @@ async function getSessionUser() {
   if (!session?.user) {
     return null;
   }
-  if (!hasBusinessWorkspaceAccess(session.user)) {
-    return null;
-  }
   return session.user;
 }
 
-type InvoicePermissionAction = "create" | "read" | "update" | "delete" | "send" | "record-payment" | "mark-paid";
+type InvoicePermissionAction =
+  | "create"
+  | "read"
+  | "read-own"
+  | "update"
+  | "update-own"
+  | "delete"
+  | "delete-own"
+  | "send"
+  | "send-own"
+  | "record-payment"
+  | "record-payment-own"
+  | "mark-paid"
+  | "mark-paid-own";
 
 async function checkInvoicePermission(action: InvoicePermissionAction) {
   const requestHeaders = await headers();
   const session = await auth.api.getSession({ headers: requestHeaders });
-  if (!session?.user || !hasBusinessWorkspaceAccess(session.user)) {
-    return false;
-  }
+  if (!session?.user) return false;
 
-  const hasPermission = await auth.api.userHasPermission({
+  const hasPermission = await checkOrganizationPermission({
     headers: requestHeaders,
     body: {
       permissions: {
@@ -118,8 +130,8 @@ export async function getInvoices(query: InvoiceQuerySchema) {
     const user = await getSessionUser();
     if (!user) return errorResponse("Unauthorized");
 
-    const canRead = await checkInvoicePermission("read");
-    if (!canRead) return errorResponse("You don't have permission to view invoices");
+    const access = await getInvoicePermissionScope("read", "read-own");
+    if (!access) return errorResponse("You don't have permission to view invoices");
 
     const validated = invoiceQuerySchema.safeParse(query);
     if (!validated.success) {
@@ -127,32 +139,43 @@ export async function getInvoices(query: InvoiceQuerySchema) {
     }
 
     const { page, pageSize, search, status, customerId, sortDirection } = validated.data;
-    const where: Prisma.InvoiceWhereInput = {
-      deletedAt: null,
-      ...(status ? { status } : {}),
-      ...(customerId ? { customerId } : {}),
-      ...(search
-        ? {
-            OR: [
-              { customerDisplayName: { contains: search, mode: "insensitive" } },
-              { customerCompanyName: { contains: search, mode: "insensitive" } },
-            ],
-          }
-        : {}),
-    };
-
-    if (!(prisma as any).invoice) {
-      return successResponse("Invoices fetched successfully", {
-        items: [],
-        totalCount: 0,
-        page,
-        pageSize,
-        totalPages: 0,
+    const [
+      canUpdateAll,
+      canUpdateOwn,
+      canDeleteAll,
+      canDeleteOwn,
+      canSendAll,
+      canSendOwn,
+      canRecordAll,
+      canRecordOwn,
+    ] = await Promise.all([
+      checkInvoicePermission("update"),
+      checkInvoicePermission("update-own"),
+      checkInvoicePermission("delete"),
+      checkInvoicePermission("delete-own"),
+      checkInvoicePermission("send"),
+      checkInvoicePermission("send-own"),
+      checkInvoicePermission("record-payment"),
+      checkInvoicePermission("record-payment-own"),
+    ]);
+    const filterConditions: Prisma.InvoiceWhereInput[] = [];
+    if (status) filterConditions.push({ status });
+    if (customerId) filterConditions.push({ customerId });
+    if (search) {
+      filterConditions.push({
+        OR: [
+          { customerDisplayName: { contains: search, mode: "insensitive" } },
+          { customerCompanyName: { contains: search, mode: "insensitive" } },
+        ],
       });
     }
+    const where: Prisma.InvoiceWhereInput = {
+      deletedAt: null,
+      AND: [access.where, ...filterConditions],
+    };
 
     const [items, totalCount] = await Promise.all([
-      (prisma).invoice.findMany({
+      prisma.invoice.findMany({
         where,
         include: {
           customer: {
@@ -167,6 +190,9 @@ export async function getInvoices(query: InvoiceQuerySchema) {
           createdBy: {
             select: { id: true, name: true, email: true },
           },
+          assignedTo: {
+            select: { id: true, name: true, email: true },
+          },
           payments: {
             select: { amount: true },
           },
@@ -175,10 +201,21 @@ export async function getInvoices(query: InvoiceQuerySchema) {
         skip: page * pageSize,
         take: pageSize,
       }),
-      (prisma).invoice.count({ where }),
+      prisma.invoice.count({ where }),
     ]);
 
-    const formatted = items.map((inv) => formatInvoice(inv));
+    const formatted = items.map((inv) => {
+      const isOwner = inv.createdBy.id === access.userId || inv.assignedTo?.id === access.userId;
+      return formatInvoice({
+        ...inv,
+        permissions: {
+          canUpdate: canUpdateAll || (canUpdateOwn && isOwner),
+          canDelete: canDeleteAll || (canDeleteOwn && isOwner),
+          canSend: canSendAll || (canSendOwn && isOwner),
+          canRecordPayment: canRecordAll || (canRecordOwn && isOwner),
+        },
+      });
+    });
 
     return successResponse("Invoices fetched successfully", {
       items: formatted,
@@ -193,14 +230,20 @@ export async function getInvoices(query: InvoiceQuerySchema) {
   }
 }
 
-async function getInvoiceDataById(id: string, includeInternalAudit: boolean) {
+async function getInvoiceDataById(
+  id: string,
+  includeInternalAudit: boolean,
+  accessWhere: Prisma.InvoiceWhereInput = { id },
+) {
   try {
-    const invoice = await (prisma).invoice.findFirst({
-      where: { id, deletedAt: null },
+    const invoice = await prisma.invoice.findFirst({
+      where: { AND: [accessWhere, { id, deletedAt: null }] },
       select: {
         id: true,
         invoiceNumber: true,
         customerId: true,
+        ...(includeInternalAudit ? { assignedToId: true } : {}),
+        ...(includeInternalAudit ? { createdById: true } : {}),
         bankAccountId: true,
         customerDisplayName: true,
         customerCompanyName: true,
@@ -335,6 +378,7 @@ async function getInvoiceDataById(id: string, includeInternalAudit: boolean) {
       })),
       activities: invoice.activities ?? [],
       company,
+      permissions: undefined,
     };
 
     return successResponse("Invoice retrieved successfully", formatted);
@@ -349,11 +393,47 @@ export async function getPublicInvoiceById(id: string) {
 }
 
 export async function getInvoiceById(id: string) {
-  const user = await getSessionUser();
-  if (!user) return errorResponse("Unauthorized");
-  const canRead = await checkInvoicePermission("read");
-  if (!canRead) return errorResponse("You don't have permission to view invoices");
-  return getInvoiceDataById(id, true);
+  const access = await getInvoicePermissionScope("read", "read-own", id);
+  if (!access) return errorResponse("Invoice not found or you do not have access.");
+  const result = await getInvoiceDataById(id, true, access.where);
+  if (!result.success || !result.data) return result;
+
+  const [
+    canUpdateAll,
+    canUpdateOwn,
+    canDeleteAll,
+    canDeleteOwn,
+    canSendAll,
+    canSendOwn,
+    canRecordAll,
+    canRecordOwn,
+    canMarkPaidAll,
+    canMarkPaidOwn,
+  ] = await Promise.all([
+    checkInvoicePermission("update"),
+    checkInvoicePermission("update-own"),
+    checkInvoicePermission("delete"),
+    checkInvoicePermission("delete-own"),
+    checkInvoicePermission("send"),
+    checkInvoicePermission("send-own"),
+    checkInvoicePermission("record-payment"),
+    checkInvoicePermission("record-payment-own"),
+    checkInvoicePermission("mark-paid"),
+    checkInvoicePermission("mark-paid-own"),
+  ]);
+  const isOwner =
+    result.data.createdById === access.userId ||
+    result.data.assignedToId === access.userId;
+  return successResponse("Invoice retrieved successfully", {
+    ...result.data,
+    permissions: {
+      canUpdate: canUpdateAll || (canUpdateOwn && isOwner),
+      canDelete: canDeleteAll || (canDeleteOwn && isOwner),
+      canSend: canSendAll || (canSendOwn && isOwner),
+      canRecordPayment: canRecordAll || (canRecordOwn && isOwner),
+      canMarkPaid: canMarkPaidAll || (canMarkPaidOwn && isOwner),
+    },
+  });
 }
 
 export async function createInvoice(input: CreateInvoiceInput) {
@@ -367,6 +447,14 @@ export async function createInvoice(input: CreateInvoiceInput) {
     const validated = createInvoiceSchema.safeParse(input);
     if (!validated.success) {
       return errorResponse("Invalid input data", validated.error.issues);
+    }
+    const organizationId = await getActiveOrganizationId();
+    if (
+      validated.data.assignedToId &&
+      (!organizationId ||
+        !(await isActiveOrganizationMember(organizationId, validated.data.assignedToId)))
+    ) {
+      return errorResponse("Choose an active member of this workspace.");
     }
 
     const customer = await prisma.customer.findUnique({
@@ -409,13 +497,15 @@ export async function createInvoice(input: CreateInvoiceInput) {
     const grandTotal = Math.max(0, Math.round(rawTotal));
     const roundOff = grandTotal - rawTotal;
 
-    const invoice = await (prisma as any).invoice.create({
+    const invoice = await prisma.invoice.create({
       data: {
+        organizationId,
         customerId: customer.id,
         customerDisplayName: customer.displayName,
         customerCompanyName: customer.companyName || null,
         proposalId: validated.data.proposalId || null,
         createdById: user.id,
+        assignedToId: validated.data.assignedToId || null,
         notes: validated.data.notes || null,
         terms: validated.data.terms || null,
         issueDate: validated.data.issueDate || undefined,
@@ -456,7 +546,8 @@ export async function getInvoicePaymentAccounts() {
     const user = await getSessionUser();
     if (!user) return errorResponse("Unauthorized");
 
-    const canRecord = await checkInvoicePermission("record-payment");
+    const canRecord = await checkInvoicePermission("record-payment") ||
+      await checkInvoicePermission("record-payment-own");
     if (!canRecord) return errorResponse("You don't have permission to record invoice payments");
 
     const company = await prisma.company.findFirst({
@@ -482,18 +573,49 @@ export async function updateInvoice(input: UpdateInvoiceInput) {
     const user = await getSessionUser();
     if (!user) return errorResponse("Unauthorized");
 
-    const canUpdate = await checkInvoicePermission("update");
-    if (!canUpdate) return errorResponse("You don't have permission to update invoices");
-
     const validated = updateInvoiceSchema.safeParse(input);
     if (!validated.success) {
       return errorResponse("Invalid input data", validated.error.issues);
     }
+    const permissionPair = validated.data.status === InvoiceStatus.SENT
+      ? ["send", "send-own"] as const
+      : validated.data.status === InvoiceStatus.PAID || validated.data.status === InvoiceStatus.VOID
+        ? ["mark-paid", "mark-paid-own"] as const
+        : ["update", "update-own"] as const;
+    const access = await getInvoicePermissionScope(
+      permissionPair[0],
+      permissionPair[1],
+      validated.data.id,
+    );
+    if (!access) return errorResponse("Invoice not found or you do not have permission to update it.");
 
-    const { id, customerId, notes, terms, issueDate, dueDate, bankAccountId, currency, exchangeRate, placeOfSupply, discount, lineItems, status } = validated.data;
+    const {
+      id,
+      customerId,
+      assignedToId,
+      notes,
+      terms,
+      issueDate,
+      dueDate,
+      bankAccountId,
+      currency,
+      exchangeRate,
+      placeOfSupply,
+      discount,
+      lineItems,
+      status,
+    } = validated.data;
 
-    const existing = await (prisma as any).invoice.findFirst({
-      where: { id, deletedAt: null },
+    const organizationId = await getActiveOrganizationId();
+    if (
+      assignedToId &&
+      (!organizationId || !(await isActiveOrganizationMember(organizationId, assignedToId)))
+    ) {
+      return errorResponse("Choose an active member of this workspace.");
+    }
+
+    const existing = await prisma.invoice.findFirst({
+      where: { AND: [access.where, { deletedAt: null }] },
     });
     if (!existing) return errorResponse("Invoice not found");
 
@@ -557,7 +679,7 @@ export async function updateInvoice(input: UpdateInvoiceInput) {
     const grandTotal = Math.max(0, Math.round(rawTotal));
     const roundOff = grandTotal - rawTotal;
 
-    const updatedInvoice = await prisma.$transaction(async (tx: any) => {
+    const updatedInvoice = await prisma.$transaction(async (tx) => {
       if (lineItems) {
         await tx.invoiceLineItem.deleteMany({
           where: { invoiceId: id },
@@ -567,12 +689,31 @@ export async function updateInvoice(input: UpdateInvoiceInput) {
       return tx.invoice.update({
         where: { id },
         data: {
-          ...(customerId ? { customerId, customerDisplayName, customerCompanyName } : {}),
+          ...(customerId
+            ? {
+                customer: { connect: { id: customerId } },
+                customerDisplayName,
+                customerCompanyName,
+              }
+            : {}),
+          ...(assignedToId !== undefined
+            ? {
+                assignedTo: assignedToId
+                  ? { connect: { id: assignedToId } }
+                  : { disconnect: true },
+              }
+            : {}),
           ...(notes !== undefined ? { notes } : {}),
           ...(terms !== undefined ? { terms } : {}),
-          ...(issueDate !== undefined ? { issueDate } : {}),
+          ...(issueDate !== undefined ? { issueDate: issueDate ?? existing.issueDate } : {}),
           ...(dueDate !== undefined ? { dueDate } : {}),
-          ...(bankAccountId !== undefined ? { bankAccountId } : {}),
+          ...(bankAccountId !== undefined
+            ? {
+                bankAccount: bankAccountId
+                  ? { connect: { id: bankAccountId } }
+                  : { disconnect: true },
+              }
+            : {}),
           ...(currency ? { currency } : {}),
           ...(exchangeRate !== undefined ? { exchangeRate: exchangeRate !== null ? new Prisma.Decimal(exchangeRate) : null } : {}),
           ...(placeOfSupply !== undefined ? { placeOfSupply } : {}),
@@ -612,12 +753,20 @@ export async function updateInvoiceStatus(id: string, status: InvoiceStatus) {
     const user = await getSessionUser();
     if (!user) return errorResponse("Unauthorized");
 
-    const permAction = status === InvoiceStatus.SENT ? "send" : status === InvoiceStatus.PAID || status === InvoiceStatus.VOID ? "mark-paid" : "update";
-    const canUpdate = await checkInvoicePermission(permAction);
-    if (!canUpdate) return errorResponse("You don't have permission to update invoice status");
+  const permissionPair = status === InvoiceStatus.SENT
+    ? ["send", "send-own"] as const
+    : status === InvoiceStatus.PAID || status === InvoiceStatus.VOID
+      ? ["mark-paid", "mark-paid-own"] as const
+      : ["update", "update-own"] as const;
+  const access = await getInvoicePermissionScope(
+    permissionPair[0],
+    permissionPair[1],
+    id,
+  );
+  if (!access) return errorResponse("Invoice not found or you do not have permission to update its status.");
 
-    const existing = await (prisma as any).invoice.findFirst({
-      where: { id, deletedAt: null },
+  const existing = await prisma.invoice.findFirst({
+    where: { AND: [access.where, { deletedAt: null }] },
     });
     if (!existing) return errorResponse("Invoice not found");
 
@@ -655,13 +804,16 @@ export async function recordInvoicePayment(input: RecordPaymentInput) {
     const user = await getSessionUser();
     if (!user) return errorResponse("Unauthorized");
 
-    const canRecord = await checkInvoicePermission("record-payment");
-    if (!canRecord) return errorResponse("You don't have permission to record invoice payments");
-
     const validated = recordPaymentSchema.safeParse(input);
     if (!validated.success) {
       return errorResponse("Invalid payment data", validated.error.issues);
     }
+    const access = await getInvoicePermissionScope(
+      "record-payment",
+      "record-payment-own",
+      validated.data.invoiceId,
+    );
+    if (!access) return errorResponse("Invoice not found or you do not have permission to record its payments.");
 
     const company = await prisma.company.findFirst({
       select: { id: true },
@@ -680,7 +832,9 @@ export async function recordInvoicePayment(input: RecordPaymentInput) {
 
     const result = await prisma.$transaction(async (tx) => {
       const invoice = await tx.invoice.findFirst({
-        where: { id: validated.data.invoiceId, deletedAt: null },
+        where: {
+          AND: [access.where, { id: validated.data.invoiceId, deletedAt: null }],
+        },
       });
       if (!invoice) return { error: "Invoice not found" as const };
       if (invoice.status === "VOID") return { error: "Cannot record a payment for a void invoice" as const };
@@ -757,9 +911,6 @@ export async function assignInvoicePaymentAccount(input: AssignPaymentAccountInp
     const user = await getSessionUser();
     if (!user) return errorResponse("Unauthorized");
 
-    const canRecord = await checkInvoicePermission("record-payment");
-    if (!canRecord) return errorResponse("You don't have permission to manage invoice payments");
-
     const validated = assignPaymentAccountSchema.safeParse(input);
     if (!validated.success) {
       return errorResponse("Invalid payment account assignment", validated.error.issues);
@@ -770,9 +921,15 @@ export async function assignInvoicePaymentAccount(input: AssignPaymentAccountInp
         id: validated.data.paymentId,
         invoice: { deletedAt: null },
       },
-      select: { id: true, financialAccountId: true },
+      select: { id: true, financialAccountId: true, invoiceId: true },
     });
     if (!payment) return errorResponse("Invoice payment not found");
+    const access = await getInvoicePermissionScope(
+      "record-payment",
+      "record-payment-own",
+      payment.invoiceId,
+    );
+    if (!access) return errorResponse("You don't have permission to manage this invoice payment.");
     if (payment.financialAccountId) {
       return errorResponse("This payment is already linked to an account");
     }
@@ -865,11 +1022,11 @@ export async function softDeleteInvoice(id: string) {
     const user = await getSessionUser();
     if (!user) return errorResponse("Unauthorized");
 
-    const canDelete = await checkInvoicePermission("delete");
-    if (!canDelete) return errorResponse("You don't have permission to delete invoices");
+    const access = await getInvoicePermissionScope("delete", "delete-own", id);
+    if (!access) return errorResponse("Invoice not found or you do not have permission to delete it.");
 
-    const invoice = await (prisma as any).invoice.findFirst({
-      where: { id, deletedAt: null },
+    const invoice = await prisma.invoice.findFirst({
+      where: { AND: [access.where, { deletedAt: null }] },
     });
     if (!invoice) return errorResponse("Invoice not found");
 
@@ -877,10 +1034,11 @@ export async function softDeleteInvoice(id: string) {
       return errorResponse("Paid invoices cannot be deleted.");
     }
 
-    await (prisma as any).invoice.update({
-      where: { id },
+    const deleted = await prisma.invoice.updateMany({
+      where: { AND: [access.where, { deletedAt: null, status: { not: InvoiceStatus.PAID } }] },
       data: { deletedAt: new Date() },
     });
+    if (deleted.count === 0) return errorResponse("Invoice could not be deleted.");
 
     return successResponse("Invoice deleted successfully");
   } catch (error) {
@@ -921,15 +1079,27 @@ export async function createInvoiceFromProposal(proposalId: string) {
     const canCreate = await checkInvoicePermission("create");
     if (!canCreate) return errorResponse("You don't have permission to create invoices");
 
-    const existingInvoice = await (prisma as any).invoice.findFirst({
+    const existingInvoice = await prisma.invoice.findFirst({
       where: { proposalId, deletedAt: null },
     });
     if (existingInvoice) {
+      const invoiceAccess = await getInvoicePermissionScope(
+        "read",
+        "read-own",
+        existingInvoice.id,
+      );
+      if (!invoiceAccess) return errorResponse("Invoice not found or you do not have access.");
       return successResponse("Invoice already exists for this proposal", formatInvoice(existingInvoice));
     }
 
-    const proposal = await prisma.proposal.findUnique({
-      where: { id: proposalId },
+    const proposalAccess = await getProposalPermissionScope(
+      "read",
+      "read-own",
+      proposalId,
+    );
+    if (!proposalAccess) return errorResponse("Proposal not found or you do not have access.");
+    const proposal = await prisma.proposal.findFirst({
+      where: proposalAccess.where,
       include: {
         customer: true,
         proposalServices: {
@@ -966,13 +1136,22 @@ export async function createInvoiceFromProposal(proposalId: string) {
       }
     }
 
-    const invoice = await (prisma as any).invoice.create({
+    const organizationId = await getActiveOrganizationId();
+    const assignedToId =
+      organizationId &&
+      proposal.assignedToId &&
+      await isActiveOrganizationMember(organizationId, proposal.assignedToId)
+        ? proposal.assignedToId
+        : null;
+    const invoice = await prisma.invoice.create({
       data: {
+        organizationId,
         customerId: proposal.customerId,
         customerDisplayName: proposal.customerDisplayName,
         customerCompanyName: proposal.customerCompanyName || null,
         proposalId: proposal.id,
         createdById: user.id,
+        assignedToId,
         notes: proposal.notes || null,
         bankAccountId: proposal.bankAccountId || null,
         currency: proposal.currency || "INR",
@@ -1007,14 +1186,11 @@ export async function createInvoiceFromProposal(proposalId: string) {
 
 export async function sendInvoiceEmailAction(invoiceId: string, email: string, invoiceUrl: string) {
   try {
-    const user = await getSessionUser();
-    if (!user) return errorResponse("Unauthorized");
+    const access = await getInvoicePermissionScope("send", "send-own", invoiceId);
+    if (!access) return errorResponse("You don't have permission to send this invoice");
 
-    const canSend = await checkInvoicePermission("send");
-    if (!canSend) return errorResponse("You don't have permission to send invoice emails");
-
-    const invoice = await (prisma as any).invoice.findFirst({
-      where: { id: invoiceId, deletedAt: null },
+    const invoice = await prisma.invoice.findFirst({
+      where: { AND: [access.where, { deletedAt: null }] },
     });
     if (!invoice) return errorResponse("Invoice not found");
 

@@ -1,10 +1,10 @@
-import type { EmploymentStatus, UserRole } from "@/app/generated/prisma/enums";
+import type { EmploymentStatus } from "@/app/generated/prisma/enums";
 
 export interface SalaryEmployee {
   id: string;
   name: string;
   email: string;
-  role: UserRole;
+  organizationRole: string;
   employmentStatus: EmploymentStatus;
   department: string | null;
   includeInPayroll: boolean;

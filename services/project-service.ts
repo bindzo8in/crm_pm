@@ -28,6 +28,7 @@ import {
   getProposalForConversion,
   getTaskDependencyGraph,
   getTaskProjectAssignment,
+  getTaskOwnerAssignment,
   getUsersByIds,
   startTaskTimeEntry,
   stopTaskTimeEntry,
@@ -382,11 +383,22 @@ export async function updateProjectTask(
 ) {
   const current = await findTaskForProject(input.taskId);
   if (!current) throw new ProjectServiceError("Task not found.");
-  if (!isAdmin && current.assigneeId !== actorId) {
-    throw new ProjectServiceError("You can only update tasks assigned to you.");
+  if (!isAdmin && current.assigneeId !== actorId && current.createdById !== actorId) {
+    throw new ProjectServiceError("You can only update tasks you created or are assigned to.");
   }
-  if (!isAdmin && Object.keys(input).some((key) => key !== "taskId" && key !== "status")) {
-    throw new ProjectServiceError("Assigned staff can only update task status.");
+  const ownEditableFields = new Set([
+    "taskId",
+    "status",
+    "title",
+    "description",
+    "startDate",
+    "dueDate",
+    "priority",
+    "timeEstimateMinutes",
+    "sprintPoints",
+  ]);
+  if (!isAdmin && Object.keys(input).some((key) => !ownEditableFields.has(key))) {
+    throw new ProjectServiceError("You cannot change task assignment or project organization.");
   }
   const nextStartDate = input.startDate === undefined
     ? current.startDate?.toISOString().slice(0, 10) ?? null
@@ -623,6 +635,10 @@ export async function canViewProject(projectId: string, userId: string) {
 
 export async function canUpdateAssignedTask(taskId: string, userId: string) {
   return Boolean(await getTaskProjectAssignment(taskId, userId));
+}
+
+export async function canUpdateOwnedTask(taskId: string, userId: string) {
+  return Boolean(await getTaskOwnerAssignment(taskId, userId));
 }
 
 export async function updateProjectTaskWorkflow(input: {

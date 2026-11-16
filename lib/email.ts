@@ -332,6 +332,61 @@ export async function sendExistingUserSignupEmail({
     }
 }
 
+export async function sendOrganizationInvitationEmail({
+      email,
+      organizationName,
+      inviterName,
+      invitationUrl,
+}: {
+      email: string;
+      organizationName: string;
+      inviterName: string;
+      invitationUrl: string;
+}): Promise<void> {
+      const escapeHtml = (value: string) =>
+          value.replace(/[&<>"']/g, (character) => {
+              const entities: Record<string, string> = {
+                  "&": "&amp;",
+                  "<": "&lt;",
+                  ">": "&gt;",
+                  '"': "&quot;",
+                  "'": "&#39;",
+              };
+              return entities[character] ?? character;
+          });
+
+      const safeOrganizationName = escapeHtml(organizationName);
+      const safeInviterName = escapeHtml(inviterName);
+      const safeInvitationUrl = escapeHtml(invitationUrl);
+
+      try {
+          const { error } = await resend.emails.send({
+              from: env.MAIL_FROM,
+              to: email,
+              subject: `Invitation to own ${organizationName} on ${env.NEXT_PUBLIC_APP_NAME}`,
+              html: `
+                  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #202124;">
+                      <p>Hello,</p>
+                      <p>${safeInviterName} invited you to become the owner of <strong>${safeOrganizationName}</strong> on ${escapeHtml(env.NEXT_PUBLIC_APP_NAME)}.</p>
+                      <p>Accept the invitation to create your account, complete organization setup, and manage your workspace.</p>
+                      <p style="margin: 28px 0;">
+                          <a href="${safeInvitationUrl}" style="background-color: #4f46e5; color: #fff; padding: 11px 18px; text-decoration: none; border-radius: 6px; font-weight: 600;">Accept invitation</a>
+                      </p>
+                      <p style="color: #666; font-size: 13px;">If you were not expecting this invitation, you can ignore this email.</p>
+                  </div>
+              `,
+              text: `${inviterName} invited you to become the owner of ${organizationName} on ${env.NEXT_PUBLIC_APP_NAME}. Accept the invitation: ${invitationUrl}`,
+              tags: [{ name: "type", value: "organization-owner-invitation" }],
+          });
+          if (error) throw error;
+      } catch (error) {
+          console.error("Organization owner invitation email delivery failed.", {
+              errorName: error instanceof Error ? error.name : "UnknownError",
+          });
+          throw error;
+      }
+}
+
 export async function sendHolidayAnnouncementEmails({
     recipients,
     name,

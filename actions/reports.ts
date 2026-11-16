@@ -1,5 +1,6 @@
 "use server";
 
+import { checkOrganizationPermission } from "@/lib/organization-authorization";
 import { Prisma } from "@/app/generated/prisma/client";
 import { ExpenseStatus, InvoiceStatus, ProposalStatus } from "@/app/generated/prisma/enums";
 import { auth } from "@/lib/auth";
@@ -75,12 +76,12 @@ function cleanSearch(value: string | number | null) {
 async function hasPermission(permission: "finance" | "customers" | "invoices" | "proposals") {
   const requestHeaders = await headers();
   const result = permission === "finance"
-    ? await auth.api.userHasPermission({ headers: requestHeaders, body: { permissions: { finance: ["read"] } } })
+    ? await checkOrganizationPermission({ headers: requestHeaders, body: { permissions: { finance: ["read"] } } })
     : permission === "customers"
-      ? await auth.api.userHasPermission({ headers: requestHeaders, body: { permissions: { customers: ["read"] } } })
+      ? await checkOrganizationPermission({ headers: requestHeaders, body: { permissions: { customers: ["read"] } } })
       : permission === "invoices"
-        ? await auth.api.userHasPermission({ headers: requestHeaders, body: { permissions: { invoices: ["read"] } } })
-        : await auth.api.userHasPermission({ headers: requestHeaders, body: { permissions: { proposals: ["read"] } } });
+        ? await checkOrganizationPermission({ headers: requestHeaders, body: { permissions: { invoices: ["read"] } } })
+        : await checkOrganizationPermission({ headers: requestHeaders, body: { permissions: { proposals: ["read"] } } });
   return result.success;
 }
 

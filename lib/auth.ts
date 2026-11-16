@@ -4,15 +4,30 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import prisma from "./prisma";
 import { nextCookies } from "better-auth/next-js";
 import { admin } from "better-auth/plugins/admin"
-import { sendExistingUserSignupEmail, sendResetPasswordEmail, sendVerificationEmail } from "./email";
+import { organization } from "better-auth/plugins/organization";
+import {
+    sendExistingUserSignupEmail,
+    sendOrganizationInvitationEmail,
+    sendResetPasswordEmail,
+    sendVerificationEmail,
+} from "./email";
 import { env } from "./env";
-import { EmploymentStatus, UserRole, WorkMode } from "@/app/generated/prisma/enums";
-import { ac, adminRole, staffRole, superAdminRole } from './permissions'
+import { EmploymentStatus, WorkMode } from "@/app/generated/prisma/enums";
+import { GlobalRole } from "@/lib/global-role";
+import { ac, superAdminRole, userRole } from './permissions'
+import {
+    organizationAc,
+    organizationRoles,
+} from "./organization-permissions";
 import { expo } from "@better-auth/expo";
 import {
     BOOTSTRAP_SIGNUP_HEADER,
     isValidBootstrapSignupSignature,
 } from "./bootstrap-signup";
+import {
+    getPendingOrganizationInvitation,
+    ORGANIZATION_INVITATION_SIGNUP_HEADER,
+} from "./organization-invitation";
 import { getOAuthProviderConfigs } from "./oauth-provider-config";
 
 const canLog = process.env.NODE_ENV === "development"
@@ -51,15 +66,19 @@ export const auth = betterAuth({
                 typeof ctx.body.email === "string" ? ctx.body.email : "";
             const signature =
                 ctx.headers?.get(BOOTSTRAP_SIGNUP_HEADER) ?? null;
-            if (
-                !isValidBootstrapSignupSignature(
-                    signature,
-                    email,
-                    env.BETTER_AUTH_SECRET,
-                )
-            ) {
+            if (isValidBootstrapSignupSignature(
+                signature,
+                email,
+                env.BETTER_AUTH_SECRET,
+            )) {
+                return;
+            }
+
+            const invitationId =
+                ctx.headers?.get(ORGANIZATION_INVITATION_SIGNUP_HEADER) ?? null;
+            if (!(await getPendingOrganizationInvitation(invitationId, email))) {
                 throw new APIError("FORBIDDEN", {
-                    message: "Public account registration is disabled.",
+                    message: "A valid organization invitation is required to register.",
                 });
             }
         }),
@@ -80,8 +99,8 @@ export const auth = betterAuth({
                         data: {
                             ...user,
                             role: isBootstrapSignup
-                                ? UserRole.SUPER_ADMIN
-                                : UserRole.STAFF,
+                                ? GlobalRole.SUPER_ADMIN
+                                : "USER",
                         },
                     };
                 },
@@ -217,13 +236,116 @@ export const auth = betterAuth({
     plugins: [
         admin({
             ac,
-            defaultRole: UserRole.STAFF,
+            defaultRole: "USER",
             roles: {
-                [UserRole.SUPER_ADMIN]: superAdminRole,
-                [UserRole.ADMIN]: adminRole,
-                [UserRole.STAFF]: staffRole,
+                [GlobalRole.USER]: userRole,
+                [GlobalRole.SUPER_ADMIN]: superAdminRole,
             }
 
+        }),
+        organization({
+            allowUserToCreateOrganization: (user) =>
+                user.role === GlobalRole.SUPER_ADMIN,
+            creatorRole: "owner",
+            requireEmailVerificationOnInvitation: true,
+            sendInvitationEmail: async ({
+                id,
+                email,
+                inviter,
+                organization: invitedOrganization,
+            }) => {
+                const invitationUrl = new URL(
+                    "/accept-invitation",
+                    env.NEXT_PUBLIC_SITE_URL,
+                );
+                invitationUrl.searchParams.set("invitationId", id);
+                await sendOrganizationInvitationEmail({
+                    email,
+                    organizationName: invitedOrganization.name,
+                    inviterName: inviter.user.name,
+                    invitationUrl: invitationUrl.toString(),
+                });
+            },
+            organizationHooks: {
+                beforeAcceptInvitation: async ({ invitation, user }) => {
+                    if (invitation.role !== "owner") return;
+
+                    const inviter = await prisma.user.findUnique({
+                        where: { id: invitation.inviterId },
+                        select: { role: true },
+                    });
+                    if (
+                        inviter?.role === GlobalRole.SUPER_ADMIN &&
+                        user.role === GlobalRole.SUPER_ADMIN
+                    ) {
+                        throw new APIError("FORBIDDEN", {
+                            message:
+                                "A platform administrator cannot accept a workspace owner invitation.",
+                        });
+                    }
+                },
+                afterAcceptInvitation: async ({
+                    invitation,
+                    member,
+                    organization: acceptedOrganization,
+                }) => {
+                    if (
+                        invitation.role !== "owner" ||
+                        !member.role.split(",").includes("owner")
+                    ) {
+                        return;
+                    }
+
+                    const inviter = await prisma.user.findUnique({
+                        where: { id: invitation.inviterId },
+                        select: { id: true, role: true },
+                    });
+                    if (inviter?.role !== GlobalRole.SUPER_ADMIN) return;
+
+                    await prisma.$transaction(async (transaction) => {
+                        const teamIds = await transaction.team.findMany({
+                            where: {
+                                organizationId: acceptedOrganization.id,
+                            },
+                            select: { id: true },
+                        });
+                        if (teamIds.length > 0) {
+                            await transaction.teamMember.deleteMany({
+                                where: {
+                                    userId: inviter.id,
+                                    teamId: {
+                                        in: teamIds.map((team) => team.id),
+                                    },
+                                },
+                            });
+                        }
+                        await transaction.member.deleteMany({
+                            where: {
+                                organizationId: acceptedOrganization.id,
+                                userId: inviter.id,
+                            },
+                        });
+                        await transaction.session.updateMany({
+                            where: {
+                                userId: inviter.id,
+                                activeOrganizationId: acceptedOrganization.id,
+                            },
+                            data: {
+                                activeOrganizationId: null,
+                                activeTeamId: null,
+                            },
+                        });
+                    });
+                },
+            },
+            ac: organizationAc,
+            roles: organizationRoles,
+            dynamicAccessControl: {
+                enabled: true,
+            },
+            teams: {
+                enabled: true,
+            },
         }),
         expo(),
         nextCookies()// make sure this is the last plugin in the array

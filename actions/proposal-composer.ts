@@ -17,30 +17,23 @@ import { getProposalPricing } from "@/actions/proposal-pricing";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { ProposalBlockType, Prisma } from "@/app/generated/prisma/client";
-import { hasBusinessWorkspaceAccess } from "@/lib/workspace-access";
 import { getProposalDraftError } from "@/lib/proposal-draft";
+import { getProposalPermissionScope } from "@/lib/proposal-permissions";
 
-async function checkPermission(permission: "read" | "create" | "update" | "delete") {
+async function checkPermission(permission: "read" | "update", proposalId: string) {
+  const requestHeaders = await headers();
   const session = await auth.api.getSession({
-    headers: await headers(),
+    headers: requestHeaders,
   });
   if (!session?.user) {
     return { success: false, error: "You are not authenticated" };
   }
-  if (!hasBusinessWorkspaceAccess(session.user)) {
-    return { success: false, error: "Proposals are available to administrators and staff in HR or Sales." };
-  }
-
-  const hasPermission = await auth.api.userHasPermission({
-    headers: await headers(),
-    body: {
-      permissions: {
-        proposals: [permission],
-      },
-    },
-  });
-
-  if (!hasPermission.success) {
+  const access = await getProposalPermissionScope(
+    permission,
+    permission === "read" ? "read-own" : "update-own",
+    proposalId,
+  );
+  if (!access) {
     return { success: false, error: `You don't have permission to ${permission} proposal composer` };
   }
 
@@ -49,7 +42,7 @@ async function checkPermission(permission: "read" | "create" | "update" | "delet
 
 export async function getProposalComposerData(proposalId: string, options?: { forceRebuild?: boolean; autoSync?: boolean }) {
   try {
-    const perm = await checkPermission("read");
+    const perm = await checkPermission("read", proposalId);
     if (!perm.success || !perm.session) return errorResponse(perm.error || "Unauthorized");
 
     // Fetch pricing data first (this also recalculates totals and validates proposal existence)
@@ -566,7 +559,7 @@ export async function getProposalComposerData(proposalId: string, options?: { fo
 
 export async function syncProposalComposerTermsAndFeatures(proposalId: string, forceRebuild: boolean = true) {
   try {
-    const perm = await checkPermission("update");
+    const perm = await checkPermission("update", proposalId);
     if (!perm.success) return errorResponse(perm.error!);
 
     const draftError = await getProposalDraftError(proposalId);
@@ -584,10 +577,9 @@ export async function syncProposalComposerTermsAndFeatures(proposalId: string, f
 
 export async function createProposalBlock(input: CreateProposalBlockInput) {
   try {
-    const perm = await checkPermission("update");
-    if (!perm.success) return errorResponse(perm.error!);
-
     const validated = createProposalBlockSchema.parse(input);
+    const perm = await checkPermission("update", validated.proposalId);
+    if (!perm.success) return errorResponse(perm.error!);
     const draftError = await getProposalDraftError(validated.proposalId);
     if (draftError) return errorResponse(draftError);
 
@@ -672,7 +664,7 @@ export async function createProposalBlock(input: CreateProposalBlockInput) {
 
 export async function updateProposalBlock(id: string, proposalId: string, input: UpdateProposalBlockInput) {
   try {
-    const perm = await checkPermission("update");
+    const perm = await checkPermission("update", proposalId);
     if (!perm.success) return errorResponse(perm.error!);
 
     const validated = updateProposalBlockSchema.parse(input);
@@ -710,10 +702,9 @@ export async function updateProposalBlock(id: string, proposalId: string, input:
 
 export async function reorderProposalBlocks(input: ReorderProposalBlocksInput) {
   try {
-    const perm = await checkPermission("update");
-    if (!perm.success) return errorResponse(perm.error!);
-
     const validated = reorderProposalBlocksSchema.parse(input);
+    const perm = await checkPermission("update", validated.proposalId);
+    if (!perm.success) return errorResponse(perm.error!);
     const draftError = await getProposalDraftError(validated.proposalId);
     if (draftError) return errorResponse(draftError);
 
@@ -736,7 +727,7 @@ export async function reorderProposalBlocks(input: ReorderProposalBlocksInput) {
 
 export async function duplicateProposalBlock(id: string, proposalId: string) {
   try {
-    const perm = await checkPermission("update");
+    const perm = await checkPermission("update", proposalId);
     if (!perm.success) return errorResponse(perm.error!);
 
     const draftError = await getProposalDraftError(proposalId);
@@ -790,7 +781,7 @@ export async function duplicateProposalBlock(id: string, proposalId: string) {
 
 export async function deleteProposalBlock(id: string, proposalId: string) {
   try {
-    const perm = await checkPermission("update");
+    const perm = await checkPermission("update", proposalId);
     if (!perm.success) return errorResponse(perm.error!);
 
     const draftError = await getProposalDraftError(proposalId);
@@ -823,7 +814,7 @@ export async function deleteProposalBlock(id: string, proposalId: string) {
 
 export async function toggleBlockVisibility(id: string, proposalId: string, isVisible: boolean) {
   try {
-    const perm = await checkPermission("update");
+    const perm = await checkPermission("update", proposalId);
     if (!perm.success) return errorResponse(perm.error!);
 
     const draftError = await getProposalDraftError(proposalId);

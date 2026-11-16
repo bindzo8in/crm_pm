@@ -1,12 +1,14 @@
-import { UserRole } from "@/app/generated/prisma/enums";
 import { InitialSetupForm } from "@/components/onboarding/initial-setup-form";
 import { auth } from "@/lib/auth";
 import { getInitialSetupStatus } from "@/lib/initial-setup";
+import { isOrganizationSetupOwner } from "@/lib/organization-setup-access";
+import { isPlatformSuperAdmin } from "@/lib/global-role";
+import prisma from "@/lib/prisma";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 export const metadata = {
-  title: "Company setup | Bindzo8 CRM",
+  title: "Organization setup | Bindzo8 CRM",
 };
 
 export default async function OnboardingPage() {
@@ -14,12 +16,28 @@ export default async function OnboardingPage() {
   if (!session) {
     redirect("/signin?callbackUrl=%2Fonboarding");
   }
-  if (session.user.role !== UserRole.SUPER_ADMIN) {
+  if (isPlatformSuperAdmin(session.user.role)) {
+    redirect("/platform/organizations");
+  }
+  const organizationId = session.session.activeOrganizationId;
+  if (!organizationId) {
+    redirect("/dashboard/organizations");
+  }
+  const membership = await prisma.member.findUnique({
+    where: {
+      organizationId_userId: {
+        organizationId,
+        userId: session.user.id,
+      },
+    },
+    select: { role: true },
+  });
+  if (!isOrganizationSetupOwner(membership?.role)) {
     redirect("/dashboard");
   }
 
   const { complete, company, attendanceSettings } =
-    await getInitialSetupStatus();
+    await getInitialSetupStatus(organizationId);
   if (complete) {
     redirect("/dashboard");
   }
@@ -29,14 +47,14 @@ export default async function OnboardingPage() {
       <div className="mx-auto w-full max-w-4xl space-y-8">
         <header className="space-y-3">
           <p className="text-sm font-semibold text-primary">
-            Bindzo8 CRM · Initial administrator setup
+            Bindzo8 CRM · Organization owner setup
           </p>
           <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Let&apos;s set up your office
+            Let&apos;s set up your organization
           </h1>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
-            Add company details, working hours, and your office location. This
-            setup is required before opening the CRM.
+            Add your organization&apos;s company details, working hours, and
+            office location. This setup belongs to the active organization.
           </p>
         </header>
 

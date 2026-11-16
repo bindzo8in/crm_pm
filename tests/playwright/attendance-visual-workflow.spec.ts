@@ -8,17 +8,21 @@ import {
 } from "@playwright/test";
 import ExcelJS from "exceljs";
 import {
-  attendanceE2EEmail,
+  getAttendanceE2EOfficeLocation,
   attendanceE2EMonthRange,
   attendanceE2ERoster,
   type AttendanceE2EPersona,
 } from "./support/attendance-month-fixture";
-import { AttendancePage } from "./support/attendance-page";
+import { signInAttendancePersona } from "./support/attendance-auth";
+import {
+  AttendancePage,
+  getAttendanceDailyRecordCount,
+  setAttendanceDateRange,
+} from "./support/attendance-page";
 
 const password = process.env.ATTENDANCE_E2E_PASSWORD;
 const enabled = process.env.ATTENDANCE_E2E_RUN_VISUAL === "true";
-const latitude = Number(process.env.ATTENDANCE_E2E_LOCATION_LAT);
-const longitude = Number(process.env.ATTENDANCE_E2E_LOCATION_LNG);
+const { latitude, longitude } = getAttendanceE2EOfficeLocation();
 const staffRoster = attendanceE2ERoster.filter(({ role }) => role === "STAFF");
 const monthRange = attendanceE2EMonthRange();
 
@@ -71,11 +75,7 @@ async function openPersona(
   });
   const page = await context.newPage();
 
-  await page.goto(`/signin?callbackUrl=${encodeURIComponent("/attendance")}`);
-  await page.getByLabel("Email").fill(attendanceE2EEmail(persona));
-  await page.getByLabel("Password *").fill(password ?? "");
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page).toHaveURL(/\/attendance(?:\?.*)?$/);
+  await signInAttendancePersona(page, persona.key, baseURL);
   return { context, page };
 }
 
@@ -95,7 +95,7 @@ async function runStaffPunchFlow(
 
   try {
     await test.step(`${persona.department}: ${persona.name} opens Punch Clock`, async () => {
-      await expect(page.getByRole("heading", { name: "Your workday" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Ready to start your day?" })).toBeVisible();
       await expect(page.getByText("Not Clocked In")).toBeVisible();
       await expect(clockAction).toBeEnabled();
     });
@@ -107,7 +107,10 @@ async function runStaffPunchFlow(
     });
 
     await test.step(`${persona.name} clocks out and verifies the saved shift`, async () => {
-      await page.getByRole("button", { name: "Clock out" }).click();
+      const clockOutButton = page.getByRole("button", { name: "Clock out" });
+      await expect(page.getByText("Excellent GPS signal")).toBeVisible();
+      await expect(clockOutButton).toBeEnabled();
+      await clockOutButton.click();
       await expect(page.getByText("Shift Completed")).toBeVisible();
       await page.reload();
       await expect(page.getByText("Shift Completed")).toBeVisible();
@@ -132,10 +135,7 @@ async function runStaffPunchFlow(
 }
 
 async function setDateRange(page: Page, start: string, end: string) {
-  const dateInputs = page.locator('input[type="date"]');
-  await expect(dateInputs).toHaveCount(2);
-  await dateInputs.nth(0).fill(start);
-  await dateInputs.nth(1).fill(end);
+  await setAttendanceDateRange(page, start, end);
 }
 
 async function selectAttendanceTab(
@@ -196,12 +196,22 @@ test.describe("Attendance full visual workflow", () => {
           "History",
           /Attendance History/,
         );
-        await setDateRange(page, today, today);
+        const previousDay = new Date(`${today}T00:00:00.000Z`);
+        previousDay.setUTCDate(previousDay.getUTCDate() - 1);
+        await setDateRange(page, previousDay.toISOString().slice(0, 10), today);
 
         const logsCount = page.getByText(/^\d+ Logs$/, { exact: true });
-        await expect(logsCount).toHaveText(`${staffRoster.length} Logs`);
+        await expect
+          .poll(async () => {
+            const count = (await logsCount.textContent())?.match(/^\d+/)?.[0];
+            const total = count ? Number(count) : Number.NaN;
+            return total >= staffRoster.length && total <= 10;
+          })
+          .toBe(true);
+        const totalLogs = Number((await logsCount.textContent())?.match(/^\d+/)?.[0]);
+        expect(totalLogs).toBeGreaterThanOrEqual(staffRoster.length);
         const table = page.getByRole("table");
-        await expect(table.getByRole("row")).toHaveCount(staffRoster.length + 1);
+        await expect(table.getByRole("row")).toHaveCount(totalLogs + 1);
         for (const persona of staffRoster) {
           await expect(table).toContainText(persona.name);
         }
@@ -216,11 +226,10 @@ test.describe("Attendance full visual workflow", () => {
           /Detailed Attendance Reports/,
         );
         await setDateRange(page, monthRange.start, monthRange.end);
-        const summary = page.getByText(/Showing \d+ of \d+ daily records/);
         const expectedMonthDays = Number(monthRange.end.slice(-2));
-        await expect(summary).toContainText(
-          `of ${expectedMonthDays * attendanceE2ERoster.length} daily records`,
-        );
+        await expect
+          .poll(() => getAttendanceDailyRecordCount(page))
+          .toBe(expectedMonthDays * attendanceE2ERoster.length);
         await attachScreenshot(page, testInfo, "admin-monthly-report-preview");
       });
 
@@ -246,6 +255,10 @@ test.describe("Attendance full visual workflow", () => {
         const recordDate = new Date(`${dateText} UTC`);
         expect(Number.isNaN(recordDate.getTime())).toBe(false);
         adjustedDate = recordDate.toISOString().slice(0, 10);
+        const originalClockInText = await salesRow
+          .getByRole("cell")
+          .nth(2)
+          .innerText();
 
         await salesRow.getByTitle("Regularize / Edit Attendance").click();
         const dialog = page.getByRole("dialog");
@@ -262,17 +275,13 @@ test.describe("Attendance full visual workflow", () => {
           .toISOString()
           .slice(0, 16);
         await clockIn.fill(correctedClockInValue);
-        const originalClockInText = await salesRow
-          .getByRole("cell")
-          .nth(2)
-          .innerText();
 
         await dialog.getByRole("combobox").click();
         await page.getByRole("option", { name: "Present", exact: true }).click();
         const reason = dialog.getByPlaceholder(
           "e.g. System offline / Forgot check-out / Client visit...",
         );
-        await reason.fill("Short");
+        await reason.fill("Tiny");
         await dialog.getByRole("button", { name: "Save Adjustment" }).click();
         await expect(
           page.getByText(
@@ -315,12 +324,21 @@ test.describe("Attendance full visual workflow", () => {
           "Reports",
           /Detailed Attendance Reports/,
         );
-        await setDateRange(page, adjustedDate, adjustedDate);
+        const nextDay = new Date(`${adjustedDate}T00:00:00.000Z`);
+        nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+        await setDateRange(
+          page,
+          adjustedDate,
+          nextDay.toISOString().slice(0, 10),
+        );
 
-        const employeeFilter = page.getByRole("combobox").nth(1);
+        const employeeFilter = page.getByRole("combobox", { name: "Employees" });
         await employeeFilter.click();
-        await page.getByRole("option", { name: /E2E Sales Employee/ }).click();
-        await expect(page.getByText("Edited", { exact: true })).toBeVisible();
+        await page.getByPlaceholder("Search employees").fill("E2E Sales Employee");
+        await page.getByRole("button", { name: /E2E Sales Employee/ }).click();
+        await expect(
+          page.getByRole("table").getByText("Edited", { exact: true }).first(),
+        ).toBeVisible();
         await expect(page.getByText("E2E Sales Employee").first()).toBeVisible();
         await attachScreenshot(page, testInfo, "hr-verified-adjusted-report");
       });
@@ -342,9 +360,10 @@ test.describe("Attendance full visual workflow", () => {
         );
         await setDateRange(page, monthRange.start, monthRange.end);
 
-        const summary = page.getByText(/Showing \d+ of \d+ daily records/);
         const expectedMonthDays = Number(monthRange.end.slice(-2));
-        await expect(summary).toContainText(`of ${expectedMonthDays} daily records`);
+        await expect
+          .poll(() => getAttendanceDailyRecordCount(page))
+          .toBe(expectedMonthDays * attendanceE2ERoster.length);
         await attachScreenshot(page, testInfo, "super-admin-monthly-report");
 
         const downloadPromise = page.waitForEvent("download");

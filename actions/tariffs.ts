@@ -1,5 +1,6 @@
 "use server";
 
+import { checkOrganizationPermission } from "@/lib/organization-authorization";
 import { errorResponse, successResponse } from "@/lib/action-response";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
@@ -21,7 +22,7 @@ async function checkPermission(permission: "read" | "create" | "update" | "delet
     return { success: false, error: "You are not authenticated" };
   }
   
-  const hasPermission = await auth.api.userHasPermission({
+  const hasPermission = await checkOrganizationPermission({
     headers: await headers(),
     body: {
       permissions: {

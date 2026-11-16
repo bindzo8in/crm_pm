@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/dialog";
 import { ProposalWorkflowNav } from "@/components/proposal/proposal-workflow-nav";
 import { ProposalWorkflowActionBar } from "@/components/proposal/proposal-workflow-action-bar";
+import type { OrganizationMemberOption } from "@/repositories/organization-member-repository";
 
 interface ProposalFormInitialData extends Partial<Omit<ProposalSchema, "customerDisplayName" | "customerCompanyName">> {
     id: string;
@@ -47,9 +48,10 @@ interface ProposalFormInitialData extends Partial<Omit<ProposalSchema, "customer
 
 interface ProposalCreateEditFormProps {
     initialData?: ProposalFormInitialData;
+    assignees: OrganizationMemberOption[];
 }
 
-export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormProps) {
+export function ProposalCreateEditForm({ initialData, assignees }: ProposalCreateEditFormProps) {
     const router = useRouter();
     const [fetchingRate, setFetchingRate] = useState(false);
     const [createCustomerOpen, setCreateCustomerOpen] = useState(false);
@@ -69,6 +71,7 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
         resolver: zodResolver(proposalSchema),
         defaultValues: initialData ? {
             customerId: initialData.customerId,
+            assignedToId: initialData.assignedToId ?? null,
             title: initialData.title,
             customerCompanyName: initialData.customerCompanyName || "",
             customerDisplayName: initialData.customerDisplayName || "",
@@ -79,6 +82,7 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
             placeOfSupply: initialData.placeOfSupply || "",
         } : {
             customerId: "",
+            assignedToId: null,
             title: "",
             customerCompanyName: "",
             customerDisplayName: "",
@@ -237,6 +241,32 @@ export function ProposalCreateEditForm({ initialData }: ProposalCreateEditFormPr
                             />
                             <FieldDescription>Add a title to identify this proposal. Leave it blank to use the document&apos;s default heading.</FieldDescription>
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                        </Field>
+                    )}
+                />
+                <Controller
+                    name="assignedToId"
+                    control={form.control}
+                    render={({ field }) => (
+                        <Field className="gap-2">
+                            <FieldLabel htmlFor="proposal-assignee">Assigned to</FieldLabel>
+                            <Select
+                                value={field.value ?? "unassigned"}
+                                onValueChange={(value) => field.onChange(value === "unassigned" ? null : value)}
+                            >
+                                <SelectTrigger id="proposal-assignee" className="w-full">
+                                    <SelectValue placeholder="Choose an organization member" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                                    {assignees.map((assignee) => (
+                                        <SelectItem key={assignee.id} value={assignee.id}>
+                                            {assignee.name} ({assignee.email})
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <FieldDescription>Assign proposal follow-up to an active workspace member.</FieldDescription>
                         </Field>
                     )}
                 />

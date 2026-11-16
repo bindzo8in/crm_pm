@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AttendanceProfilePage() {
-  const { user, isAuthorized, hasDepartment } = await requireAttendanceAccess();
+  const { user, isAuthorized } = await requireAttendanceAccess();
 
   if (!isAuthorized) {
     return (
@@ -27,15 +27,7 @@ export default async function AttendanceProfilePage() {
           <div className="space-y-2">
             <h1 className="text-2xl font-extrabold tracking-tight">Access Restricted</h1>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              {!hasDepartment ? (
-                <>
-                  You are not currently assigned to any <strong>Department</strong>. Access to the Attendance Portal is only permitted for users belonging to an active department.
-                </>
-              ) : (
-                <>
-                  Your user role does not have permission to access the Attendance Portal.
-                </>
-              )}
+              Your organization role does not include access to the Attendance Portal.
             </p>
           </div>
 
@@ -43,7 +35,7 @@ export default async function AttendanceProfilePage() {
             <AlertCircleIcon className="w-5 h-5 shrink-0 mt-0.5" />
             <div>
               <p className="font-bold mb-0.5">Need Access?</p>
-              <p>Please contact an Administrator or HR manager to assign your account to a department (Sales, Development, Design, SEO, Marketing, HR, or Operations).</p>
+              <p>Ask your organization owner or administrator to grant your role attendance read access.</p>
             </div>
           </div>
 

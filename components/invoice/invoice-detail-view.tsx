@@ -92,7 +92,7 @@ export function InvoiceDetailView({
   } = useQuery({
     queryKey: ["invoice-payment-accounts"],
     queryFn: getInvoicePaymentAccounts,
-    enabled: !isPdfMode && !isPublic,
+    enabled: !isPdfMode && !isPublic && Boolean(data?.success && data.data?.permissions?.canRecordPayment),
   });
 
   const invoice = data?.success ? data.data : null;
@@ -103,7 +103,11 @@ export function InvoiceDetailView({
     if (!openPaymentOnLoad || !invoice || paymentActionHandled.current) return;
 
     paymentActionHandled.current = true;
-    if (invoice.status !== "VOID" && invoice.grandTotal > invoice.amountPaid) {
+    if (
+      invoice.permissions?.canRecordPayment &&
+      invoice.status !== "VOID" &&
+      invoice.grandTotal > invoice.amountPaid
+    ) {
       setPaymentOpen(true);
     }
 
@@ -412,7 +416,7 @@ export function InvoiceDetailView({
               Download PDF
             </Button>
 
-            {invoice.status === "DRAFT" && (
+            {invoice.permissions?.canSend && invoice.status === "DRAFT" && (
               <Button
                 onClick={() => statusMutation.mutate("SENT")}
                 disabled={statusMutation.isPending}
@@ -423,7 +427,7 @@ export function InvoiceDetailView({
               </Button>
             )}
 
-            {invoice.status !== "VOID" && balance > 0 && (
+            {invoice.permissions?.canRecordPayment && invoice.status !== "VOID" && balance > 0 && (
               <Dialog open={paymentOpen} onOpenChange={setPaymentOpen}>
                 <DialogTrigger asChild>
                   <Button className="h-10 w-full gap-1.5 px-2.5 text-xs text-white bg-emerald-600 hover:bg-emerald-700 sm:text-sm md:h-9 md:w-auto md:gap-2 md:px-4">
@@ -566,7 +570,7 @@ export function InvoiceDetailView({
             </div>
 
             <div className="flex items-center gap-2 border-t border-border/60 pt-2 md:border-0 md:pt-0">
-              {invoice.status !== "PAID" && (
+              {invoice.permissions?.canUpdate && invoice.status !== "PAID" && (
                 <Button variant="outline" asChild className="h-10 flex-1 gap-2 md:h-9 md:flex-none">
                   <Link href={`/dashboard/invoices/${invoiceId}/edit`}>
                     <PencilIcon className="h-4 w-4" /> Edit
@@ -581,17 +585,19 @@ export function InvoiceDetailView({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
-                  {clientEmail && (
+                  {invoice.permissions?.canSend && clientEmail && (
                     <DropdownMenuItem onClick={handleEmailShare} disabled={sendingEmail} className="gap-2 cursor-pointer">
                       {sendingEmail ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <MailIcon className="h-4 w-4 text-blue-600" />}
                       <span>Send via Email</span>
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuItem onClick={handleWhatsAppShare} className="gap-2 cursor-pointer">
-                    <MessageCircleIcon className="h-4 w-4 text-emerald-600" />
-                    <span>Share via WhatsApp</span>
-                  </DropdownMenuItem>
-                  {invoice.status !== "PAID" && (
+                  {invoice.permissions?.canSend && (
+                    <DropdownMenuItem onClick={handleWhatsAppShare} className="gap-2 cursor-pointer">
+                      <MessageCircleIcon className="h-4 w-4 text-emerald-600" />
+                      <span>Share via WhatsApp</span>
+                    </DropdownMenuItem>
+                  )}
+                  {invoice.permissions?.canDelete && invoice.status !== "PAID" && (
                     <>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem

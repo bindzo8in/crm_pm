@@ -1,11 +1,15 @@
 import { test, expect } from "@playwright/test";
 import ExcelJS from "exceljs";
 import {
-  attendanceE2EEmail,
   attendanceE2EMonthRange,
   attendanceE2ERoster,
 } from "./support/attendance-month-fixture";
-import { AttendancePage } from "./support/attendance-page";
+import { signInAttendancePersona } from "./support/attendance-auth";
+import {
+  AttendancePage,
+  getAttendanceDailyRecordCount,
+  setAttendanceDateRange,
+} from "./support/attendance-page";
 
 const monthRange = attendanceE2EMonthRange();
 const password = process.env.ATTENDANCE_E2E_PASSWORD;
@@ -25,14 +29,7 @@ async function signInAs(
   const persona = attendanceE2ERoster.find(({ key }) => key === personaKey);
   if (!persona) throw new Error(`Unknown E2E persona: ${personaKey}`);
 
-  await page.goto(`/signin?callbackUrl=${encodeURIComponent("/attendance")}`);
-  await page.getByLabel("Email").fill(attendanceE2EEmail(persona));
-  await page.getByLabel("Password *").fill(password ?? "");
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(
-    page,
-    `Sign-in failed for ${persona.key}. Re-run pnpm seed:e2e:attendance with this exact ATTENDANCE_E2E_PASSWORD, and ensure the app uses the same isolated database.`,
-  ).toHaveURL(/\/attendance(?:\?.*)?$/);
+  await signInAttendancePersona(page, persona.key);
 }
 
 async function openAttendanceTab(
@@ -50,17 +47,12 @@ async function openAttendanceTab(
 }
 
 test.describe("one-company, full-month attendance workflow", () => {
-  test("SUPER_ADMIN can review the seeded monthly analytics across the company", async ({
+  test("workspace owner can review the seeded monthly analytics across the company", async ({
     page,
   }) => {
     await signInAs(page, "ceo");
     await openAttendanceTab(page, "Analytics Overview", /Attendance Intelligence & Analytics/);
-
-    await page.getByRole("button", { name: "Custom", exact: true }).click();
-    const dateInputs = page.locator('input[type="date"]');
-    await expect(dateInputs).toHaveCount(2);
-    await dateInputs.nth(0).fill(monthRange.start);
-    await dateInputs.nth(1).fill(monthRange.end);
+    await setAttendanceDateRange(page, monthRange.start, monthRange.end);
 
     await expect(
       page.getByText("Aggregating attendance telemetry & analytics...", { exact: true }),
@@ -84,10 +76,7 @@ test.describe("one-company, full-month attendance workflow", () => {
   }) => {
     await signInAs(page, "admin");
     await openAttendanceTab(page, "Attendance Logs", /Attendance History/);
-
-    const dateInputs = page.locator('input[type="date"]');
-    await dateInputs.nth(0).fill(monthRange.start);
-    await dateInputs.nth(1).fill(monthRange.end);
+    await setAttendanceDateRange(page, monthRange.start, monthRange.end);
     const countBadge = page.getByText(/^\d+ Logs$/, { exact: true });
     await expect
       .poll(
@@ -109,17 +98,16 @@ test.describe("one-company, full-month attendance workflow", () => {
   test("HR STAFF can access manager-level attendance reports", async ({ page }) => {
     await signInAs(page, "hr");
     await openAttendanceTab(page, "Detailed Reports & Export", /Detailed Attendance Reports/);
+    await setAttendanceDateRange(page, monthRange.start, monthRange.end);
+    await expect
+      .poll(() => getAttendanceDailyRecordCount(page))
+      .toBeGreaterThan(0);
 
-    const dateInputs = page.locator('input[type="date"]');
-    await expect(dateInputs).toHaveCount(2);
-    await dateInputs.nth(0).fill(monthRange.start);
-    await dateInputs.nth(1).fill(monthRange.end);
-    await expect(page.getByText(/Showing \d+ of \d+ daily records/)).toBeVisible();
-
-    const employeeFilter = page.getByRole("combobox").nth(1);
+    const employeeFilter = page.getByRole("combobox", { name: "Employees" });
     await employeeFilter.click();
+    await page.getByPlaceholder("Search employees").fill("E2E Sales Employee");
     await expect(
-      page.getByRole("option", { name: /E2E (Sales|Development|Design|SEO|Marketing|HR|Operations) Employee/ }).first(),
+      page.getByRole("button", { name: /E2E Sales Employee/ }),
     ).toBeVisible();
   });
 
@@ -128,10 +116,7 @@ test.describe("one-company, full-month attendance workflow", () => {
   }) => {
     await signInAs(page, "sales");
     await openAttendanceTab(page, "Attendance Logs", /Attendance History/);
-
-    const dateInputs = page.locator('input[type="date"]');
-    await dateInputs.nth(0).fill(monthRange.start);
-    await dateInputs.nth(1).fill(monthRange.end);
+    await setAttendanceDateRange(page, monthRange.start, monthRange.end);
 
     const logs = page.getByText(/^\d+ Logs$/, { exact: true });
     await expect(logs).toHaveText(/^[1-9]\d* Logs$/);
@@ -143,26 +128,21 @@ test.describe("one-company, full-month attendance workflow", () => {
     await expect(table).not.toContainText("E2E Founder CEO");
   });
 
-  test("SUPER_ADMIN export matches the selected employee and month", async ({ page }) => {
+  test("workspace owner export matches the selected employee and month", async ({ page }) => {
     await signInAs(page, "ceo");
     await openAttendanceTab(page, "Detailed Reports & Export", /Detailed Attendance Reports/);
+    await setAttendanceDateRange(page, monthRange.start, monthRange.end);
 
-    const dateInputs = page.locator('input[type="date"]');
-    await dateInputs.nth(0).fill(monthRange.start);
-    await dateInputs.nth(1).fill(monthRange.end);
-
-    const employeeFilter = page.getByRole("combobox").nth(1);
+    const employeeFilter = page.getByRole("combobox", { name: "Employees" });
     await employeeFilter.click();
-    await page.getByRole("option", { name: /E2E Sales Employee/ }).click();
+    await page.getByPlaceholder("Search employees").fill("E2E Sales Employee");
+    await page.getByRole("button", { name: /E2E Sales Employee/ }).click();
 
-    const summary = page.getByText(/Showing \d+ of \d+ daily records/);
     const expectedMonthDays = Number(monthRange.end.slice(-2));
-    await expect(summary).toContainText(
-      `of ${expectedMonthDays} daily records`,
-    );
-    const totalRecords = Number(
-      (await summary.textContent())?.match(/of (\d+) daily records/)?.[1],
-    );
+    await expect
+      .poll(() => getAttendanceDailyRecordCount(page))
+      .toBe(expectedMonthDays);
+    const totalRecords = await getAttendanceDailyRecordCount(page);
     expect(totalRecords).toBe(expectedMonthDays);
 
     const downloadPromise = page.waitForEvent("download");

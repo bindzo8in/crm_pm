@@ -1,13 +1,13 @@
 "use server"
 
-import { auth } from "@/lib/auth"
+import { checkOrganizationPermission } from "@/lib/organization-authorization";
 import prisma from "@/lib/prisma"
 import { companySchema, CompanyFormValues } from "@/lib/schemas/company"
 import { headers } from "next/headers"
 
 export async function GetCompany() {
   try {
-    const hasPermission = await auth.api.userHasPermission({
+    const hasPermission = await checkOrganizationPermission({
       headers: await headers(),
       body: {
         permissions: {
@@ -30,7 +30,7 @@ export async function GetCompany() {
 
 export async function UpdateCompany(data: CompanyFormValues) {
   try {
-    const hasPermission = await auth.api.userHasPermission({
+    const hasPermission = await checkOrganizationPermission({
       headers: await headers(),
       body: {
         permissions: {

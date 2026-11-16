@@ -12,6 +12,7 @@ test("analytics overview renders summary values or an empty-data state", async (
     "Analytics",
     /Attendance Intelligence & Analytics/,
   );
+  await page.getByRole("button", { name: "Show attendance filters" }).click();
 
   await expect(page.getByText("Punctuality", { exact: true })).toBeVisible();
   await expect(page.getByText("Late Clock-Ins", { exact: true })).toBeVisible();

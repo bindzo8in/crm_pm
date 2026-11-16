@@ -1,7 +1,6 @@
 import { formatInIST } from "@/lib/date";
 import {
   canManageHolidays,
-  getHolidayDepartments,
   requireHolidayUser,
 } from "@/lib/leave-access";
 import { getHolidaysForYear } from "@/services/holiday-service";
@@ -20,10 +19,10 @@ export default async function HolidaysPage({
 }: {
   searchParams: Promise<{ year?: string | string[] }>;
 }) {
-  const user = await requireHolidayUser();
-  const isManager = canManageHolidays(user);
+  await requireHolidayUser();
+  const isManager = await canManageHolidays();
   const year = getYear((await searchParams).year) ?? Number(formatInIST(new Date(), "yyyy"));
-  const holidays = await getHolidaysForYear(year, await getHolidayDepartments(user));
+  const holidays = await getHolidaysForYear(year);
 
   return (
     <DashboardContainer title="Holidays">

@@ -1,4 +1,7 @@
 import { test, expect, hasAuthenticatedState } from "./support/fixtures";
+import { getAttendanceE2EOfficeLocation } from "./support/attendance-month-fixture";
+
+const officeLocation = getAttendanceE2EOfficeLocation();
 
 test("successful mocked geolocation is reported with its accuracy", async ({
   attendancePage,
@@ -8,14 +11,13 @@ test("successful mocked geolocation is reported with its accuracy", async ({
 
   await page.context().grantPermissions(["geolocation"]);
   await page.context().setGeolocation({
-    latitude: 28.6139,
-    longitude: 77.209,
+    ...officeLocation,
     accuracy: 20,
   });
   await attendancePage.open();
 
-  await expect(page.getByText("GPS precision: within approximately 20 m")).toBeVisible();
-  await expect(page.getByText("Excellent", { exact: true })).toBeVisible();
+  await expect(page.getByText("About 20 m", { exact: true })).toBeVisible();
+  await expect(page.getByText("Excellent GPS signal", { exact: true })).toBeVisible();
 });
 
 for (const scenario of [
@@ -72,8 +74,7 @@ test("a weak mocked GPS signal is rejected instead of being treated as verified"
 
   await page.context().grantPermissions(["geolocation"]);
   await page.context().setGeolocation({
-    latitude: 28.6139,
-    longitude: 77.209,
+    ...officeLocation,
     accuracy: 250,
   });
   await attendancePage.open();

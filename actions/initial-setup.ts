@@ -1,6 +1,5 @@
 "use server";
 
-import { UserRole } from "@/app/generated/prisma/enums";
 import { auth } from "@/lib/auth";
 import { DEFAULT_WEEKEND_DAYS } from "@/lib/weekend-policy";
 import { getInitialSetupStatus } from "@/lib/initial-setup";
@@ -8,14 +7,29 @@ import { initialSetupSchema, type InitialSetupInput } from "@/lib/schemas/initia
 import prisma from "@/lib/prisma";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { isOrganizationSetupOwner } from "@/lib/organization-setup-access";
 
 export async function completeInitialSetup(input: InitialSetupInput) {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session || session.user.role !== UserRole.SUPER_ADMIN) {
-    return { success: false, error: "Only the initial administrator can complete setup." };
+  const requestHeaders = await headers();
+  const session = await auth.api.getSession({ headers: requestHeaders });
+  const organizationId = session?.session.activeOrganizationId;
+  if (!session?.user || !organizationId) {
+    return { success: false, error: "Select an organization before completing setup." };
   }
-  if ((await getInitialSetupStatus()).complete) {
-    return { success: false, error: "Company setup has already been completed." };
+  const membership = await prisma.member.findUnique({
+    where: {
+      organizationId_userId: {
+        organizationId,
+        userId: session.user.id,
+      },
+    },
+    select: { role: true },
+  });
+  if (!isOrganizationSetupOwner(membership?.role)) {
+    return { success: false, error: "Only this organization’s owner can complete setup." };
+  }
+  if ((await getInitialSetupStatus(organizationId)).complete) {
+    return { success: false, error: "Organization setup has already been completed." };
   }
   const parsed = initialSetupSchema.safeParse(input);
   if (!parsed.success) {
@@ -28,10 +42,8 @@ export async function completeInitialSetup(input: InitialSetupInput) {
   try {
     const values = parsed.data;
     await prisma.$transaction(async (transaction) => {
-      const existingCompany = await transaction.company.findFirst({
-        select: { id: true },
-      });
       const companyData = {
+        organizationId,
         displayName: values.displayName,
         legalName: values.legalName,
         employeeIdPrefix: "EMP-",
@@ -44,19 +56,18 @@ export async function completeInitialSetup(input: InitialSetupInput) {
         postalCode: values.postalCode || null,
       };
 
-      if (existingCompany) {
-        await transaction.company.update({
-          where: { id: existingCompany.id },
-          data: companyData,
-        });
-      } else {
-        await transaction.company.create({ data: companyData });
-      }
+      await transaction.company.upsert({
+        where: { organizationId },
+        update: companyData,
+        create: companyData,
+      });
 
-      const existingSettings = await transaction.attendanceSettings.findFirst({
-        select: { id: true, weekendDays: true },
+      const existingSettings = await transaction.attendanceSettings.findUnique({
+        where: { organizationId },
+        select: { weekendDays: true },
       });
       const settingsData = {
+        organizationId,
         expectedClockIn: values.expectedClockIn,
         expectedClockOut: values.expectedClockOut,
         attendanceReminderTime: values.attendanceReminderTime,
@@ -72,18 +83,16 @@ export async function completeInitialSetup(input: InitialSetupInput) {
         isConfigured: true,
       };
 
-      if (existingSettings) {
-        await transaction.attendanceSettings.update({
-          where: { id: existingSettings.id },
-          data: settingsData,
-        });
-      } else {
-        await transaction.attendanceSettings.create({ data: settingsData });
-      }
+      await transaction.attendanceSettings.upsert({
+        where: { organizationId },
+        update: settingsData,
+        create: settingsData,
+      });
     });
 
     revalidatePath("/dashboard");
     revalidatePath("/attendance");
+    revalidatePath("/onboarding");
     return { success: true };
   } catch (error) {
     console.error("Failed to complete initial company setup:", error);

@@ -1,6 +1,6 @@
 import { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { requireAttendanceAccess, isAttendanceManager } from "@/lib/attendance-guard";
+import { requireAttendanceAccess } from "@/lib/attendance-guard";
 import { getWeekendDays } from "@/services/attendance-settings-service";
 import DashboardContainer from "../../dashboard-container";
 import { WeeklyScheduleSettings } from "./weekly-schedule-settings";
@@ -10,8 +10,8 @@ export const metadata: Metadata = {
 };
 
 export default async function WorkSchedulePage() {
-  const { user, isAuthorized } = await requireAttendanceAccess();
-  if (!isAuthorized || !isAttendanceManager(user)) redirect("/attendance");
+  const { isAuthorized } = await requireAttendanceAccess("manage");
+  if (!isAuthorized) redirect("/attendance");
 
   const weekendDays = await getWeekendDays();
   return (

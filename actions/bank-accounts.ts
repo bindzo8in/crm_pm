@@ -1,5 +1,6 @@
 "use server"
 
+import { checkOrganizationPermission } from "@/lib/organization-authorization";
 import { auth } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 import { bankAccountListSchema, bankAccountSchema, BankAccountFormValues } from "@/lib/schemas/bank-account"
@@ -7,7 +8,7 @@ import { headers } from "next/headers"
 
 export async function GetBankAccounts(input: unknown = {}) {
   try {
-    const hasPermission = await auth.api.userHasPermission({
+    const hasPermission = await checkOrganizationPermission({
       headers: await headers(),
       body: {
         permissions: {
@@ -61,7 +62,7 @@ export async function GetBankAccounts(input: unknown = {}) {
 
 export async function CreateBankAccount(data: BankAccountFormValues) {
   try {
-    const hasPermission = await auth.api.userHasPermission({
+    const hasPermission = await checkOrganizationPermission({
       headers: await headers(),
       body: {
         permissions: {
@@ -116,7 +117,7 @@ export async function CanCreateBankAccount() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return false;
 
-  const permission = await auth.api.userHasPermission({
+  const permission = await checkOrganizationPermission({
     headers: await headers(),
     body: { permissions: { bankAccounts: ["create"] } },
   });
@@ -125,7 +126,7 @@ export async function CanCreateBankAccount() {
 
 export async function UpdateBankAccount(id: string, data: BankAccountFormValues) {
   try {
-    const hasPermission = await auth.api.userHasPermission({
+    const hasPermission = await checkOrganizationPermission({
       headers: await headers(),
       body: {
         permissions: {
@@ -174,7 +175,7 @@ export async function UpdateBankAccount(id: string, data: BankAccountFormValues)
 
 export async function DeleteBankAccount(id: string) {
   try {
-    const hasPermission = await auth.api.userHasPermission({
+    const hasPermission = await checkOrganizationPermission({
       headers: await headers(),
       body: {
         permissions: {
@@ -206,7 +207,7 @@ export async function DeleteBankAccount(id: string) {
 
 export async function SetDefaultBankAccount(id: string) {
   try {
-    const hasPermission = await auth.api.userHasPermission({
+    const hasPermission = await checkOrganizationPermission({
       headers: await headers(),
       body: {
         permissions: {
@@ -244,7 +245,7 @@ export async function SetDefaultBankAccount(id: string) {
 
 export async function ToggleBankAccountStatus(id: string, isActive: boolean) {
   try {
-    const hasPermission = await auth.api.userHasPermission({
+    const hasPermission = await checkOrganizationPermission({
       headers: await headers(),
       body: {
         permissions: {

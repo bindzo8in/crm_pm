@@ -1,8 +1,8 @@
 "use server";
 
+import { checkOrganizationPermission } from "@/lib/organization-authorization";
 import {
   AttendanceStatus,
-  UserRole,
   WorkMode,
   Department,
   LeaveStatus,
@@ -46,15 +46,6 @@ import { DEFAULT_WEEKEND_DAYS, isWeekendDate } from "@/lib/weekend-policy";
 import { parseDateOnly } from "@/lib/leave-policy";
 import { getDepartmentMemberships } from "@/lib/departments";
 
-function isAttendanceManager(user: { role?: UserRole | string | null; department?: Department | string | null }): boolean {
-  if (!user) return false;
-  const role = user.role ? String(user.role).toUpperCase() : "";
-  const dept = user.department ? String(user.department).toUpperCase() : "";
-  if (role === "SUPER_ADMIN" || role === "ADMIN") return true;
-  if (role === "STAFF" && dept === "HR") return true;
-  return false;
-}
-
 type AttendanceActionPermission =
   | "clock-in"
   | "clock-out"
@@ -70,7 +61,7 @@ type AttendancePermission =
   | "read-scope"
   | "analytics-scope";
 
-async function getAuthenticatedUser(permission: AttendancePermission = "read-own") {
+async function getAuthenticatedUser(permission: AttendancePermission = "read-scope") {
   const reqHeaders = await headers();
   const session = await auth.api.getSession({
     headers: reqHeaders,
@@ -80,41 +71,36 @@ async function getAuthenticatedUser(permission: AttendancePermission = "read-own
     throw new Error("Unauthorized");
   }
 
-  if (
-    session.user.role === UserRole.STAFF &&
-    !session.user.department?.trim()
-  ) {
-    throw new Error(
-      "Ask your administrator or HR manager to assign you to a department before using attendance.",
-    );
-  }
-
-  const isManager = isAttendanceManager(session.user);
+  const canReadAll = (
+    await checkOrganizationPermission({
+      headers: reqHeaders,
+      body: { permissions: { attendance: ["read-all"] } },
+    })
+  ).success;
   const requiredPermissions: AttendanceActionPermission[] =
     permission === "read-scope"
-      ? [isManager ? "read-all" : "read-own"]
+      ? [canReadAll ? "read-all" : "read-own"]
       : permission === "analytics-scope"
-        ? isManager
-          ? ["read-all", "view-analytics"]
-          : ["view-analytics"]
-        : [permission];
-  const isHrManager =
-    session.user.role === UserRole.STAFF &&
-    session.user.department === Department.HR;
+        ? ["read-all", "view-analytics"]
+        : permission === "view-audit-logs"
+          ? ["view-audit-logs"]
+          : [permission];
   for (const requiredPermission of requiredPermissions) {
-    const hasPermission = await auth.api.userHasPermission({
+    const hasPermission = await checkOrganizationPermission({
       headers: reqHeaders,
       body: { permissions: { attendance: [requiredPermission] } },
     });
-    const isHrManagerPermission =
-      isHrManager &&
-      ["read-all", "manage", "approve-regularization"].includes(requiredPermission);
-    if (!hasPermission.success && !isHrManagerPermission) {
+    if (!hasPermission.success) {
       throw new Error("You do not have permission to access this attendance operation.");
     }
   }
 
-  return { session, reqHeaders };
+  const organizationId = session.session.activeOrganizationId;
+  if (!organizationId) {
+    throw new Error("No active organization.");
+  }
+
+  return { session, reqHeaders, canReadAll, organizationId };
 }
 
 function getTodayDateOnly(dateInput: Date = new Date()): Date {
@@ -163,12 +149,15 @@ function calculateDistanceMeters(
 }
 
 export async function getAttendanceSettings() {
-  await getAuthenticatedUser();
+  const { organizationId } = await getAuthenticatedUser();
   try {
-    let settings = await prisma.attendanceSettings.findFirst();
+    let settings = await prisma.attendanceSettings.findUnique({
+      where: { organizationId },
+    });
     if (!settings) {
       settings = await prisma.attendanceSettings.create({
         data: {
+          organizationId,
           expectedClockIn: "09:00",
           expectedClockOut: "18:00",
           attendanceReminderTime: "08:30",
@@ -188,22 +177,7 @@ export async function getAttendanceSettings() {
     return settings;
   } catch (error) {
     console.error("Error fetching attendance settings:", error);
-    return {
-      id: "default",
-      expectedClockIn: "09:00",
-      expectedClockOut: "18:00",
-      attendanceReminderTime: "08:30",
-      gracePeriodMinutes: 15,
-      halfDayThresholdMinutes: 240,
-      maxShiftHoursCap: 16,
-      allowOvernightShift: true,
-      officeLatitude: null,
-      officeLongitude: null,
-      officeRadiusMeters: 500,
-      enforceOfficeGeofence: true,
-      weekendDays: [...DEFAULT_WEEKEND_DAYS],
-      isConfigured: false,
-    };
+    throw error;
   }
 }
 
@@ -665,9 +639,18 @@ export async function endBreakAction(input: EndBreakInput) {
 
 export async function getTodayAttendanceAction() {
   try {
-    const { session } = await getAuthenticatedUser();
+    const { session, reqHeaders, canReadAll } = await getAuthenticatedUser();
     if (!session?.user) {
-      return { success: false, record: null, settings: null, userRole: "STAFF", error: "Unauthorized" };
+      return {
+        success: false,
+        record: null,
+        settings: null,
+        canManageAttendance: false,
+        canViewAnalytics: false,
+        canViewReports: false,
+        canViewAuditLogs: false,
+        error: "Unauthorized",
+      };
     }
 
     // Auto-checkout orphaned sessions before querying today's record
@@ -696,21 +679,42 @@ export async function getTodayAttendanceAction() {
       },
     });
 
-    const [settings, dayStatus] = await Promise.all([
+    const [
+      settings,
+      dayStatus,
+      canManageAttendance,
+      canViewAnalyticsPermission,
+      canViewAuditLogs,
+    ] = await Promise.all([
       getAttendanceSettings(),
       getAttendanceDayStatus(
         new Date(),
         user ? getDepartmentMemberships(user) : [],
       ),
+      checkOrganizationPermission({
+        headers: reqHeaders,
+        body: { permissions: { attendance: ["manage"] } },
+      }),
+      checkOrganizationPermission({
+        headers: reqHeaders,
+        body: { permissions: { attendance: ["view-analytics"] } },
+      }),
+      checkOrganizationPermission({
+        headers: reqHeaders,
+        body: { permissions: { attendance: ["view-audit-logs"] } },
+      }),
     ]);
 
     return {
       success: true,
       record: record ? JSON.parse(JSON.stringify(record)) : null,
       settings: settings ? JSON.parse(JSON.stringify(settings)) : null,
-      userRole: (session.user.role as UserRole) || UserRole.STAFF,
       userWorkMode: user?.workMode || WorkMode.OFFICE,
       dayStatus,
+      canManageAttendance: canManageAttendance.success,
+      canViewAnalytics: canReadAll && canViewAnalyticsPermission.success,
+      canViewReports: canReadAll && canViewAnalyticsPermission.success,
+      canViewAuditLogs: canViewAuditLogs.success,
     };
   } catch (error: any) {
     console.error("Error in getTodayAttendanceAction:", error);
@@ -718,8 +722,11 @@ export async function getTodayAttendanceAction() {
       success: false,
       record: null,
       settings: null,
-      userRole: "STAFF",
       dayStatus: null,
+      canManageAttendance: false,
+      canViewAnalytics: false,
+      canViewReports: false,
+      canViewAuditLogs: false,
       error: error.message || "Failed to load today's attendance record",
     };
   }
@@ -755,11 +762,10 @@ async function getAttendanceDayStatus(
 
 export async function getAttendanceLogsAction(input: Partial<AttendanceFilterInput>) {
   try {
-    const { session } = await getAuthenticatedUser("read-scope");
+    const { session, canReadAll } = await getAuthenticatedUser("read-scope");
     const parsed = attendanceFilterSchema.parse(input);
 
-    const isManager = isAttendanceManager(session.user);
-    const targetUserId = isManager ? parsed.userId : session.user.id;
+    const targetUserId = canReadAll ? parsed.userId : session.user.id;
 
     if (targetUserId) {
       await processOrphanedSessions(targetUserId);
@@ -767,7 +773,7 @@ export async function getAttendanceLogsAction(input: Partial<AttendanceFilterInp
 
     const whereClause: any = {};
 
-    if (isManager) {
+    if (canReadAll) {
       whereClause.user = { includeInAttendanceReports: true };
     }
 
@@ -854,19 +860,9 @@ export async function getAttendanceAnalyticsAction(filters: {
   workMode?: WorkMode[];
 }) {
   try {
-    const { session } = await getAuthenticatedUser("analytics-scope");
-    const dbUser = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { id: true, role: true, department: true },
-    });
-    const effectiveUser = dbUser || session.user;
-    if (
-      effectiveUser.role !== UserRole.SUPER_ADMIN &&
-      effectiveUser.role !== UserRole.ADMIN
-    ) {
-      throw new Error("Unauthorized: Only Admins and Super Admins can view attendance analytics.");
-    }
-    const isManager = isAttendanceManager(effectiveUser);
+    const { session, canReadAll } = await getAuthenticatedUser("analytics-scope");
+    const effectiveUser = session.user;
+    const isManager = canReadAll;
 
     const conditions: any[] = [{ user: { includeInAttendanceReports: true } }];
 
@@ -1165,11 +1161,6 @@ export async function regularizeAttendanceAction(input: RegularizeAttendanceInpu
       return { success: false, error: "Attendance record not found." };
     }
 
-    // Role check: Only ADMIN and SUPER_ADMIN can regularize / edit attendance records
-    if (session.user.role !== UserRole.ADMIN && session.user.role !== UserRole.SUPER_ADMIN) {
-      return { success: false, error: "Only administrators can edit or regularize attendance records." };
-    }
-
     const newClockIn = new Date(validated.clockIn);
     const newClockOut = validated.clockOut ? new Date(validated.clockOut) : null;
 
@@ -1214,7 +1205,7 @@ export async function regularizeAttendanceAction(input: RegularizeAttendanceInpu
 
 export async function getAttendanceAuditLogsAction(attendanceRecordId: string) {
   try {
-    const { session } = await getAuthenticatedUser("view-audit-logs");
+    const { session, canReadAll } = await getAuthenticatedUser("view-audit-logs");
 
     const record = await prisma.attendanceRecord.findUnique({
       where: { id: attendanceRecordId },
@@ -1225,8 +1216,7 @@ export async function getAttendanceAuditLogsAction(attendanceRecordId: string) {
       return { success: false, logs: [], error: "Attendance record not found." };
     }
 
-    const isStaff = session.user.role === UserRole.STAFF;
-    if (isStaff && record.userId !== session.user.id) {
+    if (!canReadAll && record.userId !== session.user.id) {
       return { success: false, logs: [], error: "You can only view audit logs for your own attendance record." };
     }
 
@@ -1244,32 +1234,14 @@ export async function getAttendanceAuditLogsAction(attendanceRecordId: string) {
 
 export async function updateAttendanceSettingsAction(input: UpdateAttendanceSettingsInput) {
   try {
-    const { session } = await getAuthenticatedUser("manage");
-
-    if (!isAttendanceManager(session.user)) {
-      return { success: false, error: "Only admins or HR staff can update attendance settings." };
-    }
-    const isAdmin =
-      session.user.role === UserRole.SUPER_ADMIN ||
-      session.user.role === UserRole.ADMIN;
-    if (!isAdmin && input.attendanceReminderTime !== undefined) {
-      return { success: false, error: "Only admins can change the attendance reminder time." };
-    }
+    const { organizationId } = await getAuthenticatedUser("manage");
 
     const validated = updateAttendanceSettingsSchema.parse(input);
-    const existing = await prisma.attendanceSettings.findFirst();
-
-    let settings;
-    if (existing) {
-      settings = await prisma.attendanceSettings.update({
-        where: { id: existing.id },
-        data: { ...validated, isConfigured: true },
-      });
-    } else {
-      settings = await prisma.attendanceSettings.create({
-        data: { ...validated, isConfigured: true },
-      });
-    }
+    const settings = await prisma.attendanceSettings.upsert({
+      where: { organizationId },
+      create: { ...validated, organizationId, isConfigured: true },
+      update: { ...validated, isConfigured: true },
+    });
 
     return { success: true, settings: JSON.parse(JSON.stringify(settings)) };
   } catch (error: any) {
@@ -1289,14 +1261,6 @@ export async function editAttendanceAction(input: EditAttendanceInput) {
 
     if (!record) {
       return { success: false, error: "Attendance record not found." };
-    }
-
-    const isSuperAdmin = session.user.role === UserRole.SUPER_ADMIN;
-    const isAdmin = session.user.role === UserRole.ADMIN;
-    const isHrStaff = session.user.role === UserRole.STAFF && session.user.department === 'HR';
-
-    if (!isSuperAdmin && !isAdmin && !isHrStaff) {
-      return { success: false, error: "Only admins or HR staff can edit attendance records." };
     }
 
     const newClockIn = new Date(validated.clockIn);
@@ -1343,10 +1307,7 @@ export async function editAttendanceAction(input: EditAttendanceInput) {
 
 export async function getAttendanceEntryEmployeesAction() {
   try {
-    const { session } = await getAuthenticatedUser("manage");
-    if (!isAttendanceManager(session.user)) {
-      return { success: false, employees: [], error: "Only admins or HR staff can create attendance entries." };
-    }
+    await getAuthenticatedUser("manage");
 
     const employees = await prisma.user.findMany({
       where: {
@@ -1378,10 +1339,7 @@ export async function getAttendanceEntryEmployeesAction() {
 
 export async function createManualAttendanceAction(input: CreateManualAttendanceInput) {
   try {
-    const { session } = await getAuthenticatedUser("manage");
-    if (!isAttendanceManager(session.user)) {
-      return { success: false, error: "Only admins or HR staff can create attendance entries." };
-    }
+    const { session, organizationId } = await getAuthenticatedUser("manage");
 
     const validated = createManualAttendanceSchema.parse(input);
     const clockIn = new Date(validated.clockIn);
@@ -1408,7 +1366,8 @@ export async function createManualAttendanceAction(input: CreateManualAttendance
           department: true,
         },
       }),
-      prisma.attendanceSettings.findFirst({
+      prisma.attendanceSettings.findUnique({
+        where: { organizationId },
         select: { maxShiftHoursCap: true, expectedClockIn: true },
       }),
     ]);
@@ -1497,9 +1456,16 @@ export async function createManualAttendanceAction(input: CreateManualAttendance
   }
 }
 
-function buildAdvancedAttendanceWhereClause(sessionUser: any, parsed: AdvancedAttendanceReportInput) {
-  const isManager = isAttendanceManager(sessionUser);
-  const conditions: any[] = [{ user: { includeInAttendanceReports: true } }];
+function buildAdvancedAttendanceWhereClause(
+  sessionUser: { id: string },
+  parsed: AdvancedAttendanceReportInput,
+  canReadAll: boolean,
+  organizationId: string,
+) {
+  const conditions: any[] = [
+    { user: { includeInAttendanceReports: true } },
+    { user: { organizationMemberships: { some: { organizationId } } } },
+  ];
   const departmentFilters = parsed.department
     ? Array.isArray(parsed.department) ? parsed.department : [parsed.department]
     : [];
@@ -1513,7 +1479,7 @@ function buildAdvancedAttendanceWhereClause(sessionUser: any, parsed: AdvancedAt
     ? Array.isArray(parsed.workMode) ? parsed.workMode : [parsed.workMode]
     : [];
 
-  if (!isManager) {
+  if (!canReadAll) {
     conditions.push({ userId: sessionUser.id });
   } else if (userFilters.length) {
     conditions.push({ userId: { in: userFilters } });
@@ -1611,18 +1577,14 @@ function buildAdvancedAttendanceWhereClause(sessionUser: any, parsed: AdvancedAt
 
 export async function getAttendanceEmployeesListAction() {
   try {
-    const { session } = await getAuthenticatedUser("read-all");
-    const dbUser = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { id: true, role: true, department: true },
-    });
-    const effectiveUser = dbUser || session.user;
-    if (!isAttendanceManager(effectiveUser)) {
-      return { success: false, users: [], error: "Unauthorized" };
-    }
+    const { organizationId } = await getAuthenticatedUser("read-all");
 
     const users = await prisma.user.findMany({
-      where: { banned: false, includeInAttendanceReports: true },
+      where: {
+        organizationMemberships: { some: { organizationId } },
+        banned: false,
+        includeInAttendanceReports: true,
+      },
       select: {
         id: true,
         employeeId: true,
@@ -1651,6 +1613,11 @@ export async function getAttendanceEmployeesListAction() {
 
 async function getResolvedAttendanceTimeline(
   parsed: AdvancedAttendanceReportInput,
+  scope: {
+    organizationId: string;
+    userId: string;
+    canReadAll: boolean;
+  },
 ) {
   const start = parsed.startDate
     ? new Date(`${parsed.startDate}T00:00:00.000Z`)
@@ -1681,14 +1648,17 @@ async function getResolvedAttendanceTimeline(
 
   const users = await prisma.user.findMany({
     where: {
+      organizationMemberships: { some: { organizationId: scope.organizationId } },
       includeInAttendanceReports: true,
-      ...(parsed.userId
-        ? {
-            id: Array.isArray(parsed.userId)
-              ? { in: parsed.userId }
-              : parsed.userId,
-          }
-        : {}),
+      ...(!scope.canReadAll
+        ? { id: scope.userId }
+        : parsed.userId
+          ? {
+              id: Array.isArray(parsed.userId)
+                ? { in: parsed.userId }
+                : parsed.userId,
+            }
+          : {}),
     },
     select: {
       id: true,
@@ -1909,19 +1879,16 @@ async function getResolvedAttendanceTimeline(
 
 export async function getDetailedAttendanceReportAction(input: Partial<AdvancedAttendanceReportInput>) {
   try {
-    const { session } = await getAuthenticatedUser("analytics-scope");
-    const dbUser = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { id: true, role: true, department: true },
-    });
-    const effectiveUser = dbUser || session.user;
-    if (!isAttendanceManager(effectiveUser)) {
-      throw new Error("Unauthorized: Only Admins and HR staff can access Detailed Attendance Reports.");
-    }
+    const { session, canReadAll, organizationId } =
+      await getAuthenticatedUser("analytics-scope");
 
     const parsed = advancedAttendanceReportSchema.parse(input);
     const [resolvedRecords, weekendDays] = await Promise.all([
-      getResolvedAttendanceTimeline(parsed),
+      getResolvedAttendanceTimeline(parsed, {
+        organizationId,
+        userId: session.user.id,
+        canReadAll,
+      }),
       getWeekendDays(),
     ]);
     const skip = (parsed.page - 1) * parsed.limit;
@@ -2058,23 +2025,25 @@ export async function getDetailedAttendanceReportAction(input: Partial<AdvancedA
 
 export async function exportAttendanceToExcelAction(input: Partial<AdvancedAttendanceReportInput>) {
   try {
-    const { session } = await getAuthenticatedUser("analytics-scope");
-    const dbUser = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { id: true, role: true, department: true },
-    });
-    const effectiveUser = dbUser || session.user;
-    if (!isAttendanceManager(effectiveUser)) {
-      throw new Error("Unauthorized: Only Admins, Super Admins, and HR Department staff can export attendance reports.");
-    }
+    const { session, canReadAll, organizationId } =
+      await getAuthenticatedUser("analytics-scope");
 
     const parsed = advancedAttendanceReportSchema.parse(input);
-    const whereClause = buildAdvancedAttendanceWhereClause(effectiveUser, parsed);
+    const whereClause = buildAdvancedAttendanceWhereClause(
+      session.user,
+      parsed,
+      canReadAll,
+      organizationId,
+    );
     const employeeIdPrefix = await getCompanyEmployeeIdPrefix();
 
     // Fetch all matching records without pagination limit
     const records = parsed.includeCalendarStatus
-      ? await getResolvedAttendanceTimeline(parsed)
+      ? await getResolvedAttendanceTimeline(parsed, {
+          organizationId,
+          userId: session.user.id,
+          canReadAll,
+        })
       : await prisma.attendanceRecord.findMany({
       where: whereClause,
       include: {

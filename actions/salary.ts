@@ -1,9 +1,10 @@
 "use server";
 
+import { checkOrganizationPermission } from "@/lib/organization-authorization";
 import prisma from "@/lib/prisma";
 import { calculateMonthlySalary, countWorkingDays } from "@/lib/salary-calculation";
 import { auth } from "@/lib/auth";
-import { Department, UserRole } from "@/app/generated/prisma/enums";
+import { Department } from "@/app/generated/prisma/enums";
 import type { Prisma } from "@/app/generated/prisma/client";
 import { headers } from "next/headers";
 import { env } from "@/lib/env";
@@ -30,9 +31,6 @@ import {
   requiresSalarySlipReview,
 } from "@/lib/salary-review-policy";
 
-type SalaryActor = NonNullable<
-  Awaited<ReturnType<typeof auth.api.getSession>>
->["user"];
 type SalaryPermission =
   | "read-own"
   | "read-all"
@@ -41,21 +39,11 @@ type SalaryPermission =
   | "mark-paid";
 
 async function hasSalaryPermission(permission: SalaryPermission) {
-  const result = await auth.api.userHasPermission({
+  const result = await checkOrganizationPermission({
     headers: await headers(),
     body: { permissions: { salary: [permission] } },
   });
   return result.success;
-}
-
-async function canPerformSalaryPermission(
-  user: SalaryActor,
-  permission: SalaryPermission,
-) {
-  if (user.role === UserRole.STAFF && user.department === "HR") {
-    return true;
-  }
-  return hasSalaryPermission(permission);
 }
 
 function hasSalaryCronAuthorization(requestHeaders: Headers) {
@@ -84,6 +72,22 @@ function getEmployeeSearchConditions(search: string): Prisma.UserWhereInput[] {
         ]
       : []),
   ];
+}
+
+function getOrganizationMemberWhere(
+  organizationId: string,
+): Prisma.UserWhereInput {
+  return {
+    organizationMemberships: { some: { organizationId } },
+  };
+}
+
+function getOrganizationSalarySlipWhere(
+  organizationId: string,
+): Prisma.SalarySlipWhereInput {
+  return {
+    user: { is: getOrganizationMemberWhere(organizationId) },
+  };
 }
 
 async function emailAutomaticallyGeneratedSalarySlip(slipId: string) {
@@ -157,40 +161,43 @@ async function getAuthenticatedUser() {
   if (!session || !session.user) {
     throw new Error("Unauthorized");
   }
-  if (
-    session.user.role === UserRole.STAFF &&
-    !session.user.department?.trim()
-  ) {
-    throw new Error(
-      "Ask your administrator or HR manager to assign you to a department before using salary tools.",
-    );
+  const organizationId = session.session.activeOrganizationId;
+  if (!organizationId) {
+    throw new Error("No active organization.");
   }
-  return { session };
+  return { session, organizationId };
 }
 
 export async function getSalaryStructureAction(userId: string) {
   try {
-    const { session } = await getAuthenticatedUser();
+    const { session, organizationId } = await getAuthenticatedUser();
     
     // Only HR or Admin can view other's salary, users can view their own
     const isSelf = session.user.id === userId;
-    const isHrOrAdmin = 
-      session.user.role === UserRole.SUPER_ADMIN || 
-      session.user.role === UserRole.ADMIN || 
-      (session.user.role === UserRole.STAFF && session.user.department === 'HR');
+    const canManageSalary = await hasSalaryPermission("read-all");
 
-    if (!isSelf && !isHrOrAdmin) {
+    if (!isSelf && !canManageSalary) {
       return { success: false, error: "Unauthorized access to salary details." };
     }
-    if (!(await canPerformSalaryPermission(session.user, isSelf ? "read-own" : "read-all"))) {
+    const canReadSalary = isSelf
+      ? (await hasSalaryPermission("read-own")) || canManageSalary
+      : canManageSalary;
+    if (!canReadSalary) {
       return { success: false, error: "Unauthorized access to salary details." };
     }
-    if (isHrOrAdmin && !(await isSalaryPinSessionValid(session.user.id))) {
+    if (
+      canManageSalary &&
+      !isSelf &&
+      !(await isSalaryPinSessionValid(session.user.id))
+    ) {
       return { success: false, error: "Unlock Salary Management with your PIN to continue." };
     }
 
-    const structure = await prisma.salaryStructure.findUnique({
-      where: { userId },
+    const structure = await prisma.salaryStructure.findFirst({
+      where: {
+        userId,
+        user: { is: getOrganizationMemberWhere(organizationId) },
+      },
     });
 
     return { success: true, structure: structure ? JSON.parse(JSON.stringify(structure)) : null };
@@ -202,18 +209,15 @@ export async function getSalaryStructureAction(userId: string) {
 
 export async function saveSalaryStructureAction(input: unknown) {
   try {
-    const { session } = await getAuthenticatedUser();
+    const { session, organizationId } = await getAuthenticatedUser();
     
     // Only HR or Admin can edit salary structure
-    const isHrOrAdmin = 
-      session.user.role === UserRole.SUPER_ADMIN || 
-      session.user.role === UserRole.ADMIN || 
-      (session.user.role === UserRole.STAFF && session.user.department === 'HR');
+    const canManageSalary = await hasSalaryPermission("update");
 
-    if (!isHrOrAdmin) {
+    if (!canManageSalary) {
       return { success: false, error: "Only Admins and HR can update salary structures." };
     }
-    if (!(await canPerformSalaryPermission(session.user, "update"))) {
+    if (!(await hasSalaryPermission("update"))) {
       return { success: false, error: "Only Admins and HR can update salary structures." };
     }
     if (!(await isSalaryPinSessionValid(session.user.id))) {
@@ -226,8 +230,11 @@ export async function saveSalaryStructureAction(input: unknown) {
     }
     const validated = parsed.data;
 
-    const employee = await prisma.user.findUnique({
-      where: { id: validated.userId },
+    const employee = await prisma.user.findFirst({
+      where: {
+        id: validated.userId,
+        ...getOrganizationMemberWhere(organizationId),
+      },
       select: { id: true },
     });
     if (!employee) {
@@ -272,15 +279,12 @@ export async function saveSalaryStructureAction(input: unknown) {
 
 export async function setSalaryPayrollInclusionAction(input: unknown) {
   try {
-    const { session } = await getAuthenticatedUser();
-    const isHrOrAdmin =
-      session.user.role === UserRole.SUPER_ADMIN ||
-      session.user.role === UserRole.ADMIN ||
-      (session.user.role === UserRole.STAFF && session.user.department === "HR");
+    const { session, organizationId } = await getAuthenticatedUser();
+    const canManageSalary = await hasSalaryPermission("update");
 
     if (
-      !isHrOrAdmin ||
-      !(await canPerformSalaryPermission(session.user, "update"))
+      !canManageSalary ||
+      !(await hasSalaryPermission("update"))
     ) {
       return { success: false, error: "Only Admins and HR can manage payroll inclusion." };
     }
@@ -293,8 +297,11 @@ export async function setSalaryPayrollInclusionAction(input: unknown) {
       return { success: false, error: "Invalid payroll inclusion setting.", details: parsed.error.issues };
     }
 
-    const employee = await prisma.user.findUnique({
-      where: { id: parsed.data.userId },
+    const employee = await prisma.user.findFirst({
+      where: {
+        id: parsed.data.userId,
+        ...getOrganizationMemberWhere(organizationId),
+      },
       select: { id: true, employmentStatus: true },
     });
     if (!employee) {
@@ -304,10 +311,16 @@ export async function setSalaryPayrollInclusionAction(input: unknown) {
       return { success: false, error: "Only active employees can be included in payroll." };
     }
 
-    await prisma.user.update({
-      where: { id: employee.id },
+    const updated = await prisma.user.updateMany({
+      where: {
+        id: employee.id,
+        ...getOrganizationMemberWhere(organizationId),
+      },
       data: { includeInPayroll: parsed.data.includeInPayroll },
     });
+    if (updated.count !== 1) {
+      return { success: false, error: "The employee is no longer in this organization." };
+    }
     revalidatePath("/dashboard/salary");
     return {
       success: true,
@@ -329,22 +342,19 @@ export async function generateSalarySlipAction(input: unknown) {
   try {
     const requestHeaders = await headers();
     const session = await auth.api.getSession({ headers: requestHeaders });
-    const isHrOrAdmin =
-      session?.user.role === UserRole.SUPER_ADMIN ||
-      session?.user.role === UserRole.ADMIN ||
-      (session?.user.role === UserRole.STAFF && session.user.department === "HR");
+    const canManageSalary = await hasSalaryPermission("create");
 
-    if (!isHrOrAdmin && !hasSalaryCronAuthorization(requestHeaders)) {
+    if (!canManageSalary && !hasSalaryCronAuthorization(requestHeaders)) {
       return { success: false, error: "Only Admins and HR can generate salary slips." };
     }
     if (
       session?.user &&
-      !(await canPerformSalaryPermission(session.user, "create"))
+      !(await hasSalaryPermission("create"))
     ) {
       return { success: false, error: "Only Admins and HR can generate salary slips." };
     }
     if (
-      isHrOrAdmin &&
+      canManageSalary &&
       session?.user &&
       !(await isSalaryPinSessionValid(session.user.id))
     ) {
@@ -357,9 +367,20 @@ export async function generateSalarySlipAction(input: unknown) {
     }
     const validated = parsed.data;
     const { userId, month, year, medicalReimbursement, extraEarnings, extraDeductions } = validated;
+    const organizationId = session?.session.activeOrganizationId ?? null;
+    if (session && !organizationId) {
+      return { success: false, error: "No active organization." };
+    }
 
     const payrollEmployee = await prisma.user.findFirst({
-      where: { id: userId, includeInPayroll: true, employmentStatus: "ACTIVE" },
+      where: {
+        id: userId,
+        includeInPayroll: true,
+        employmentStatus: "ACTIVE",
+        ...(organizationId
+          ? getOrganizationMemberWhere(organizationId)
+          : {}),
+      },
       select: { id: true },
     });
     if (!payrollEmployee) {
@@ -544,22 +565,19 @@ export async function autoGenerateMonthlySalarySlipsAction(input: unknown) {
   try {
     const requestHeaders = await headers();
     const session = await auth.api.getSession({ headers: requestHeaders });
-    const isHrOrAdmin =
-      session?.user.role === UserRole.SUPER_ADMIN ||
-      session?.user.role === UserRole.ADMIN ||
-      (session?.user.role === UserRole.STAFF && session.user.department === "HR");
+    const canManageSalary = await hasSalaryPermission("create");
 
-    if (!isHrOrAdmin && !hasSalaryCronAuthorization(requestHeaders)) {
+    if (!canManageSalary && !hasSalaryCronAuthorization(requestHeaders)) {
       return { success: false, error: "Only Admins and HR can auto-generate salary slips." };
     }
     if (
       session?.user &&
-      !(await canPerformSalaryPermission(session.user, "create"))
+      !(await hasSalaryPermission("create"))
     ) {
       return { success: false, error: "Only Admins and HR can auto-generate salary slips." };
     }
     if (
-      isHrOrAdmin &&
+      canManageSalary &&
       session?.user &&
       !(await isSalaryPinSessionValid(session.user.id))
     ) {
@@ -571,9 +589,16 @@ export async function autoGenerateMonthlySalarySlipsAction(input: unknown) {
       return { success: false, error: "Invalid month or year.", details: validated.error.issues };
     }
     const { month, year } = validated.data;
+    const organizationId = session?.session.activeOrganizationId ?? null;
+    if (session && !organizationId) {
+      return { success: false, error: "No active organization." };
+    }
 
     const usersWithStructures = await prisma.user.findMany({
       where: {
+        ...(organizationId
+          ? getOrganizationMemberWhere(organizationId)
+          : {}),
         includeInPayroll: true,
         employmentStatus: "ACTIVE",
         salaryStructure: { isNot: null },
@@ -676,30 +701,31 @@ export async function autoGenerateMonthlySalarySlipsAction(input: unknown) {
 
 export async function getSalarySlipsAction(input: unknown) {
   try {
-    const { session } = await getAuthenticatedUser();
+    const { session, organizationId } = await getAuthenticatedUser();
     const parsed = salarySlipsQuerySchema.safeParse(input);
     if (!parsed.success) {
       return { success: false as const, error: "Invalid salary slip filters.", details: parsed.error.issues };
     }
     const filters = parsed.data;
-    const isSelf = !filters.userId || session.user.id === filters.userId;
-    const isHrOrAdmin = 
-      session.user.role === UserRole.SUPER_ADMIN || 
-      session.user.role === UserRole.ADMIN || 
-      (session.user.role === UserRole.STAFF && session.user.department === 'HR');
+    const canManageSalary = await hasSalaryPermission("read-all");
+    const isSelf = filters.userId
+      ? session.user.id === filters.userId
+      : !canManageSalary;
 
-    if (!isSelf && !isHrOrAdmin) {
+    if (!isSelf && !canManageSalary) {
+      return { success: false as const, error: "Unauthorized access to salary slips." };
+    }
+    const canReadRequestedSlips = isSelf
+      ? (await hasSalaryPermission("read-own")) || canManageSalary
+      : canManageSalary;
+    if (!canReadRequestedSlips) {
       return { success: false as const, error: "Unauthorized access to salary slips." };
     }
     if (
-      !(await canPerformSalaryPermission(
-        session.user,
-        isHrOrAdmin ? "read-all" : "read-own",
-      ))
+      canManageSalary &&
+      !isSelf &&
+      !(await isSalaryPinSessionValid(session.user.id))
     ) {
-      return { success: false as const, error: "Unauthorized access to salary slips." };
-    }
-    if (isHrOrAdmin && !(await isSalaryPinSessionValid(session.user.id))) {
       return { success: false as const, error: "Unlock Salary Management with your PIN to continue." };
     }
 
@@ -712,7 +738,8 @@ export async function getSalarySlipsAction(input: unknown) {
               ? {}
               : { status: filters.status };
     const whereClause: Prisma.SalarySlipWhereInput = {
-      ...(isHrOrAdmin
+      ...getOrganizationSalarySlipWhere(organizationId),
+      ...(canManageSalary
           ? filters.userId
             ? { userId: filters.userId }
           : {}
@@ -723,6 +750,7 @@ export async function getSalarySlipsAction(input: unknown) {
           ? {
               user: {
                 is: {
+                  ...getOrganizationMemberWhere(organizationId),
                   OR: getEmployeeSearchConditions(filters.search),
                 },
               },
@@ -752,7 +780,7 @@ export async function getSalarySlipsAction(input: unknown) {
       take: filters.pageSize,
       }),
       prisma.salarySlip.count({ where: whereClause }),
-      isHrOrAdmin
+      !isSelf
         ? Promise.resolve(null)
         : prisma.salarySlip.aggregate({
             where: {
@@ -803,19 +831,16 @@ export async function getSalarySlipsAction(input: unknown) {
 
 export async function getSalaryRosterAction(input: unknown) {
   try {
-    const { session } = await getAuthenticatedUser();
+    const { session, organizationId } = await getAuthenticatedUser();
     const parsed = salaryRosterQuerySchema.safeParse(input);
     if (!parsed.success) {
       return { success: false as const, error: "Invalid salary roster filters.", details: parsed.error.issues };
     }
 
-    const isHrOrAdmin =
-      session.user.role === UserRole.SUPER_ADMIN ||
-      session.user.role === UserRole.ADMIN ||
-      (session.user.role === UserRole.STAFF && session.user.department === "HR");
+    const canManageSalary = await hasSalaryPermission("read-all");
     if (
-      !isHrOrAdmin ||
-      !(await canPerformSalaryPermission(session.user, "read-all"))
+      !canManageSalary ||
+      !(await hasSalaryPermission("read-all"))
     ) {
       return { success: false as const, error: "Only Admins and HR can access salary structures." };
     }
@@ -825,6 +850,7 @@ export async function getSalaryRosterAction(input: unknown) {
 
     const filters = parsed.data;
     const where: Prisma.UserWhereInput = {
+      ...getOrganizationMemberWhere(organizationId),
       employmentStatus: "ACTIVE",
       includeInPayroll: filters.view === "included",
       ...(filters.search
@@ -838,11 +864,15 @@ export async function getSalaryRosterAction(input: unknown) {
           id: true,
           name: true,
           email: true,
-          role: true,
           department: true,
           employmentStatus: true,
           includeInPayroll: true,
           designation: true,
+          organizationMemberships: {
+            where: { organizationId },
+            select: { role: true },
+            take: 1,
+          },
           salaryStructure: {
             select: {
               basicSalary: true,
@@ -861,36 +891,46 @@ export async function getSalaryRosterAction(input: unknown) {
       prisma.user.count({ where }),
     ]);
 
-    const employees = users.map(({ salaryStructure, ...employee }) => {
-      let grossSalary: string | null = null;
-      if (salaryStructure) {
-        const parsedComponents = salaryComponentsSchema.safeParse(
-          salaryStructure.customComponents ?? [],
-        );
-        if (!parsedComponents.success) {
+    const employees = users.map(
+      ({ salaryStructure, organizationMemberships, ...employee }) => {
+        const membership = organizationMemberships[0];
+        if (!membership) {
           throw new Error(
-            `Salary structure has invalid custom components for employee ${employee.id}.`,
+            `Organization membership is missing for payroll employee ${employee.id}.`,
           );
         }
-        const fixedEarnings =
-          Number(salaryStructure.basicSalary) +
-          Number(salaryStructure.hra) +
-          Number(salaryStructure.conveyance) +
-          Number(salaryStructure.medical) +
-          Number(salaryStructure.specialAllowance);
-        const additionalEarnings = parsedComponents.data
-          .filter((component) => component.type === "EARNING")
-          .reduce((total, component) => total + component.amount, 0);
-        grossSalary = (fixedEarnings + additionalEarnings).toString();
-      }
 
-      return {
-        ...employee,
-        department: employee.department ? String(employee.department) : null,
-        hasSalaryStructure: salaryStructure !== null,
-        grossSalary,
-      };
-    });
+        let grossSalary: string | null = null;
+        if (salaryStructure) {
+          const parsedComponents = salaryComponentsSchema.safeParse(
+            salaryStructure.customComponents ?? [],
+          );
+          if (!parsedComponents.success) {
+            throw new Error(
+              `Salary structure has invalid custom components for employee ${employee.id}.`,
+            );
+          }
+          const fixedEarnings =
+            Number(salaryStructure.basicSalary) +
+            Number(salaryStructure.hra) +
+            Number(salaryStructure.conveyance) +
+            Number(salaryStructure.medical) +
+            Number(salaryStructure.specialAllowance);
+          const additionalEarnings = parsedComponents.data
+            .filter((component) => component.type === "EARNING")
+            .reduce((total, component) => total + component.amount, 0);
+          grossSalary = (fixedEarnings + additionalEarnings).toString();
+        }
+
+        return {
+          ...employee,
+          organizationRole: membership.role,
+          department: employee.department ? String(employee.department) : null,
+          hasSalaryStructure: salaryStructure !== null,
+          grossSalary,
+        };
+      },
+    );
 
     return {
       success: true as const,
@@ -908,14 +948,11 @@ export async function getSalaryRosterAction(input: unknown) {
 
 export async function getSalaryManagementSummaryAction() {
   try {
-    const { session } = await getAuthenticatedUser();
-    const isHrOrAdmin =
-      session.user.role === UserRole.SUPER_ADMIN ||
-      session.user.role === UserRole.ADMIN ||
-      (session.user.role === UserRole.STAFF && session.user.department === "HR");
+    const { session, organizationId } = await getAuthenticatedUser();
+    const canManageSalary = await hasSalaryPermission("read-all");
     if (
-      !isHrOrAdmin ||
-      !(await canPerformSalaryPermission(session.user, "read-all"))
+      !canManageSalary ||
+      !(await hasSalaryPermission("read-all"))
     ) {
       return { success: false as const, error: "Only Admins and HR can access salary summaries." };
     }
@@ -925,21 +962,36 @@ export async function getSalaryManagementSummaryAction() {
 
     const [activeCount, includedCount, excludedCount, configuredCount, latestSlip] =
       await Promise.all([
-        prisma.user.count({ where: { employmentStatus: "ACTIVE" } }),
         prisma.user.count({
-          where: { employmentStatus: "ACTIVE", includeInPayroll: true },
-        }),
-        prisma.user.count({
-          where: { employmentStatus: "ACTIVE", includeInPayroll: false },
+          where: {
+            ...getOrganizationMemberWhere(organizationId),
+            employmentStatus: "ACTIVE",
+          },
         }),
         prisma.user.count({
           where: {
+            ...getOrganizationMemberWhere(organizationId),
+            employmentStatus: "ACTIVE",
+            includeInPayroll: true,
+          },
+        }),
+        prisma.user.count({
+          where: {
+            ...getOrganizationMemberWhere(organizationId),
+            employmentStatus: "ACTIVE",
+            includeInPayroll: false,
+          },
+        }),
+        prisma.user.count({
+          where: {
+            ...getOrganizationMemberWhere(organizationId),
             employmentStatus: "ACTIVE",
             includeInPayroll: true,
             salaryStructure: { isNot: null },
           },
         }),
         prisma.salarySlip.findFirst({
+          where: getOrganizationSalarySlipWhere(organizationId),
           orderBy: [{ year: "desc" }, { month: "desc" }],
           select: { month: true, year: true },
         }),
@@ -948,18 +1000,27 @@ export async function getSalaryManagementSummaryAction() {
     const period = latestSlip
       ? await Promise.all([
           prisma.salarySlip.aggregate({
-            where: { month: latestSlip.month, year: latestSlip.year },
+            where: {
+              ...getOrganizationSalarySlipWhere(organizationId),
+              month: latestSlip.month,
+              year: latestSlip.year,
+            },
             _sum: { netSalary: true },
           }),
           prisma.salarySlip.count({
             where: {
+              ...getOrganizationSalarySlipWhere(organizationId),
               month: latestSlip.month,
               year: latestSlip.year,
               status: "PAID",
             },
           }),
           prisma.salarySlip.count({
-            where: { month: latestSlip.month, year: latestSlip.year },
+            where: {
+              ...getOrganizationSalarySlipWhere(organizationId),
+              month: latestSlip.month,
+              year: latestSlip.year,
+            },
           }),
         ])
       : null;
@@ -986,19 +1047,16 @@ export async function getSalaryManagementSummaryAction() {
 
 export async function searchSalaryEmployeesAction(input: unknown) {
   try {
-    const { session } = await getAuthenticatedUser();
+    const { session, organizationId } = await getAuthenticatedUser();
     const parsed = salaryEmployeeSearchSchema.safeParse(input);
     if (!parsed.success) {
       return { success: false as const, error: "Invalid employee search.", details: parsed.error.issues };
     }
 
-    const isHrOrAdmin =
-      session.user.role === UserRole.SUPER_ADMIN ||
-      session.user.role === UserRole.ADMIN ||
-      (session.user.role === UserRole.STAFF && session.user.department === "HR");
+    const canManageSalary = await hasSalaryPermission("read-all");
     if (
-      !isHrOrAdmin ||
-      !(await canPerformSalaryPermission(session.user, "read-all"))
+      !canManageSalary ||
+      !(await hasSalaryPermission("read-all"))
     ) {
       return { success: false as const, error: "Only Admins and HR can search payroll employees." };
     }
@@ -1009,6 +1067,7 @@ export async function searchSalaryEmployeesAction(input: unknown) {
     const search = parsed.data.search;
     const employees = await prisma.user.findMany({
       where: {
+        ...getOrganizationMemberWhere(organizationId),
         employmentStatus: "ACTIVE",
         includeInPayroll: true,
         ...(search
@@ -1029,26 +1088,18 @@ export async function searchSalaryEmployeesAction(input: unknown) {
 
 export async function getSalarySlipByIdAction(slipId: string) {
   try {
-    const { session } = await getAuthenticatedUser();
-    const isHrOrAdmin =
-      session.user.role === UserRole.SUPER_ADMIN ||
-      session.user.role === UserRole.ADMIN ||
-      (session.user.role === UserRole.STAFF && session.user.department === "HR");
-    const canReadSlip = await canPerformSalaryPermission(
-      session.user,
-      isHrOrAdmin ? "read-all" : "read-own",
-    );
-    if (!canReadSlip) {
+    const { session, organizationId } = await getAuthenticatedUser();
+    const canManageSalary = await hasSalaryPermission("read-all");
+    const canReadOwnSalary = await hasSalaryPermission("read-own");
+    if (!canManageSalary && !canReadOwnSalary) {
       return { success: false, error: "Unauthorized access to salary slip." };
-    }
-    if (isHrOrAdmin && !(await isSalaryPinSessionValid(session.user.id))) {
-      return { success: false, error: "Unlock Salary Management with your PIN to continue." };
     }
 
     const slip = await prisma.salarySlip.findFirst({
       where: {
         id: slipId,
-        ...(!isHrOrAdmin ? { userId: session.user.id } : {}),
+        ...getOrganizationSalarySlipWhere(organizationId),
+        ...(!canManageSalary ? { userId: session.user.id } : {}),
       },
       include: {
         adjustments: {
@@ -1080,6 +1131,13 @@ export async function getSalarySlipByIdAction(slipId: string) {
     if (!slip) {
       return { success: false, error: "Salary slip not found." };
     }
+    if (
+      canManageSalary &&
+      slip.userId !== session.user.id &&
+      !(await isSalaryPinSessionValid(session.user.id))
+    ) {
+      return { success: false, error: "Unlock Salary Management with your PIN to continue." };
+    }
 
     return { success: true, slip: JSON.parse(JSON.stringify(slip)) };
   } catch (error) {
@@ -1090,16 +1148,13 @@ export async function getSalarySlipByIdAction(slipId: string) {
 
 export async function updateSalarySlipAdjustmentsAction(input: unknown) {
   try {
-    const { session } = await getAuthenticatedUser();
-    const isHrOrAdmin =
-      session.user.role === UserRole.SUPER_ADMIN ||
-      session.user.role === UserRole.ADMIN ||
-      (session.user.role === UserRole.STAFF && session.user.department === "HR");
+    const { session, organizationId } = await getAuthenticatedUser();
+    const canManageSalary = await hasSalaryPermission("update");
 
-    if (!isHrOrAdmin) {
+    if (!canManageSalary) {
       return { success: false, error: "Only Admins and HR can adjust salary slips." };
     }
-    if (!(await canPerformSalaryPermission(session.user, "update"))) {
+    if (!(await hasSalaryPermission("update"))) {
       return { success: false, error: "Only Admins and HR can adjust salary slips." };
     }
     if (!(await isSalaryPinSessionValid(session.user.id))) {
@@ -1111,8 +1166,11 @@ export async function updateSalarySlipAdjustmentsAction(input: unknown) {
       return { success: false, error: "Invalid salary adjustments.", details: validated.error.issues };
     }
 
-    const existing = await prisma.salarySlip.findUnique({
-      where: { id: validated.data.slipId },
+    const existing = await prisma.salarySlip.findFirst({
+      where: {
+        id: validated.data.slipId,
+        ...getOrganizationSalarySlipWhere(organizationId),
+      },
     });
     if (!existing) {
       return { success: false, error: "Salary slip not found." };
@@ -1126,6 +1184,7 @@ export async function updateSalarySlipAdjustmentsAction(input: unknown) {
       const result = await tx.salarySlip.updateMany({
         where: {
           id: existing.id,
+          ...getOrganizationSalarySlipWhere(organizationId),
           status: "GENERATED",
           approvedAt: null,
           ...(isEarning ? {} : { netSalary: { gte: validated.data.amount } }),
@@ -1192,14 +1251,11 @@ export async function updateSalarySlipAdjustmentsAction(input: unknown) {
 
 export async function removeSalarySlipAdjustmentAction(input: unknown) {
   try {
-    const { session } = await getAuthenticatedUser();
-    const isHrOrAdmin =
-      session.user.role === UserRole.SUPER_ADMIN ||
-      session.user.role === UserRole.ADMIN ||
-      (session.user.role === UserRole.STAFF && session.user.department === "HR");
+    const { session, organizationId } = await getAuthenticatedUser();
+    const canManageSalary = await hasSalaryPermission("update");
     if (
-      !isHrOrAdmin ||
-      !(await canPerformSalaryPermission(session.user, "update")) ||
+      !canManageSalary ||
+      !(await hasSalaryPermission("update")) ||
       !(await isSalaryPinSessionValid(session.user.id))
     ) {
       return { success: false, error: "Only authorized HR or Admin users with an unlocked salary session can edit adjustments." };
@@ -1216,7 +1272,11 @@ export async function removeSalarySlipAdjustmentAction(input: unknown) {
           id: parsed.data.adjustmentId,
           salarySlipId: parsed.data.slipId,
           removedAt: null,
-          salarySlip: { status: "GENERATED", approvedAt: null },
+          salarySlip: {
+            ...getOrganizationSalarySlipWhere(organizationId),
+            status: "GENERATED",
+            approvedAt: null,
+          },
         },
       });
       if (!adjustment) return null;
@@ -1226,6 +1286,7 @@ export async function removeSalarySlipAdjustmentAction(input: unknown) {
       const result = await tx.salarySlip.updateMany({
         where: {
           id: parsed.data.slipId,
+          ...getOrganizationSalarySlipWhere(organizationId),
           status: "GENERATED",
           approvedAt: null,
         },
@@ -1274,14 +1335,11 @@ export async function removeSalarySlipAdjustmentAction(input: unknown) {
 
 export async function approveSalarySlipAction(input: unknown) {
   try {
-    const { session } = await getAuthenticatedUser();
-    const isHrOrAdmin =
-      session.user.role === UserRole.SUPER_ADMIN ||
-      session.user.role === UserRole.ADMIN ||
-      (session.user.role === UserRole.STAFF && session.user.department === "HR");
+    const { session, organizationId } = await getAuthenticatedUser();
+    const canManageSalary = await hasSalaryPermission("update");
     if (
-      !isHrOrAdmin ||
-      !(await canPerformSalaryPermission(session.user, "update")) ||
+      !canManageSalary ||
+      !(await hasSalaryPermission("update")) ||
       !(await isSalaryPinSessionValid(session.user.id))
     ) {
       return { success: false, error: "Only authorized HR or Admin users with an unlocked salary session can approve slips." };
@@ -1292,8 +1350,11 @@ export async function approveSalarySlipAction(input: unknown) {
       return { success: false, error: "Invalid salary slip.", details: parsed.error.issues };
     }
 
-    const existing = await prisma.salarySlip.findUnique({
-      where: { id: parsed.data.slipId },
+    const existing = await prisma.salarySlip.findFirst({
+      where: {
+        id: parsed.data.slipId,
+        ...getOrganizationSalarySlipWhere(organizationId),
+      },
       include: {
         adjustments: {
           where: { removedAt: null },
@@ -1315,6 +1376,7 @@ export async function approveSalarySlipAction(input: unknown) {
     const result = await prisma.salarySlip.updateMany({
       where: {
         id: parsed.data.slipId,
+        ...getOrganizationSalarySlipWhere(organizationId),
         status: "GENERATED",
         approvedAt: null,
       },
@@ -1350,14 +1412,11 @@ export async function approveSalarySlipAction(input: unknown) {
 
 export async function sendSalarySlipEmailAction(input: unknown) {
   try {
-    const { session } = await getAuthenticatedUser();
-    const isHrOrAdmin =
-      session.user.role === UserRole.SUPER_ADMIN ||
-      session.user.role === UserRole.ADMIN ||
-      (session.user.role === UserRole.STAFF && session.user.department === "HR");
+    const { session, organizationId } = await getAuthenticatedUser();
+    const canManageSalary = await hasSalaryPermission("update");
     if (
-      !isHrOrAdmin ||
-      !(await canPerformSalaryPermission(session.user, "update")) ||
+      !canManageSalary ||
+      !(await hasSalaryPermission("update")) ||
       !(await isSalaryPinSessionValid(session.user.id))
     ) {
       return { success: false, error: "Only authorized HR or Admin users with an unlocked salary session can email slips." };
@@ -1368,8 +1427,11 @@ export async function sendSalarySlipEmailAction(input: unknown) {
       return { success: false, error: "Invalid salary slip.", details: parsed.error.issues };
     }
 
-    const slip = await prisma.salarySlip.findUnique({
-      where: { id: parsed.data.slipId },
+    const slip = await prisma.salarySlip.findFirst({
+      where: {
+        id: parsed.data.slipId,
+        ...getOrganizationSalarySlipWhere(organizationId),
+      },
       select: {
         id: true,
         month: true,
@@ -1435,6 +1497,7 @@ export async function sendSalarySlipEmailAction(input: unknown) {
     const updated = await prisma.salarySlip.updateMany({
       where: {
         id: slip.id,
+        ...getOrganizationSalarySlipWhere(organizationId),
         OR: [
           { status: "GENERATED", approvedAt: { not: null } },
           {
@@ -1464,17 +1527,14 @@ export async function sendSalarySlipEmailAction(input: unknown) {
 
 export async function updateSalarySlipStatusAction(input: unknown) {
   try {
-    const { session } = await getAuthenticatedUser();
+    const { session, organizationId } = await getAuthenticatedUser();
 
-    const isHrOrAdmin =
-      session.user.role === UserRole.SUPER_ADMIN ||
-      session.user.role === UserRole.ADMIN ||
-      (session.user.role === UserRole.STAFF && session.user.department === 'HR');
+    const canManageSalary = await hasSalaryPermission("mark-paid");
 
-    if (!isHrOrAdmin) {
+    if (!canManageSalary) {
       return { success: false, error: "Only Admins and HR can update salary slip status." };
     }
-    if (!(await canPerformSalaryPermission(session.user, "mark-paid"))) {
+    if (!(await hasSalaryPermission("mark-paid"))) {
       return { success: false, error: "Only Admins and HR can update salary slip status." };
     }
     if (!(await isSalaryPinSessionValid(session.user.id))) {
@@ -1483,8 +1543,11 @@ export async function updateSalarySlipStatusAction(input: unknown) {
 
     const validated = updateSalarySlipStatusSchema.parse(input);
 
-    const existing = await prisma.salarySlip.findUnique({
-      where: { id: validated.slipId },
+    const existing = await prisma.salarySlip.findFirst({
+      where: {
+        id: validated.slipId,
+        ...getOrganizationSalarySlipWhere(organizationId),
+      },
       include: {
         adjustments: {
           where: { removedAt: null },
@@ -1511,6 +1574,7 @@ export async function updateSalarySlipStatusAction(input: unknown) {
       const result = await tx.salarySlip.updateMany({
         where: {
           id: validated.slipId,
+          ...getOrganizationSalarySlipWhere(organizationId),
           status: "GENERATED",
           OR: [
             { approvedAt: { not: null } },

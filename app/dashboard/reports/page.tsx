@@ -1,14 +1,13 @@
 import { getBusinessReport } from "@/actions/reports";
 import DashboardContainer from "@/app/dashboard/dashboard-container";
 import { ReportsCenter } from "@/components/reports/reports-center";
-import { auth } from "@/lib/auth";
 import { requirePageAccess } from "@/lib/auth-guard";
+import { checkOrganizationPermission } from "@/lib/organization-authorization";
 import {
   receivableAgeSchema,
   reportCatalog,
   type ReportId,
 } from "@/lib/reports/report-catalog";
-import { headers } from "next/headers";
 
 export const metadata = {
   title: "Reports",
@@ -38,12 +37,11 @@ export default async function ReportsPage({
   const age = parsedAge.success ? parsedAge.data : "ALL";
   const search = first(query.search) ?? "";
   const status = first(query.status) ?? "ALL";
-  const headersList = await headers();
   const [financeAccess, invoiceAccess, customerAccess, proposalAccess] = await Promise.all([
-    auth.api.userHasPermission({ headers: headersList, body: { permissions: { finance: ["read"] } } }),
-    auth.api.userHasPermission({ headers: headersList, body: { permissions: { invoices: ["read"] } } }),
-    auth.api.userHasPermission({ headers: headersList, body: { permissions: { customers: ["read"] } } }),
-    auth.api.userHasPermission({ headers: headersList, body: { permissions: { proposals: ["read"] } } }),
+    checkOrganizationPermission({ body: { permissions: { finance: ["read"] } } }),
+    checkOrganizationPermission({ body: { permissions: { invoices: ["read"] } } }),
+    checkOrganizationPermission({ body: { permissions: { customers: ["read"] } } }),
+    checkOrganizationPermission({ body: { permissions: { proposals: ["read"] } } }),
   ]);
   const financeReportsAllowed = financeAccess.success && invoiceAccess.success;
   const retentionAllowed = customerAccess.success && invoiceAccess.success && proposalAccess.success;

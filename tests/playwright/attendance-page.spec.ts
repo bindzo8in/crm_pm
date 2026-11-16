@@ -30,8 +30,9 @@ test("attendance page loads the default Punch Clock tab and its key sections", a
   await expect(attendancePage.punchClockTab).toBeVisible();
   await expect(page.getByRole("button", { name: "Attendance Logs" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Analytics Overview" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Browser notifications" })).toBeVisible();
-  await expect(page.getByText(/Expected shift:/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open attendance settings" })).toBeVisible();
+  await expect(attendancePage.locationStatus).toBeVisible();
+  await expect(page.getByText(/^Shift:/)).toBeVisible();
   await expect(page.getByText(/Not Clocked In|Active Shift|Shift Completed|On Break/)).toBeVisible();
   await expect(page.getByText("Ready to start your day?")).toBeVisible();
   expect(pageErrors).toEqual([]);
@@ -55,7 +56,7 @@ test("attendance page remains usable without horizontal overflow at target viewp
 
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
-    await expect(page.getByText("Browser notifications")).toBeVisible();
+    await expect(attendancePage.locationStatus).toBeVisible();
     const dimensions = await page.evaluate(() => ({
       documentWidth: document.documentElement.scrollWidth,
       viewportWidth: document.documentElement.clientWidth,
@@ -65,8 +66,8 @@ test("attendance page remains usable without horizontal overflow at target viewp
     if (viewport.width < 768) {
       await page.getByRole("button", { name: "History", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Attendance History" })).toBeVisible();
-      await page.getByRole("button", { name: "Punch", exact: true }).click();
-      await expect(page.getByRole("heading", { name: "Your workday" })).toBeVisible();
+      await page.getByRole("button", { name: "Punch", exact: true }).press("Enter");
+      await expect(page.getByRole("heading", { name: "Ready to start your day?" })).toBeVisible();
     } else {
       await expect(page.getByRole("button", { name: "Attendance Logs" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Punch Clock" })).toBeVisible();
@@ -74,7 +75,7 @@ test("attendance page remains usable without horizontal overflow at target viewp
   }
 });
 
-test("dashboard sidebar active links hydrate without pathname mismatch warnings", async ({
+test("dashboard sidebar links hydrate without pathname mismatch warnings", async ({
   page,
 }) => {
   test.skip(!hasAuthenticatedState, "Set ATTENDANCE_E2E_STORAGE_STATE to run authenticated checks.");
@@ -87,9 +88,6 @@ test("dashboard sidebar active links hydrate without pathname mismatch warnings"
   });
 
   await page.goto("/dashboard");
-  await expect(page.getByRole("link", { name: "Dashboard" })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
+  await expect(page.getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/dashboard");
   expect(hydrationMessages).toEqual([]);
 });

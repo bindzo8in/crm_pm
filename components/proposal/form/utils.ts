@@ -14,7 +14,17 @@ export const serviceKeys = {
 export function useServiceOptions(search: string) {
     return useQuery({
         queryKey: serviceKeys.options(search),
-        queryFn: () => GetServiceOptions(search),
+        queryFn: async () => {
+            const response = await GetServiceOptions(search);
+            if (!("data" in response) || !response.data) {
+                throw new Error(
+                    "message" in response && response.message
+                        ? response.message
+                        : "Could not load services.",
+                );
+            }
+            return response;
+        },
         staleTime: 1000 * 60 * 5,
     });
 }
@@ -40,11 +50,17 @@ export function useServicePackages(
             search,
         ),
 
-        queryFn: () =>
-            GetServicePackages(
-                serviceId!,
-                search,
-            ),
+        queryFn: async () => {
+            const response = await GetServicePackages(serviceId!, search);
+            if (!("data" in response) || !response.data) {
+                throw new Error(
+                    "message" in response && response.message
+                        ? response.message
+                        : "Could not load service packages.",
+                );
+            }
+            return response;
+        },
 
         enabled: !!serviceId,
 

@@ -1,7 +1,6 @@
 "use server";
 
 import {
-  getHolidayDepartments,
   requireHolidayManager,
   requireHolidayUser,
 } from "@/lib/leave-access";
@@ -108,12 +107,12 @@ const updateHolidaySchema = holidayFieldsSchema
   });
 
 export async function getHolidaysAction(input: unknown = {}) {
-  const user = await requireHolidayUser();
+  await requireHolidayUser();
   const parsed = yearSchema.parse(input);
   const year = parsed.year ?? Number(formatInIST(new Date(), "yyyy"));
   return {
     success: true,
-    holidays: await getHolidaysForYear(year, await getHolidayDepartments(user)),
+    holidays: await getHolidaysForYear(year),
     weekendDays: await getWeekendDays(),
     year,
   };
@@ -132,10 +131,10 @@ export async function updateWeekendDaysAction(input: unknown) {
 }
 
 export async function getUpcomingHolidaysAction() {
-  const user = await requireHolidayUser();
+  await requireHolidayUser();
   return {
     success: true,
-    holidays: await getUpcomingHolidays(await getHolidayDepartments(user)),
+    holidays: await getUpcomingHolidays(),
   };
 }
 

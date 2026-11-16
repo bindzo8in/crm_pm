@@ -1,8 +1,8 @@
 "use server";
 
+import { checkOrganizationPermission } from "@/lib/organization-authorization";
 import { Prisma } from "@/app/generated/prisma/client";
 import { errorResponse, successResponse } from "@/lib/action-response";
-import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { getErrorMessage } from "@/lib/schemas/prisma-utils";
 import { TermQuerySchema, termSchema, TermSchema } from "@/lib/schemas/term-schema";
@@ -10,7 +10,7 @@ import { headers } from "next/headers";
 
 export async function CreateTerm(data: TermSchema) {
     try {
-        const hasPermission = await auth.api.userHasPermission({
+        const hasPermission = await checkOrganizationPermission({
             headers: await headers(),
             body: {
                 permissions: {
@@ -66,7 +66,7 @@ export async function CreateTerm(data: TermSchema) {
 
 export async function EditTerm(data: TermSchema) {
     try {
-        const hasPermission = await auth.api.userHasPermission({
+        const hasPermission = await checkOrganizationPermission({
             headers: await headers(),
             body: {
                 permissions: {
@@ -263,7 +263,7 @@ export async function GetTerms(query: TermQuerySchema) {
 
 export async function DeleteTerm(id: string) {
     try {
-        const hasPermission = await auth.api.userHasPermission({
+        const hasPermission = await checkOrganizationPermission({
             headers: await headers(),
             body: {
                 permissions: {

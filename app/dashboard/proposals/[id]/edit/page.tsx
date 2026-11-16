@@ -3,14 +3,16 @@ export const metadata = {
 };
 
 import { ProposalCreateEditForm } from "@/components/proposal/form";
+import { getProposalForEdit } from "@/actions/proposal";
 import { differenceInDays } from "date-fns";
 import { getQueryClient } from "@/lib/query-client";
 import { customerKeys } from "@/components/customers/customer-query-key";
 import { GetCustomerOptions } from "@/actions/customer";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
-import prisma from "@/lib/prisma";
 import { requirePageAccess } from "@/lib/auth-guard";
 import DashboardContainer from "@/app/dashboard/dashboard-container";
+import { getActiveOrganizationId } from "@/lib/organization-authorization";
+import { getOrganizationMemberOptions } from "@/repositories/organization-member-repository";
 
 interface ProposalEditPageProps {
     params: Promise<{ id: string }>;
@@ -20,10 +22,13 @@ export default async function ProposalEditPage({ params }: ProposalEditPageProps
     const { id } = await params;
     
     await requirePageAccess("/dashboard/proposals");
+    const organizationId = await getActiveOrganizationId();
+    const assignees = organizationId
+        ? await getOrganizationMemberOptions(organizationId)
+        : [];
 
-    const proposal = await prisma.proposal.findUnique({
-        where: { id }
-    });
+    const result = await getProposalForEdit(id);
+    const proposal = result.success ? result.data : null;
 
     if (!proposal) {
         return (
@@ -69,14 +74,15 @@ export default async function ProposalEditPage({ params }: ProposalEditPageProps
         notes: proposal.notes ?? "",
         validUntil: validUntilEnum,
         currency: proposal.currency === "USD" ? "USD" as const : "INR" as const,
-        exchangeRate: proposal.exchangeRate?.toNumber() ?? 83.5,
+        exchangeRate: proposal.exchangeRate,
         placeOfSupply: proposal.placeOfSupply,
+        assignedToId: proposal.assignedToId,
     };
 
     return (
         <DashboardContainer title={`Edit Proposal - ${proposal.title}`} back={{ href: "/dashboard/proposals", label: "Back to proposals" }}>
             <HydrationBoundary state={dehydrate(queryClient)}>
-                <ProposalCreateEditForm initialData={initialData} />
+                <ProposalCreateEditForm initialData={initialData} assignees={assignees} />
             </HydrationBoundary>
         </DashboardContainer>
     );

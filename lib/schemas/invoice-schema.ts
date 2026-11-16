@@ -44,6 +44,7 @@ export const invoiceLineItemSchema = z.object({
 
 export const createInvoiceSchema = z.object({
   customerId: z.string().min(1, "Customer is required"),
+  assignedToId: z.string().max(128).nullable().optional(),
   proposalId: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
   terms: z.string().optional().nullable(),

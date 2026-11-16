@@ -40,7 +40,7 @@ import type {
 interface SalarySlipsTabProps {
   initialSlips: SalarySlipRecord[];
   initialPage: SalarySlipPageInfo;
-  isHrOrAdmin: boolean;
+  canManageSalary: boolean;
 }
 
 function getDisplayedSlipStatus(slip: SalarySlipRecord): SalarySlipRecord["status"] {
@@ -69,7 +69,7 @@ function getSalarySlipLabel(slip: SalarySlipRecord, staffView = false) {
   return getDisplayedSlipStatus(slip);
 }
 
-export function SalarySlipsTab({ initialSlips, initialPage, isHrOrAdmin }: SalarySlipsTabProps) {
+export function SalarySlipsTab({ initialSlips, initialPage, canManageSalary }: SalarySlipsTabProps) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | SalarySlipRecord["status"]>("ALL");
@@ -172,7 +172,7 @@ export function SalarySlipsTab({ initialSlips, initialPage, isHrOrAdmin }: Salar
             <h2 className="text-xl font-semibold">Salary slips</h2>
             <p className="mt-1 text-sm text-muted-foreground">Review monthly payroll and payment status.</p>
           </div>
-        {isHrOrAdmin && (
+        {canManageSalary && (
           <Button onClick={() => setIsGenerateOpen(true)} className="min-h-11 w-full sm:w-auto">
             <PlusIcon aria-hidden="true" className="mr-2 size-4" /> Generate slip
           </Button>
@@ -291,23 +291,23 @@ export function SalarySlipsTab({ initialSlips, initialPage, isHrOrAdmin }: Salar
                             <DownloadIcon aria-hidden="true" className="size-4" />
                           </a>
                         </Button>
-                        {isHrOrAdmin && slip.status === "GENERATED" && !slip.approvedAt && (
+                        {canManageSalary && slip.status === "GENERATED" && !slip.approvedAt && (
                           <Button variant="ghost" size="icon" className="size-10 text-muted-foreground hover:text-foreground" onClick={() => setAdjustmentSlip(slip)} aria-label={`Adjust salary slip for ${slip.user?.name ?? "employee"}`}>
                             <PencilIcon aria-hidden="true" className="size-4" />
                           </Button>
                         )}
-                        {isHrOrAdmin && requiresSalarySlipReview(slip) && (
+                        {canManageSalary && requiresSalarySlipReview(slip) && (
                           <Button variant="outline" size="sm" className="h-10" onClick={() => setApprovalSlip(slip)} aria-label={`Review and approve salary slip for ${slip.user?.name ?? "employee"}`}>
                             <BadgeCheckIcon aria-hidden="true" className="size-4" />
                             Approve
                           </Button>
                         )}
-                        {isHrOrAdmin && slip.status === "GENERATED" && canProcessSalarySlip(slip) && (
+                        {canManageSalary && slip.status === "GENERATED" && canProcessSalarySlip(slip) && (
                           <Button variant="ghost" size="icon" className="size-10 text-emerald-700 hover:text-emerald-800 dark:text-emerald-400" onClick={() => setMarkPaidSlipId(slip.id)} aria-label={`Mark salary slip for ${slip.user?.name ?? "employee"} as paid`}>
                             <DollarSignIcon aria-hidden="true" className="size-4" />
                           </Button>
                         )}
-                        {isHrOrAdmin && canProcessSalarySlip(slip) && slip.user?.email && (
+                        {canManageSalary && canProcessSalarySlip(slip) && slip.user?.email && (
                           <Button variant="outline" size="sm" className="h-10" onClick={() => setEmailSlip(slip)} aria-label={`${slip.emailSentAt ? "Resend" : "Send"} salary slip email to ${slip.user.name}`}>
                             <MailIcon aria-hidden="true" className="size-4" />
                             {slip.emailSentAt ? "Resend" : "Email PDF"}
@@ -404,23 +404,23 @@ export function SalarySlipsTab({ initialSlips, initialPage, isHrOrAdmin }: Salar
                               <DownloadIcon aria-hidden="true" className="size-4" />
                             </a>
                           </Button>
-                          {isHrOrAdmin && slip.status === "GENERATED" && !slip.approvedAt && (
+                          {canManageSalary && slip.status === "GENERATED" && !slip.approvedAt && (
                             <Button variant="ghost" size="icon" className="size-10 text-muted-foreground hover:text-foreground" onClick={() => setAdjustmentSlip(slip)} aria-label={`Adjust salary slip for ${slip.user?.name ?? "employee"}`}>
                               <PencilIcon aria-hidden="true" className="size-4" />
                             </Button>
                           )}
-                          {isHrOrAdmin && requiresSalarySlipReview(slip) && (
+                          {canManageSalary && requiresSalarySlipReview(slip) && (
                             <Button variant="outline" size="sm" className="h-10" onClick={() => setApprovalSlip(slip)} aria-label={`Review and approve salary slip for ${slip.user?.name ?? "employee"}`}>
                               <BadgeCheckIcon aria-hidden="true" className="size-4" />
                               Approve
                             </Button>
                           )}
-                          {isHrOrAdmin && slip.status === "GENERATED" && canProcessSalarySlip(slip) && (
+                          {canManageSalary && slip.status === "GENERATED" && canProcessSalarySlip(slip) && (
                             <Button variant="ghost" size="icon" className="size-10 text-emerald-700 hover:text-emerald-800 dark:text-emerald-400" onClick={() => setMarkPaidSlipId(slip.id)} aria-label={`Mark salary slip for ${slip.user?.name ?? "employee"} as paid`}>
                               <DollarSignIcon aria-hidden="true" className="size-4" />
                             </Button>
                           )}
-                          {isHrOrAdmin && canProcessSalarySlip(slip) && slip.user?.email && (
+                          {canManageSalary && canProcessSalarySlip(slip) && slip.user?.email && (
                             <Button variant="outline" size="sm" className="h-10" onClick={() => setEmailSlip(slip)} aria-label={`${slip.emailSentAt ? "Resend" : "Send"} salary slip email to ${slip.user.name}`}>
                               <MailIcon aria-hidden="true" className="size-4" />
                               {slip.emailSentAt ? "Resend" : "Email PDF"}
@@ -453,7 +453,7 @@ export function SalarySlipsTab({ initialSlips, initialPage, isHrOrAdmin }: Salar
         />
       </div>
 
-      {isHrOrAdmin && (
+      {canManageSalary && (
         <SalarySlipGenerateDialog 
           isOpen={isGenerateOpen}
           onClose={() => setIsGenerateOpen(false)}

@@ -46,6 +46,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useSidebar } from "@/components/ui/sidebar";
+import type { OrganizationMemberOption } from "@/repositories/organization-member-repository";
 import {
   DndContext,
   closestCenter,
@@ -134,9 +135,11 @@ function SortableInvoiceLineItem({
 export function CreateInvoiceForm({
   initialData,
   today,
+  assignees,
 }: {
   initialData?: InvoiceInitialData;
   today: string;
+  assignees: OrganizationMemberOption[];
 }) {
   const router = useRouter();
   const { isMobile, state: sidebarState } = useSidebar();
@@ -166,6 +169,7 @@ export function CreateInvoiceForm({
     resolver: zodResolver(invoiceFormSchema),
     defaultValues: {
       customerId: initialData?.customerId || "",
+      assignedToId: initialData?.assignedToId ?? null,
       currency: initialData?.currency || "INR",
       exchangeRate: initialData?.exchangeRate || 83.5,
       placeOfSupply: initialData?.placeOfSupply || "",
@@ -606,6 +610,34 @@ export function CreateInvoiceForm({
                     )}
                   </div>
                   {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                </Field>
+              )}
+            />
+            <Controller
+              name="assignedToId"
+              control={form.control}
+              render={({ field }) => (
+                <Field className="order-7 sm:col-span-2 lg:col-span-6 lg:row-start-3">
+                  <FieldLabel htmlFor="invoice-assignee">Assigned to</FieldLabel>
+                  <Select
+                    value={field.value ?? "unassigned"}
+                    onValueChange={(value) => field.onChange(value === "unassigned" ? null : value)}
+                  >
+                    <SelectTrigger id="invoice-assignee" className="h-11">
+                      <SelectValue placeholder="Choose an organization member" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
+                      {assignees.map((assignee) => (
+                        <SelectItem key={assignee.id} value={assignee.id}>
+                          {assignee.name} ({assignee.email})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-muted-foreground">
+                    Assign invoice follow-up to an active workspace member.
+                  </p>
                 </Field>
               )}
             />

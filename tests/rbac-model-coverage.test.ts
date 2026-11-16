@@ -3,18 +3,129 @@ import test from "node:test";
 import { UserRole } from "../app/generated/prisma/enums";
 import {
   adminRole,
+  canReadDashboard,
   prismaModelPermissions,
   staffRole,
   statement,
   superAdminRole,
 } from "../lib/permissions";
-import { canAccessRoute } from "../lib/route-permissions";
+import {
+  canAccessRoute,
+  getOrganizationRoutePermissions,
+} from "../lib/route-permissions";
+import {
+  organizationCustomRoleStatement,
+  organizationMemberRole,
+} from "../lib/organization-permissions";
+import { organizationRoleTemplates } from "../lib/organization-role-templates";
 import { hasBusinessWorkspaceAccess } from "../lib/workspace-access";
 
 test("every Prisma model maps to a declared RBAC resource", () => {
   for (const [model, resource] of Object.entries(prismaModelPermissions)) {
     assert.ok(resource in statement, `${model} maps to unknown resource ${resource}`);
   }
+});
+
+test("organization route permissions support tenant roles and nested routes", () => {
+  assert.deepEqual(
+    getOrganizationRoutePermissions("/dashboard/projects/project-id/edit"),
+    [
+      { resource: "projects", permission: "read-all" },
+      { resource: "projects", permission: "read-assigned" },
+      { resource: "projects", permission: "read-own" },
+    ],
+  );
+  assert.deepEqual(
+    getOrganizationRoutePermissions("/dashboard/organizations"),
+    null,
+  );
+});
+
+test("organization custom roles do not expose legacy department assignment", () => {
+  assert.equal(
+    organizationCustomRoleStatement.users.includes("assign-department"),
+    false,
+  );
+});
+
+test("organization role templates contain only permissions available to custom roles", () => {
+  const availablePermissions = new Set(
+    Object.entries(organizationCustomRoleStatement).flatMap(([resource, actions]) =>
+      actions.map((action) => `${resource}:${action}`),
+    ),
+  );
+  assert.deepEqual(
+    organizationRoleTemplates.map(({ id }) => id),
+    ["hr", "finance", "sales-executive"],
+  );
+  for (const template of organizationRoleTemplates) {
+    for (const permission of template.permissions) {
+      assert.ok(
+        availablePermissions.has(permission),
+        `${template.id} template includes unavailable permission ${permission}`,
+      );
+    }
+    if (template.id === "finance" || template.id === "sales-executive") {
+      assert.ok(template.permissions.includes("attendance:clock-in"));
+      assert.ok(template.permissions.includes("attendance:clock-out"));
+      assert.ok(template.permissions.includes("attendance:read-own"));
+    }
+  }
+});
+
+test("built-in member role grants self-service and assigned work, not CRM admin access", () => {
+  assert.equal("dashboard" in organizationMemberRole.statements, false);
+  assert.equal("customers" in organizationMemberRole.statements, false);
+  assert.equal("invoices" in organizationMemberRole.statements, false);
+  assert.equal("proposals" in organizationMemberRole.statements, false);
+  assert.deepEqual(organizationMemberRole.statements.attendance, [
+    "clock-in",
+    "clock-out",
+    "read-own",
+    "regularize",
+  ]);
+  assert.deepEqual(organizationMemberRole.statements.leave, [
+    "create",
+    "read-own",
+    "cancel-own",
+  ]);
+  assert.deepEqual(organizationMemberRole.statements.salary, ["read-own"]);
+  assert.deepEqual(organizationMemberRole.statements.tasks, [
+    "read-assigned",
+    "update-own",
+  ]);
+});
+
+test("own-record permission can enter proposal, invoice, and task routes", () => {
+  assert.deepEqual(
+    getOrganizationRoutePermissions("/dashboard/proposals"),
+    [
+      { resource: "proposals", permission: "read" },
+      { resource: "proposals", permission: "read-own" },
+    ],
+  );
+  assert.deepEqual(
+    getOrganizationRoutePermissions("/dashboard/invoices"),
+    [
+      { resource: "invoices", permission: "read" },
+      { resource: "invoices", permission: "read-own" },
+    ],
+  );
+  assert.deepEqual(
+    getOrganizationRoutePermissions("/dashboard/tasks"),
+    [
+      { resource: "tasks", permission: "read-all" },
+      { resource: "tasks", permission: "read-assigned" },
+      { resource: "tasks", permission: "read-own" },
+    ],
+  );
+});
+
+test("dashboard selection uses organization roles instead of global user roles", () => {
+  assert.equal(canReadDashboard("owner"), true);
+  assert.equal(canReadDashboard("admin"), true);
+  assert.equal(canReadDashboard("member"), false);
+  assert.equal(canReadDashboard("USER"), false);
 });
 
 test("staff model permissions remain limited to self-service and read-only data", () => {
@@ -80,12 +191,11 @@ test("salary management route excludes non-HR staff", () => {
   assert.equal(canAccessRoute("/dashboard/salary", UserRole.SUPER_ADMIN), true);
 });
 
-test("work schedule is restricted to HR staff and administrators", () => {
-  assert.equal(canAccessRoute("/dashboard/attendance/schedule", UserRole.STAFF, "HR"), true);
-  assert.equal(canAccessRoute("/dashboard/attendance/schedule", UserRole.STAFF, "DEVELOPMENT"), false);
-  assert.equal(canAccessRoute("/dashboard/attendance/schedule", UserRole.STAFF, null), false);
-  assert.equal(canAccessRoute("/dashboard/attendance/schedule", UserRole.ADMIN), true);
-  assert.equal(canAccessRoute("/dashboard/attendance/schedule", UserRole.SUPER_ADMIN), true);
+test("work schedule access is controlled by organization attendance permissions", () => {
+  assert.deepEqual(
+    getOrganizationRoutePermissions("/dashboard/attendance/schedule"),
+    [{ resource: "attendance", permission: "manage" }],
+  );
 });
 
 test("customer, proposal, and invoice routes are limited to admins and HR/Sales staff", () => {

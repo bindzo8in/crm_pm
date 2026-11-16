@@ -40,12 +40,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 interface AttendanceTableProps {
-  userRole: string;
-  userDepartment?: string;
+  canManageAttendance: boolean;
+  canViewAuditLogs: boolean;
 }
 
-export function AttendanceTable({ userRole, userDepartment }: AttendanceTableProps) {
-  const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN" || userDepartment === "HR";
+export function AttendanceTable({ canManageAttendance, canViewAuditLogs }: AttendanceTableProps) {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -203,7 +202,7 @@ export function AttendanceTable({ userRole, userDepartment }: AttendanceTablePro
               <ChevronDownIcon aria-hidden="true" className={`ml-1 size-3.5 transition-transform ${filtersOpen ? "rotate-180" : ""}`} />
             </Button>
 
-            {isAdmin && (
+            {canManageAttendance && (
               <Button
                 type="button"
                 size="sm"
@@ -214,7 +213,7 @@ export function AttendanceTable({ userRole, userDepartment }: AttendanceTablePro
                 Add entry
               </Button>
             )}
-            {isAdmin && (
+            {canManageAttendance && (
               <div className="sm:hidden">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -231,7 +230,7 @@ export function AttendanceTable({ userRole, userDepartment }: AttendanceTablePro
                 </DropdownMenu>
               </div>
             )}
-            {isAdmin && (
+            {canManageAttendance && (
               <ManualAttendanceEntryDialog
                 hideTrigger
                 open={manualEntryOpen}
@@ -439,7 +438,7 @@ export function AttendanceTable({ userRole, userDepartment }: AttendanceTablePro
                   <TableCell>{getStatusBadge(record.status, record.workMinutes, record.clockOut)}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
-                      {isAdmin && (
+                      {canManageAttendance && (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -450,15 +449,17 @@ export function AttendanceTable({ userRole, userDepartment }: AttendanceTablePro
                           <FileEditIcon className="w-4 h-4" />
                         </Button>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                        title="View Audit Trail"
-                        onClick={() => setSelectedRecordForAudit(record.id)}
-                      >
-                        <HistoryIcon className="w-4 h-4" />
-                      </Button>
+                      {canViewAuditLogs && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                          title="View Audit Trail"
+                          onClick={() => setSelectedRecordForAudit(record.id)}
+                        >
+                          <HistoryIcon className="w-4 h-4" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -491,31 +492,35 @@ export function AttendanceTable({ userRole, userDepartment }: AttendanceTablePro
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   {getStatusBadge(record.status, record.workMinutes, record.clockOut)}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        aria-label={`More actions for ${record.user?.name || "employee"} attendance`}
-                        className="size-8 rounded-lg"
-                      >
-                        <EllipsisIcon aria-hidden="true" className="size-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48">
-                      {isAdmin && (
-                        <DropdownMenuItem onSelect={() => setSelectedRecordForReg(record)}>
-                          <FileEditIcon aria-hidden="true" />
-                          Edit attendance
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem onSelect={() => setSelectedRecordForAudit(record.id)}>
-                        <HistoryIcon aria-hidden="true" />
-                        View audit trail
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  {(canManageAttendance || canViewAuditLogs) && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`More actions for ${record.user?.name || "employee"} attendance`}
+                          className="size-8 rounded-lg"
+                        >
+                          <EllipsisIcon aria-hidden="true" className="size-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        {canManageAttendance && (
+                          <DropdownMenuItem onSelect={() => setSelectedRecordForReg(record)}>
+                            <FileEditIcon aria-hidden="true" />
+                            Edit attendance
+                          </DropdownMenuItem>
+                        )}
+                        {canViewAuditLogs && (
+                          <DropdownMenuItem onSelect={() => setSelectedRecordForAudit(record.id)}>
+                            <HistoryIcon aria-hidden="true" />
+                            View audit trail
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
               </div>
 

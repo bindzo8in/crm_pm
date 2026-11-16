@@ -1,8 +1,11 @@
 "use server";
 
+import {
+    checkOrganizationPermission,
+    getActiveOrganizationId,
+} from "@/lib/organization-authorization";
 import { Prisma } from "@/app/generated/prisma/client";
 import { ActionResponse, errorResponse, successResponse } from "@/lib/action-response";
-import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { getErrorMessage } from "@/lib/schemas/prisma-utils";
 import { ServicePackageQuerySchema, servicePackageSchema, ServicePackageSchema } from "@/lib/schemas/service-package";
@@ -21,7 +24,7 @@ export async function CreateService(
     data: ServiceSchema
 ): Promise<ActionResponse<{ id: string }>> {
     try {
-        const hasPermission = await auth.api.userHasPermission({
+        const hasPermission = await checkOrganizationPermission({
             headers: await headers(),
             body: {
                 permissions: {
@@ -33,6 +36,10 @@ export async function CreateService(
             return errorResponse(
                 "You don't have permission to create a service"
             );
+        }
+        const organizationId = await getActiveOrganizationId();
+        if (!organizationId) {
+            return errorResponse("Choose an organization before creating a service");
         }
         const validatedData = serviceSchema.safeParse(data)
         if (!validatedData.success) {
@@ -48,7 +55,7 @@ export async function CreateService(
         });
         const existingService = await prisma.service.findUnique({
             where: {
-                slug
+                organizationId_slug: { organizationId, slug },
             }
         })
         if (existingService && !existingService.deletedAt) {
@@ -61,6 +68,7 @@ export async function CreateService(
                 },
                 data: {
                     deletedAt: null,
+                    organizationId,
                     name: validatedData.data.name,
                     slug,
                     description: validatedData.data.description,
@@ -78,6 +86,7 @@ export async function CreateService(
 
         const service = await prisma.service.create({
             data: {
+                organizationId,
                 name: validatedData.data.name,
                 slug,
                 description: validatedData.data.description,
@@ -101,7 +110,7 @@ export async function CreateService(
 
 export async function EditService(data: ServiceSchema) {
     try {
-        const hasPermission = await auth.api.userHasPermission({
+        const hasPermission = await checkOrganizationPermission({
             headers: await headers(),
             body: {
                 permissions: {
@@ -114,6 +123,8 @@ export async function EditService(data: ServiceSchema) {
                 "You don't have permission to update a service"
             );
         }
+        const organizationId = await getActiveOrganizationId();
+        if (!organizationId) return errorResponse("Choose an organization before updating a service");
         const validatedData = serviceSchema.safeParse(data);
         if (!validatedData.success) {
             return errorResponse(
@@ -122,8 +133,8 @@ export async function EditService(data: ServiceSchema) {
             );
         }
         const { id, name, description, showInProposal } = validatedData.data;
-        const service = await prisma.service.findUnique({
-            where: { id },
+        const service = await prisma.service.findFirst({
+            where: { id, organizationId },
             select: { id: true },
         });
         if (!service) {
@@ -136,6 +147,7 @@ export async function EditService(data: ServiceSchema) {
         });
         const duplicateSlug = await prisma.service.findFirst({
             where: {
+                organizationId,
                 slug,
                 deletedAt: null,
                 NOT: {
@@ -176,7 +188,7 @@ export async function EditService(data: ServiceSchema) {
 
 export async function UpdateServiceProposalVisibility(data: ServiceProposalVisibilitySchema) {
     try {
-        const hasPermission = await auth.api.userHasPermission({
+        const hasPermission = await checkOrganizationPermission({
             headers: await headers(),
             body: {
                 permissions: {
@@ -187,6 +199,8 @@ export async function UpdateServiceProposalVisibility(data: ServiceProposalVisib
         if (!hasPermission.success) {
             return errorResponse("You don't have permission to update a service");
         }
+        const organizationId = await getActiveOrganizationId();
+        if (!organizationId) return errorResponse("Choose an organization before updating a service");
 
         const validatedData = serviceProposalVisibilitySchema.safeParse(data);
         if (!validatedData.success) {
@@ -194,7 +208,7 @@ export async function UpdateServiceProposalVisibility(data: ServiceProposalVisib
         }
 
         const result = await prisma.service.updateMany({
-            where: { id: validatedData.data.id, deletedAt: null },
+            where: { id: validatedData.data.id, organizationId, deletedAt: null },
             data: { showInProposal: validatedData.data.showInProposal },
         });
         if (result.count === 0) {
@@ -215,9 +229,10 @@ export async function UpdateServiceProposalVisibility(data: ServiceProposalVisib
 
 export async function GetService(id: string) {
     try {
-
-        const service = await prisma.service.findUnique({
-            where: { id },
+        const organizationId = await getActiveOrganizationId();
+        if (!organizationId) return errorResponse("Choose an organization to view services");
+        const service = await prisma.service.findFirst({
+            where: { id, organizationId },
             select: {
                 id: true,
                 name: true,
@@ -246,9 +261,10 @@ export async function GetService(id: string) {
 
 export async function GetServiceNameById(id: string) {
     try {
-
-        const service = await prisma.service.findUnique({
-            where: { id },
+        const organizationId = await getActiveOrganizationId();
+        if (!organizationId) return errorResponse("Choose an organization to view services");
+        const service = await prisma.service.findFirst({
+            where: { id, organizationId },
             select: { id: true, name: true },
         });
 
@@ -271,7 +287,8 @@ export async function GetServiceNameById(id: string) {
 
 export async function GetServices(query: ServiceQuerySchema) {
     try {
-
+        const organizationId = await getActiveOrganizationId();
+        if (!organizationId) return errorResponse("Choose an organization to view services");
         const {
             page,
             pageSize,
@@ -281,6 +298,7 @@ export async function GetServices(query: ServiceQuerySchema) {
         } = query;
 
         const where: Prisma.ServiceWhereInput = {
+            organizationId,
             deletedAt: null,
             ...(search && {
                 name: {
@@ -348,7 +366,7 @@ export async function GetServices(query: ServiceQuerySchema) {
 
 export async function DeleteService(id: string) {
     try {
-        const hasPermission = await auth.api.userHasPermission({
+        const hasPermission = await checkOrganizationPermission({
             headers: await headers(),
             body: {
                 permissions: {
@@ -360,15 +378,17 @@ export async function DeleteService(id: string) {
         if (!hasPermission.success) {
             return errorResponse("You don't have permission to delete a service");
         }
-        const service = await prisma.service.findUnique({
-            where: { id },
+        const organizationId = await getActiveOrganizationId();
+        if (!organizationId) return errorResponse("Choose an organization before deleting a service");
+        const service = await prisma.service.findFirst({
+            where: { id, organizationId },
             select: { id: true },
         });
         if (!service) {
             return errorResponse("Service not found");
         }
-        await prisma.service.update({
-            where: { id },
+        await prisma.service.updateMany({
+            where: { id, organizationId },
             data: {
                 deletedAt: new Date(),
             },
@@ -388,7 +408,7 @@ export async function DeleteService(id: string) {
 export async function createServicePackage(data: ServicePackageSchema) {
     try {
 
-        const hasPermission = await auth.api.userHasPermission({
+        const hasPermission = await checkOrganizationPermission({
             headers: await headers(),
             body: {
                 permissions: {
@@ -400,6 +420,8 @@ export async function createServicePackage(data: ServicePackageSchema) {
         if (!hasPermission.success) {
             return errorResponse("You don't have permission to create a service package");
         }
+        const organizationId = await getActiveOrganizationId();
+        if (!organizationId) return errorResponse("Choose an organization before creating a service package");
 
         const validatedData = servicePackageSchema.safeParse(data)
 
@@ -411,6 +433,11 @@ export async function createServicePackage(data: ServicePackageSchema) {
         }
 
         const { name, description, serviceId, items, features, sacCode } = validatedData.data
+        const service = await prisma.service.findFirst({
+            where: { id: serviceId, organizationId, deletedAt: null },
+            select: { id: true },
+        });
+        if (!service) return errorResponse("Selected service does not belong to this organization");
 
         const totalPrice = items.reduce(
             (sum, item) => sum + item.unitPrice * item.quantity,
@@ -468,7 +495,7 @@ export async function editServicePackage(
 ) {
     try {
         const hasPermission =
-            await auth.api.userHasPermission({
+            await checkOrganizationPermission({
                 headers: await headers(),
                 body: {
                     permissions: {
@@ -482,6 +509,8 @@ export async function editServicePackage(
                 "You don't have permission to update service packages"
             );
         }
+        const organizationId = await getActiveOrganizationId();
+        if (!organizationId) return errorResponse("Choose an organization before updating a service package");
 
         const validatedData =
             servicePackageSchema.safeParse(data);
@@ -503,6 +532,11 @@ export async function editServicePackage(
             isPopular,
             sacCode
         } = validatedData.data;
+        const targetService = await prisma.service.findFirst({
+            where: { id: serviceId, organizationId, deletedAt: null },
+            select: { id: true },
+        });
+        if (!targetService) return errorResponse("Selected service does not belong to this organization");
 
         const totalPrice = items.reduce(
             (sum, item) => sum + item.unitPrice * item.quantity,
@@ -525,8 +559,8 @@ export async function editServicePackage(
                 console.log("Package ID:", id);
             }
 
-            const existingPackage = await tx.servicePackage.findUnique({
-                where: { id },
+            const existingPackage = await tx.servicePackage.findFirst({
+                where: { id, service: { organizationId } },
                 include: {
                     items: true,
                     features: true,
@@ -760,9 +794,12 @@ export async function editServicePackage(
 
 export async function getServicePackage(id: string) {
     try {
-        const servicePackage = await prisma.servicePackage.findUnique({
+        const organizationId = await getActiveOrganizationId();
+        if (!organizationId) return errorResponse("Choose an organization to view service packages");
+        const servicePackage = await prisma.servicePackage.findFirst({
             where: {
                 id,
+                service: { organizationId },
             },
             include: {
                 items: true,
@@ -804,8 +841,11 @@ export async function getServicePackage(id: string) {
 
 export async function GetServicesPackages(query: ServicePackageQuerySchema) {
     try {
+        const organizationId = await getActiveOrganizationId();
+        if (!organizationId) return errorResponse("Choose an organization to view service packages");
         const { page, pageSize, sortDirection, search, serviceId, isPopular, isActive } = query;
         const where: Prisma.ServicePackageWhereInput = {
+            service: { organizationId },
             ...(serviceId && { serviceId }),
             ...(isPopular != undefined && { isPopular }),
             ...(isActive != undefined && { isActive }),
@@ -890,6 +930,14 @@ export async function GetServicesPackages(query: ServicePackageQuerySchema) {
 }
 
 export async function updatePackageTotal(packageId: string) {
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) throw new Error("Choose an organization to update a service package");
+    const servicePackage = await prisma.servicePackage.findFirst({
+        where: { id: packageId, service: { organizationId } },
+        select: { id: true },
+    });
+    if (!servicePackage) throw new Error("Service package not found in the active organization");
+
     const items = await prisma.servicePackageItem.findMany({
         where: { packageId },
         select: {
@@ -914,7 +962,7 @@ export async function updatePackageTotal(packageId: string) {
 export async function DeleteServicePackage(id: string) {
     try {
         const hasPermission =
-            await auth.api.userHasPermission({
+            await checkOrganizationPermission({
                 headers: await headers(),
                 body: {
                     permissions: {
@@ -928,9 +976,14 @@ export async function DeleteServicePackage(id: string) {
                 "You don't have permission to delete service packages"
             );
         }
-        await prisma.servicePackage.delete({
-            where: { id },
+        const organizationId = await getActiveOrganizationId();
+        if (!organizationId) return errorResponse("Choose an organization before deleting a service package");
+        const ownedPackage = await prisma.servicePackage.findFirst({
+            where: { id, service: { organizationId } },
+            select: { id: true },
         });
+        if (!ownedPackage) return errorResponse("Service package not found");
+        await prisma.servicePackage.delete({ where: { id: ownedPackage.id } });
 
         revalidatePath("/dashboard/services", "layout");
         return successResponse("Service package deleted successfully");
@@ -947,7 +1000,7 @@ export async function DuplicateServicePackage(
 ): Promise<ActionResponse> {
     try {
         const hasPermission =
-            await auth.api.userHasPermission({
+            await checkOrganizationPermission({
                 headers: await headers(),
                 body: {
                     permissions: {
@@ -961,10 +1014,12 @@ export async function DuplicateServicePackage(
                 "You don't have permission to duplicate service packages"
             );
         }
+        const organizationId = await getActiveOrganizationId();
+        if (!organizationId) return errorResponse("Choose an organization before duplicating a service package");
 
         const servicePackage =
-            await prisma.servicePackage.findUnique({
-                where: { id },
+            await prisma.servicePackage.findFirst({
+                where: { id, service: { organizationId } },
                 include: {
                     items: true,
                     features: true,
@@ -1049,9 +1104,12 @@ export async function DuplicateServicePackage(
 
 export async function GetAllActivePackages() {
     try {
+        const organizationId = await getActiveOrganizationId();
+        if (!organizationId) return errorResponse("Choose an organization to view service packages");
         const packages = await prisma.servicePackage.findMany({
             where: {
                 isActive: true,
+                service: { organizationId },
             },
             select: {
                 id: true,
@@ -1087,8 +1145,11 @@ export async function GetAllActivePackages() {
 
 export async function GetAllActiveServices() {
     try {
+        const organizationId = await getActiveOrganizationId();
+        if (!organizationId) return errorResponse("Choose an organization to view services");
         const services = await prisma.service.findMany({
             where: {
+                organizationId,
                 deletedAt: null,
                 isActive: true,
             },
@@ -1114,8 +1175,11 @@ export async function GetAllActiveServices() {
 
 export async function GetServiceOptions(search?: string) {
     try {
+        const organizationId = await getActiveOrganizationId();
+        if (!organizationId) return errorResponse("Choose an organization to view services");
         const services = await prisma.service.findMany({
             where: {
+                organizationId,
                 deletedAt: null,
                 isActive: true,
 
@@ -1170,9 +1234,12 @@ export async function GetServicePackages(
     search?: string,
 ) {
     try {
+        const organizationId = await getActiveOrganizationId();
+        if (!organizationId) return errorResponse("Choose an organization to view service packages");
         const packages = await prisma.servicePackage.findMany({
             where: {
                 serviceId,
+                service: { organizationId },
                 isActive: true,
 
                 ...(search

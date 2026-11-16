@@ -1,8 +1,9 @@
 import prisma from "@/lib/prisma";
 
-export async function getInitialSetupStatus() {
+export async function getInitialSetupStatus(organizationId: string) {
   const [company, attendanceSettings] = await Promise.all([
     prisma.company.findFirst({
+      where: { organizationId },
       select: {
         displayName: true,
         legalName: true,
@@ -16,6 +17,7 @@ export async function getInitialSetupStatus() {
       },
     }),
     prisma.attendanceSettings.findFirst({
+      where: { organizationId },
       select: {
         expectedClockIn: true,
         expectedClockOut: true,

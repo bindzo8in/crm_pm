@@ -8,6 +8,8 @@ import { CreateInvoiceForm } from "@/components/invoice/create-invoice-form";
 import { requirePageAccess } from "@/lib/auth-guard";
 import { notFound } from "next/navigation";
 import { formatInIST } from "@/lib/date";
+import { getActiveOrganizationId } from "@/lib/organization-authorization";
+import { getOrganizationMemberOptions } from "@/repositories/organization-member-repository";
 
 interface EditInvoicePageProps {
   params: Promise<{ id: string }>;
@@ -24,10 +26,14 @@ export default async function EditInvoicePage({ params }: EditInvoicePageProps) 
   }
 
   const invoice = res.data;
+  const organizationId = await getActiveOrganizationId();
+  const assignees = organizationId
+    ? await getOrganizationMemberOptions(organizationId)
+    : [];
 
   return (
     <DashboardContainer title={`Edit Invoice - INV-${String(invoice.invoiceNumber).padStart(4, "0")}`} hideHeaderOnMobile>
-      <CreateInvoiceForm initialData={invoice} today={formatInIST(new Date(), "yyyy-MM-dd")} />
+      <CreateInvoiceForm initialData={invoice} today={formatInIST(new Date(), "yyyy-MM-dd")} assignees={assignees} />
     </DashboardContainer>
   );
 }

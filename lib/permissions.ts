@@ -3,9 +3,7 @@ import { createAccessControl } from "better-auth/plugins/access";
 import { defaultStatements, adminAc } from "better-auth/plugins/admin/access";
 import type { Prisma } from "@/app/generated/prisma/client";
 
-export const statement = {
-    ...defaultStatements,
-
+export const crmStatement = {
     dashboard: ["read"],
 
     users: [
@@ -20,6 +18,7 @@ export const statement = {
     customers: [
         "create",
         "read",
+        "read-own",
         "update",
         "delete",
     ],
@@ -27,23 +26,41 @@ export const statement = {
     proposals: [
         "create",
         "read",
+        "read-own",
         "update",
+        "update-own",
         "delete",
+        "delete-own",
         "send",
+        "send-own",
         "accept",
+        "accept-own",
     ],
 
     invoices: [
         "create",
         "read",
+        "read-own",
         "update",
+        "update-own",
         "delete",
+        "delete-own",
         "send",
+        "send-own",
         "record-payment",
+        "record-payment-own",
         "mark-paid",
+        "mark-paid-own",
     ],
 
     services: [
+        "create",
+        "read",
+        "update",
+        "delete",
+    ],
+
+    products: [
         "create",
         "read",
         "update",
@@ -61,19 +78,24 @@ export const statement = {
         "create",
         "read-all",
         "read-assigned",
+        "read-own",
         "update",
+        "update-own",
         "update-status",
         "manage-team",
         "view-budget",
         "archive",
+        "delete-own",
     ],
 
     tasks: [
         "create",
         "read-all",
         "read-assigned",
+        "read-own",
         "update",
         "delete",
+        "delete-own",
         "assign",
         "update-own",
     ],
@@ -165,13 +187,23 @@ export const statement = {
     ],
 } as const;
 
-export const roleLevel: Record<UserRole, number> = {
+export const statement = {
+    ...defaultStatements,
+    ...crmStatement,
+} as const;
+
+export const roleLevel: Readonly<Record<string, number>> = {
+    owner: 3,
+    admin: 2,
+    member: 1,
     [UserRole.SUPER_ADMIN]: 3,
     [UserRole.ADMIN]: 2,
     [UserRole.STAFF]: 1,
 };
 
 export const ac = createAccessControl(statement);
+
+export const userRole = ac.newRole({});
 
 export const superAdminRole = ac.newRole({
     ...adminAc.statements,
@@ -186,6 +218,7 @@ export const superAdminRole = ac.newRole({
     invoices: ["create", "read", "update", "delete", "send", "record-payment", "mark-paid"],
 
     services: ["create", "read", "update", "delete"],
+    products: ["create", "read", "update", "delete"],
 
     terms: ["create", "read", "update", "delete"],
 
@@ -228,6 +261,7 @@ export const adminRole = ac.newRole({
     invoices: ["create", "read", "update", "delete", "send", "record-payment", "mark-paid"],
 
     services: ["create", "read", "update", "delete"],
+    products: ["create", "read", "update", "delete"],
 
     terms: ["create", "read", "update", "delete"],
 
@@ -283,9 +317,16 @@ export const prismaModelPermissions = {
     Session: "session",
     Account: "user",
     Verification: "user",
+    Organization: "settings",
+    Member: "users",
+    Invitation: "users",
+    OrganizationRole: "users",
+    Team: "users",
+    TeamMember: "users",
     Customer: "customers",
     CustomerContact: "customers",
     Service: "services",
+    Product: "products",
     ServicePackage: "services",
     ServicePackageItem: "services",
     PackageFeature: "services",
@@ -347,88 +388,106 @@ export const prismaModelPermissions = {
     ChatMessageAttachment: "projects",
 } satisfies Record<Prisma.ModelName, keyof typeof statement>;
 
-export function canReadFinance(role: UserRole): boolean {
+export function canReadFinance(role: string): boolean {
     switch (role) {
+        case "owner":
+        case "admin":
         case UserRole.SUPER_ADMIN:
             return superAdminRole.statements.finance?.includes("read") ?? false;
         case UserRole.ADMIN:
             return adminRole.statements.finance?.includes("read") ?? false;
         case UserRole.STAFF:
             return false;
+        default:
+            return false;
     }
 }
 
-export function canReadDashboard(role: UserRole): boolean {
+export function canReadDashboard(role: string): boolean {
     switch (role) {
+        case "owner":
+        case "admin":
         case UserRole.SUPER_ADMIN:
             return superAdminRole.statements.dashboard?.includes("read") ?? false;
         case UserRole.ADMIN:
             return adminRole.statements.dashboard?.includes("read") ?? false;
         case UserRole.STAFF:
             return false;
+        default:
+            return false;
     }
 }
 
 export function canManageIssueReports(
-    user: { role: UserRole; department: Department | null },
+    user: { role: string; department: Department | null },
 ): boolean {
     return (
+        user.role === "owner" ||
+        user.role === "admin" ||
         user.role === UserRole.SUPER_ADMIN ||
         user.role === UserRole.ADMIN ||
-        (user.role === UserRole.STAFF && user.department === Department.HR)
+        ((user.role === UserRole.STAFF || user.role === "member") &&
+            user.department === Department.HR)
     );
 }
 
 export function canManageUser(
-    actorRole: UserRole,
-    targetRole: UserRole
+    actorRole: string,
+    targetRole: string
 ) {
-    return roleLevel[actorRole] > roleLevel[targetRole];
+    return (
+        Object.hasOwn(roleLevel, actorRole) &&
+        Object.hasOwn(roleLevel, targetRole) &&
+        roleLevel[actorRole] > roleLevel[targetRole]
+    );
 }
 
 export function canManageUserDirectory(
-    actorRole: UserRole,
+    actorRole: string,
     actorDepartment?: string | null,
 ): boolean {
     return (
+        actorRole === "owner" ||
+        actorRole === "admin" ||
         actorRole === UserRole.SUPER_ADMIN ||
         actorRole === UserRole.ADMIN ||
-        (actorRole === UserRole.STAFF && actorDepartment === Department.HR)
+        ((actorRole === UserRole.STAFF || actorRole === "member") &&
+            actorDepartment === Department.HR)
     );
 }
 
 export function canAssignUserDepartment(
-    actorRole: UserRole,
+    actorRole: string,
     actorDepartment: string | null | undefined,
-    targetRole: UserRole,
+    targetRole: string,
 ): boolean {
     if (!canManageUserDirectory(actorRole, actorDepartment)) {
         return false;
     }
 
-    return actorRole === UserRole.STAFF
-        ? targetRole === UserRole.STAFF
+    return actorRole === UserRole.STAFF || actorRole === "member"
+        ? targetRole === UserRole.STAFF || targetRole === "member"
         : canManageUser(actorRole, targetRole);
 }
 
 export function canManageEmploymentStatus(
-    actorRole: UserRole,
+    actorRole: string,
     actorDepartment: string | null | undefined,
-    targetRole: UserRole,
+    targetRole: string,
 ): boolean {
     if (!canManageUserDirectory(actorRole, actorDepartment)) {
         return false;
     }
 
-    return actorRole === UserRole.STAFF
-        ? targetRole === UserRole.STAFF
+    return actorRole === UserRole.STAFF || actorRole === "member"
+        ? targetRole === UserRole.STAFF || targetRole === "member"
         : canManageUser(actorRole, targetRole);
 }
 
 export function canManageAttendanceReportInclusion(
-    actorRole: UserRole,
+    actorRole: string,
     actorDepartment: string | null | undefined,
-    targetRole: UserRole,
+    targetRole: string,
 ): boolean {
     if (!canManageUserDirectory(actorRole, actorDepartment)) {
         return false;
@@ -436,6 +495,7 @@ export function canManageAttendanceReportInclusion(
 
     return (
         actorRole === UserRole.SUPER_ADMIN ||
+        actorRole === "owner" ||
         canManageEmploymentStatus(actorRole, actorDepartment, targetRole)
     );
 }

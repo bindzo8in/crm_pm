@@ -500,7 +500,8 @@ export function TaskWorkspace({
 
   function canUpdate(task: TaskWorkspaceData["items"][number]) {
     return data.permissions.canUpdateTasks ||
-      (data.permissions.canUpdateOwnTasks && task.assigneeId === data.actorId);
+      (data.permissions.canUpdateOwnTasks &&
+        (task.assigneeId === data.actorId || task.createdBy?.id === data.actorId));
   }
 
   const taskStatusOptionMap = new Map<string, MultiSelectOption>();

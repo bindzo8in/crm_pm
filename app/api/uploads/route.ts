@@ -2,10 +2,10 @@ import { v2 as cloudinary } from "cloudinary";
 import { z } from "zod";
 
 import { auth } from "@/lib/auth";
+import { checkOrganizationPermission } from "@/lib/organization-authorization";
 import { env } from "@/lib/env";
 import prisma from "@/lib/prisma";
 import { uploadScopes, type UploadScope } from "@/lib/upload-scopes";
-import { hasBusinessWorkspaceAccess, hasWorkspaceAccess } from "@/lib/workspace-access";
 
 export const runtime = "nodejs";
 
@@ -39,17 +39,12 @@ async function getAuthorizedUser(request: Request, scope: UploadScope) {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user) return null;
 
-  if (scope === "customer" && !hasBusinessWorkspaceAccess(session.user)) {
-    return null;
-  }
-
   if (scope === "account-profile" || scope === "attendance-profile") {
     return session.user;
   }
   if (scope === "proposal-signature") return null;
   if (scope === "task") {
-    if (!hasWorkspaceAccess(session.user)) return null;
-    const permission = await auth.api.userHasPermission({
+    const permission = await checkOrganizationPermission({
       headers: request.headers,
       body: { permissions: { tasks: ["update"] } },
     });
@@ -65,11 +60,11 @@ async function getAuthorizedUser(request: Request, scope: UploadScope) {
     terms: "terms",
   }[scope];
   const [canCreate, canUpdate] = await Promise.all([
-    auth.api.userHasPermission({
+    checkOrganizationPermission({
       headers: request.headers,
       body: { permissions: { [permissionScope]: ["create"] } },
     }),
-    auth.api.userHasPermission({
+    checkOrganizationPermission({
       headers: request.headers,
       body: { permissions: { [permissionScope]: ["update"] } },
     }),

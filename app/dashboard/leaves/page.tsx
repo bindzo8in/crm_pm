@@ -355,7 +355,7 @@ export default async function LeavesPage({
 }) {
   const user = await requireLeaveUser();
   const query = await searchParams;
-  const isManager = isLeaveManager(user);
+  const isManager = await isLeaveManager();
   const isStaff = user.role === UserRole.STAFF;
   const pageSize = 20;
   const managerPage = parsedPage(first(query.page));

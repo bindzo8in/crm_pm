@@ -1,5 +1,6 @@
 "use server";
 
+import { checkOrganizationPermission } from "@/lib/organization-authorization";
 import { Prisma } from "@/app/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import { errorResponse, successResponse } from "@/lib/action-response";
@@ -30,7 +31,7 @@ async function getSessionUser() {
 
 async function checkFinancePermission(action: "read" | "create" | "update" | "delete") {
   try {
-    const hasPermission = await auth.api.userHasPermission({
+    const hasPermission = await checkOrganizationPermission({
       headers: await headers(),
       body: {
         permissions: {

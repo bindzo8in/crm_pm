@@ -591,7 +591,8 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
                 ) : visibleProjectTasks.map((task) => {
                   const mayUpdate =
                     permissions.canUpdateTasks ||
-                    (permissions.canUpdateOwnTasks && task.assigneeId === data.actorId);
+                    (permissions.canUpdateOwnTasks &&
+                      (task.assigneeId === data.actorId || task.createdBy?.id === data.actorId));
                   return (
                     <article key={task.id} className="rounded-lg border p-3 sm:p-4">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -640,7 +641,9 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
                             options={taskStatusOptions}
                             className="h-9 max-w-36"
                           />
-                          {permissions.canDeleteTasks && (
+                          {(permissions.canDeleteTasks ||
+                            (permissions.canDeleteOwnTasks &&
+                              (task.assigneeId === data.actorId || task.createdBy?.id === data.actorId))) && (
                             <ConfirmDialog
                               trigger={<Button variant="ghost" size="sm" disabled={pending}><Trash2 aria-hidden="true" />Remove</Button>}
                               title="Remove task?"
@@ -919,13 +922,15 @@ export function ProjectWorkspace({ data }: { data: ProjectWorkspaceData }) {
             )}
             canMove={(task) => !pending && (
               permissions.canUpdateTasks ||
-              (permissions.canUpdateOwnTasks && task.assigneeId === data.actorId)
+              (permissions.canUpdateOwnTasks &&
+                (task.assigneeId === data.actorId || task.createdBy?.id === data.actorId))
             )}
             onMove={(taskId, status) => void updateTaskStatus(taskId, status)}
             renderTask={(task, dragHandle) => {
               const mayUpdate =
                 permissions.canUpdateTasks ||
-                (permissions.canUpdateOwnTasks && task.assigneeId === data.actorId);
+                (permissions.canUpdateOwnTasks &&
+                  (task.assigneeId === data.actorId || task.createdBy?.id === data.actorId));
               return (
                 <article className="rounded-lg border bg-card p-3">
                   <div className="flex items-start justify-between gap-1">

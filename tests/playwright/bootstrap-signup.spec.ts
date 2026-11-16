@@ -51,7 +51,9 @@ test("closes public registration after the first SUPER_ADMIN exists", async ({
       email: `blocked-bootstrap-${randomUUID()}@example.invalid`,
       password: "Playwright-test-password-2026",
     },
-    headers: { origin: new URL(page.url()).origin },
+    headers: {
+      origin: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? page.url()).origin,
+    },
   });
   expect(bootstrapSignup.status()).toBe(409);
   expect(await bootstrapSignup.json()).toMatchObject({

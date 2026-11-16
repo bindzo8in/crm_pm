@@ -10,8 +10,9 @@ test("manager can inspect shift rules and browser rejects malformed time values"
   );
 
   await attendancePage.open();
-  await page.getByRole("button", { name: /Shift Rules|Set up shift rules/ }).click();
+  await page.getByRole("button", { name: "Open attendance settings" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByText("Edit shift and office rules").click();
   await expect(page.getByText("Shift schedule and grace rules")).toBeVisible();
 
   const start = page.getByPlaceholder("09:00");

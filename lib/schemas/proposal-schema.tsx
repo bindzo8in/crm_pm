@@ -6,6 +6,7 @@ export const proposalSchema = z.object({
     customerId: z.string().nonempty("customer is required"),
     customerDisplayName: z.string().nonempty("customerDisplayName is required"),
     customerCompanyName: z.string().optional(),
+    assignedToId: z.string().max(128).nullable().optional(),
 
     title: z.string().trim(),
 

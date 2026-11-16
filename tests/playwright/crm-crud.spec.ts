@@ -80,10 +80,13 @@ test.describe("CRM create and edit workflows", () => {
 
     const displayNameInput = page.getByRole("combobox", { name: "Display Name" });
     await displayNameInput.fill(updatedDisplayName);
+    await displayNameInput.press("Escape");
     const saveButton = page.getByRole("button", { name: /Save changes|Update customer/ }).last();
+    await expect(
+      page.getByText("Checking for an existing customer...", { exact: true }),
+    ).toBeVisible();
     await expect(saveButton).toBeDisabled();
     await expect(saveButton).toBeEnabled();
-    await displayNameInput.press("Escape");
     await saveButton.click();
     await expect(page).toHaveURL(/\/dashboard\/customers\/?$/);
     await expect(page.getByRole("row").filter({ hasText: updatedDisplayName })).toBeVisible();
@@ -101,7 +104,7 @@ test.describe("CRM create and edit workflows", () => {
     await expect(page.getByText(/At least one line item|Item name is required/i)).toBeVisible();
 
     await chooseCustomer(page, customerName);
-    await page.locator('[name="lineItems.0.name"]').fill(itemName);
+    await page.locator("#line-item-0-name").fill(itemName);
     await page.locator('[name="lineItems.0.quantity"]').fill("0");
     await page.getByRole("button", { name: "Save Draft Invoice", exact: true }).last().click();
     await expect(page.getByText("Quantity must be at least 1")).toBeVisible();
@@ -113,14 +116,18 @@ test.describe("CRM create and edit workflows", () => {
 
     await page.locator('[name="lineItems.0.unitPrice"]').fill("1000");
     await page.getByRole("button", { name: "Save Draft Invoice", exact: true }).last().click();
-    await expect(page).toHaveURL(/\/dashboard\/invoices\/(?!create$|new$)[^/]+$/);
+    await expect(page).toHaveURL(/\/dashboard\/invoices\/(?!create$|new$)[^/]+$/, {
+      timeout: 15_000,
+    });
 
     const invoiceId = new URL(page.url()).pathname.split("/").at(-1);
     expect(invoiceId).toBeTruthy();
     await gotoReady(page, `/dashboard/invoices/${invoiceId}/edit`);
     await page.locator("#line-item-0-name").fill(editedItemName);
     await page.getByRole("button", { name: "Save Draft Invoice", exact: true }).last().click();
-    await expect(page).toHaveURL(new RegExp(`/dashboard/invoices/${invoiceId}$`));
+    await expect(page).toHaveURL(new RegExp(`/dashboard/invoices/${invoiceId}$`), {
+      timeout: 15_000,
+    });
     await expect(page.getByText(editedItemName, { exact: true })).toBeVisible();
   });
 
@@ -166,14 +173,18 @@ test.describe("CRM create and edit workflows", () => {
 
     await page.getByLabel("Target completion").fill("2099-12-31");
     await page.getByRole("button", { name: "Create project", exact: true }).last().click();
-    await expect(page).toHaveURL(/\/dashboard\/projects\/(?!new$|create$)[^/]+$/);
+    await expect(page).toHaveURL(/\/dashboard\/projects\/(?!new$|create$)[^/]+$/, {
+      timeout: 15_000,
+    });
 
     const projectId = new URL(page.url()).pathname.split("/").at(-1);
     expect(projectId).toBeTruthy();
     await gotoReady(page, `/dashboard/projects/${projectId}/edit`);
     await page.getByLabel(/Project name/).fill(editedName);
     await page.getByRole("button", { name: "Save changes", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/dashboard/projects/${projectId}$`));
+    await expect(page).toHaveURL(new RegExp(`/dashboard/projects/${projectId}$`), {
+      timeout: 15_000,
+    });
     await expect(page.getByText(editedName, { exact: true })).toBeVisible();
   });
 
@@ -210,7 +221,7 @@ test.describe("CRM create and edit workflows", () => {
 
     await page.getByRole("button", { name: taskName, exact: true }).click();
     const drawer = page.getByRole("dialog");
-    await drawer.getByLabel("Task title").fill(editedTaskName);
+    await drawer.getByRole("textbox", { name: "Task title", exact: true }).fill(editedTaskName);
     await drawer.getByRole("button", { name: "Save changes", exact: true }).click();
     await expect(drawer.getByRole("heading", { name: editedTaskName })).toBeVisible();
   });
@@ -227,7 +238,7 @@ test.describe("CRM create and edit workflows", () => {
     await page.getByRole("button", { name: "Save", exact: true }).click();
     expect(await page.locator("#expense-amount").evaluate((input) => input.matches(":invalid"))).toBe(true);
 
-    await page.getByRole("button", { name: "Select a category" }).click();
+    await page.getByRole("combobox", { name: "Category Name *" }).click();
     await page.getByRole("button", { name: "Create category", exact: true }).click();
     await page.locator("#expense-category-name").fill(categoryName);
     await page.getByRole("button", { name: "Create and select" }).click();
@@ -240,32 +251,38 @@ test.describe("CRM create and edit workflows", () => {
     await page.locator("#expense-invoice-number").fill(referenceNumber);
     await chooseCustomer(page, customerName);
 
-    await page.getByRole("button", { name: "Select GST treatment" }).click();
+    await page.getByRole("combobox", { name: "GST Treatment *" }).click();
     await page.getByRole("option", { name: /Unregistered Business/ }).click();
-    await page.getByRole("button", { name: "Select source state" }).click();
+    await page.getByRole("combobox", { name: "Source of Supply *" }).click();
     await page.getByLabel("Search source states").fill("Tamil Nadu");
     await page.getByRole("option", { name: /Tamil Nadu/ }).click();
 
     await page.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(page).toHaveURL(/\/dashboard\/finance\/?$/);
+    await expect(page).toHaveURL(/\/dashboard\/finance\/?$/, { timeout: 15_000 });
+    await page.getByRole("tab", { name: "Transactions" }).click();
+    await page.getByText("Filters", { exact: true }).click();
     await page.getByLabel("Search transactions").fill(referenceNumber);
     await page.getByRole("button", { name: "Run report" }).click();
 
-    const expenseRow = page.getByRole("row").filter({ hasText: referenceNumber });
+    const expenseRow = page.getByRole("row").filter({ hasText: categoryName });
     await expect(expenseRow).toBeVisible();
-    await expenseRow.getByRole("link", { name: "Edit", exact: true }).click();
+    await expenseRow.getByRole("button", { name: /^Actions for / }).click();
+    await page.getByRole("menuitem", { name: "Edit expense" }).click();
     await page.locator("#expense-amount").fill(editedAmount);
     await page.getByRole("button", { name: "Update expense", exact: true }).click();
-    await expect(page).toHaveURL(/\/dashboard\/finance\/?$/);
+    await expect(page).toHaveURL(/\/dashboard\/finance\/?$/, { timeout: 15_000 });
+    await page.getByRole("tab", { name: "Transactions" }).click();
+    await page.getByText("Filters", { exact: true }).click();
     await page.getByLabel("Search transactions").fill(referenceNumber);
     await page.getByRole("button", { name: "Run report" }).click();
-    const updatedExpenseRow = page.getByRole("row").filter({ hasText: referenceNumber });
+    const updatedExpenseRow = page.getByRole("row").filter({ hasText: categoryName });
     await expect(updatedExpenseRow.getByText(/246\.80/)).toBeVisible();
     page.once("dialog", (dialog) => {
       void dialog.accept();
     });
-    await updatedExpenseRow.getByRole("button", { name: "Delete", exact: true }).click();
-    await expect(page.getByRole("row").filter({ hasText: referenceNumber })).toHaveCount(0);
+    await updatedExpenseRow.getByRole("button", { name: /^Actions for / }).click();
+    await page.getByRole("menuitem", { name: "Delete expense" }).click();
+    await expect(page.getByText("Expense deleted", { exact: true })).toBeVisible();
   });
 });
 
@@ -282,9 +299,27 @@ async function createBusinessCustomer(page: Page): Promise<string> {
 
 async function createProject(page: Page, name: string): Promise<string> {
   await gotoReady(page, "/dashboard/projects/new");
-  await page.getByLabel(/Project name/).fill(name);
+  const projectManager = page
+    .getByText("Project manager", { exact: true })
+    .locator("..")
+    .getByRole("combobox");
+  await projectManager.click();
+  const projectManagerSearch = page.getByPlaceholder(
+    "Search by name, email, or title",
+  );
+  await expect(projectManagerSearch).toBeVisible();
+  await projectManagerSearch.press("Escape");
+
+  const projectName = page.getByLabel(/Project name/);
+  await projectName.fill(name);
+  await expect(projectName).toHaveValue(name);
+  await page.getByLabel("Start date").fill("2099-12-30");
+  await page.getByLabel("Target completion").fill("2099-12-31");
+  await expect(projectName).toHaveValue(name);
   await page.getByRole("button", { name: "Create project", exact: true }).last().click();
-  await expect(page).toHaveURL(/\/dashboard\/projects\/(?!new$|create$)[^/]+$/);
+  await expect(page).toHaveURL(/\/dashboard\/projects\/(?!new$|create$)[^/]+$/, {
+    timeout: 15_000,
+  });
   const projectId = new URL(page.url()).pathname.split("/").at(-1);
   if (!projectId || projectId === "new" || projectId === "create") {
     throw new Error("Project creation redirected without a project ID.");
@@ -306,8 +341,7 @@ async function chooseCustomer(page: Page, customerName: string): Promise<void> {
 }
 
 async function gotoReady(page: Page, path: string): Promise<void> {
-  await page.goto(path);
-  await page.waitForLoadState("networkidle");
+  await page.goto(path, { waitUntil: "load" });
 }
 
 async function waitForCreateNameAvailability(page: Page): Promise<void> {

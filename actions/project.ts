@@ -1,8 +1,6 @@
 "use server";
 
-import { UserRole } from "@/app/generated/prisma/enums";
 import { auth } from "@/lib/auth";
-import { hasWorkspaceAccess } from "@/lib/workspace-access";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import {
@@ -35,7 +33,7 @@ import {
 import { errorResponse, successResponse } from "@/lib/action-response";
 import {
   archiveProject,
-  canUpdateAssignedTask,
+  canUpdateOwnedTask,
   canViewProject,
   convertAcceptedProposalToProject,
   createProject,
@@ -62,6 +60,7 @@ import {
   updateProjectTaskChecklistItem,
 } from "@/services/project-service";
 import { canTransitionProject } from "@/lib/project-policy";
+import { getProposalPermissionScope } from "@/lib/proposal-permissions";
 import {
   formatProjectCode,
   getCustomerForProject,
@@ -86,18 +85,23 @@ type ProjectPermission =
   | "create"
   | "read-all"
   | "read-assigned"
+  | "read-own"
   | "update"
+  | "update-own"
   | "update-status"
   | "manage-team"
   | "view-budget"
-  | "archive";
+  | "archive"
+  | "delete-own";
 
 type TaskPermission =
   | "create"
   | "read-all"
   | "read-assigned"
+  | "read-own"
   | "update"
   | "delete"
+  | "delete-own"
   | "assign"
   | "update-own";
 
@@ -105,15 +109,10 @@ type InvoicePermission = "read";
 
 type ProjectActor = {
   id: string;
-  role: UserRole;
   canReadAll: boolean;
   canViewBudget: boolean;
   canManageProjects: boolean;
 };
-
-function isUserRole(role: string | null | undefined): role is UserRole {
-  return Object.values(UserRole).some((value) => value === role);
-}
 
 async function hasPermission(
   resource: "projects" | "tasks" | "invoices",
@@ -121,39 +120,52 @@ async function hasPermission(
 ) {
   const requestHeaders = await headers();
   const session = await auth.api.getSession({ headers: requestHeaders });
-  if (!session?.user || !hasWorkspaceAccess(session.user)) return null;
+  const organizationId = session?.session.activeOrganizationId;
+  if (!session?.user || !organizationId) return null;
 
-  const result = await auth.api.userHasPermission({
+  const result = await auth.api.hasPermission({
     headers: requestHeaders,
-    body: { permissions: { [resource]: [permission] } },
+    body: {
+      organizationId,
+      permissions: { [resource]: [permission] },
+    },
   });
-  return result.success ? session.user : null;
+  return result.success ? { id: session.user.id } : null;
+}
+
+async function canAccessProjectForTaskAction(projectId: string, userId: string) {
+  return Boolean(await hasPermission("projects", "read-all")) ||
+    await canViewProject(projectId, userId);
 }
 
 async function getProjectReadActor(): Promise<ProjectActor | null> {
   const requestHeaders = await headers();
   const session = await auth.api.getSession({ headers: requestHeaders });
-  if (!session?.user || !hasWorkspaceAccess(session.user)) return null;
-  const readAll = await auth.api.userHasPermission({
+  const organizationId = session?.session.activeOrganizationId;
+  if (!session?.user || !organizationId) return null;
+  const readAll = await auth.api.hasPermission({
     headers: requestHeaders,
-    body: { permissions: { projects: ["read-all"] } },
+    body: { organizationId, permissions: { projects: ["read-all"] } },
   });
-  const readAssigned = await auth.api.userHasPermission({
+  const readAssigned = await auth.api.hasPermission({
     headers: requestHeaders,
-    body: { permissions: { projects: ["read-assigned"] } },
+    body: { organizationId, permissions: { projects: ["read-assigned"] } },
   });
-  if (!readAll.success && !readAssigned.success) return null;
-  const viewBudget = await auth.api.userHasPermission({
+  const readOwn = await auth.api.hasPermission({
     headers: requestHeaders,
-    body: { permissions: { projects: ["view-budget"] } },
+    body: { organizationId, permissions: { projects: ["read-own"] } },
   });
-  const manageProjects = await auth.api.userHasPermission({
+  if (!readAll.success && !readAssigned.success && !readOwn.success) return null;
+  const viewBudget = await auth.api.hasPermission({
     headers: requestHeaders,
-    body: { permissions: { projects: ["update"] } },
+    body: { organizationId, permissions: { projects: ["view-budget"] } },
+  });
+  const manageProjects = await auth.api.hasPermission({
+    headers: requestHeaders,
+    body: { organizationId, permissions: { projects: ["update"] } },
   });
   return {
     id: session.user.id,
-    role: session.user.role as UserRole,
     canReadAll: readAll.success,
     canViewBudget: viewBudget.success,
     canManageProjects: manageProjects.success,
@@ -192,44 +204,42 @@ export async function getProjectTaskWorkspace(input: unknown) {
 
   const requestHeaders = await headers();
   const session = await auth.api.getSession({ headers: requestHeaders });
-  const sessionRole = session?.user?.role;
-  if (
-    !session?.user ||
-    !hasWorkspaceAccess(session.user) ||
-    !isUserRole(sessionRole)
-  ) {
+  if (!session?.user) {
     return errorResponse("You do not have permission to view tasks.");
   }
   const user = session.user;
-  const role = sessionRole;
   const checkRolePermission = (
     resource: "projects" | "tasks",
     permission: ProjectPermission | TaskPermission,
-  ) => auth.api.userHasPermission({
+  ) => auth.api.hasPermission({
+    headers: requestHeaders,
     body: {
-      role,
       permissions: { [resource]: [permission] },
     },
   });
   const [
     readAllUser,
     readAssignedUser,
+    readOwnUser,
     updateAllUser,
     updateOwnUser,
     createUser,
     readAllProjectsUser,
     readAssignedProjectsUser,
+    readOwnProjectsUser,
   ] =
     await Promise.all([
       checkRolePermission("tasks", "read-all"),
       checkRolePermission("tasks", "read-assigned"),
+      checkRolePermission("tasks", "read-own"),
       checkRolePermission("tasks", "update"),
       checkRolePermission("tasks", "update-own"),
       checkRolePermission("tasks", "create"),
       checkRolePermission("projects", "read-all"),
       checkRolePermission("projects", "read-assigned"),
+      checkRolePermission("projects", "read-own"),
     ]);
-  if (!readAllUser.success && !readAssignedUser.success) {
+  if (!readAllUser.success && !readAssignedUser.success && !readOwnUser.success) {
     return errorResponse("You do not have permission to view tasks.");
   }
 
@@ -238,8 +248,11 @@ export async function getProjectTaskWorkspace(input: unknown) {
       getProjectTaskWorkspacePage(parsed.data, {
         id: user.id,
         canReadAll: readAllUser.success,
+        canReadAssigned: readAssignedUser.success,
+        canReadOwn: readOwnUser.success,
       }),
-      createUser.success && (readAllProjectsUser.success || readAssignedProjectsUser.success)
+      createUser.success &&
+      (readAllProjectsUser.success || readAssignedProjectsUser.success || readOwnProjectsUser.success)
         ? getTaskCreationProjectOptions(user.id, readAllProjectsUser.success)
         : Promise.resolve({ items: [], hasMore: false }),
     ]);
@@ -249,6 +262,7 @@ export async function getProjectTaskWorkspace(input: unknown) {
       actorId: user.id,
       permissions: {
         canReadAll: readAllUser.success,
+        canReadOwn: readOwnUser.success,
         canUpdateTasks: updateAllUser.success,
         canUpdateOwnTasks: updateOwnUser.success,
         canCreateTasks: createUser.success,
@@ -339,25 +353,35 @@ export async function getProject(projectId: string) {
     if (!project) return errorResponse("Project not found or you do not have access.");
     const [
       canEdit,
+      canEditOwn,
       canChangeStatus,
       canArchive,
+      canDeleteOwnProject,
       canCreateTasks,
       canUpdateTasks,
       canUpdateOwnTasks,
       canDeleteTasks,
+      canDeleteOwnTasks,
       canManageTeam,
       canReadInvoices,
     ] = await Promise.all([
       hasPermission("projects", "update"),
+      hasPermission("projects", "update-own"),
       hasPermission("projects", "update-status"),
       hasPermission("projects", "archive"),
+      hasPermission("projects", "delete-own"),
       hasPermission("tasks", "create"),
       hasPermission("tasks", "update"),
       hasPermission("tasks", "update-own"),
       hasPermission("tasks", "delete"),
+      hasPermission("tasks", "delete-own"),
       hasPermission("projects", "manage-team"),
       hasPermission("invoices", "read"),
     ]);
+    const assignedToProject = await canViewProject(projectId, actor.id);
+    const canEditThisProject = Boolean(canEdit) || (Boolean(canEditOwn) && assignedToProject);
+    const canArchiveThisProject = Boolean(canArchive) ||
+      (Boolean(canDeleteOwnProject) && assignedToProject);
     const relatedInvoices = canReadInvoices
       ? await getRelatedInvoicesForProject(project.customerId, project.proposalId)
       : [];
@@ -367,13 +391,15 @@ export async function getProject(projectId: string) {
       project,
       actorId: actor.id,
       permissions: {
-        canEdit: Boolean(canEdit),
-        canChangeStatus: Boolean(canChangeStatus),
-        canArchive: Boolean(canArchive),
+        canEdit: canEditThisProject,
+        canChangeStatus: Boolean(canChangeStatus) ||
+          (Boolean(canEditOwn) && assignedToProject),
+        canArchive: canArchiveThisProject,
         canCreateTasks: Boolean(canCreateTasks),
         canUpdateTasks: Boolean(canUpdateTasks),
         canUpdateOwnTasks: Boolean(canUpdateOwnTasks),
         canDeleteTasks: Boolean(canDeleteTasks),
+        canDeleteOwnTasks: Boolean(canDeleteOwnTasks),
         canManageTeam: Boolean(canManageTeam),
         canManageProjects: actor.canManageProjects,
         canReadAllTasks: actor.canReadAll,
@@ -392,6 +418,12 @@ export async function getProjectCreationContext(input: unknown) {
   if (!user) return errorResponse("You do not have permission to create projects.");
   const parsed = projectCreationContextSchema.safeParse(input);
   if (!parsed.success) return errorResponse("Project form options are invalid.", parsed.error.issues);
+  if (
+    parsed.data.proposalId &&
+    !(await getProposalPermissionScope("read", "read-own", parsed.data.proposalId))
+  ) {
+    return errorResponse("Proposal not found or you do not have access.");
+  }
 
   try {
     const canManageTeam = await hasPermission("projects", "manage-team");
@@ -454,13 +486,20 @@ export async function getProjectCreationContext(input: unknown) {
 }
 
 export async function getProjectEditContext(projectId: string) {
-  const user = await hasPermission("projects", "update");
-  if (!user) return errorResponse("You do not have permission to edit projects.");
   if (typeof projectId !== "string" || projectId.trim().length === 0 || projectId.length > 100) {
     return errorResponse("Project ID is invalid.");
   }
+  const [updateUser, updateOwnUser] = await Promise.all([
+    hasPermission("projects", "update"),
+    hasPermission("projects", "update-own"),
+  ]);
+  const user = updateUser ?? updateOwnUser;
+  if (!user) return errorResponse("You do not have permission to edit projects.");
   const actor = await getProjectReadActor();
   if (!actor) return errorResponse("You do not have permission to view projects.");
+  if (!updateUser && !(await canViewProject(projectId, user.id))) {
+    return errorResponse("Project not found or you do not have access.");
+  }
 
   try {
     const project = await getProjectById(projectId, actor);
@@ -476,7 +515,7 @@ export async function getProjectEditContext(projectId: string) {
       project,
       users: options.users,
       currentUserId: user.id,
-      canManageProjects: true,
+      canManageProjects: Boolean(updateUser),
       canManageTeam: false,
       canManageBudget: Boolean(canManageBudget),
     });
@@ -586,6 +625,9 @@ export async function convertProposalToProjectAction(
   }
   const parsed = projectInputSchema.safeParse(input);
   if (!parsed.success) return errorResponse("Project details are invalid.", parsed.error.issues);
+  if (!(await getProposalPermissionScope("read", "read-own", proposalId))) {
+    return errorResponse("Proposal not found or you do not have access.");
+  }
 
   try {
     const [canManageTeam, canManageBudget, canManageProjects] = await Promise.all([
@@ -620,14 +662,19 @@ export async function convertProposalToProjectAction(
 }
 
 export async function updateProjectAction(input: unknown) {
-  const user = await hasPermission("projects", "update");
-  if (!user) return errorResponse("You do not have permission to edit project details.");
   const parsed = projectUpdateSchema.safeParse(input);
   if (!parsed.success) return errorResponse("Project details are invalid.", parsed.error.issues);
-  const [canManageTeam, canManageBudget] = await Promise.all([
+  const [updateUser, updateOwnUser, canManageTeam, canManageBudget] = await Promise.all([
+    hasPermission("projects", "update"),
+    hasPermission("projects", "update-own"),
     hasPermission("projects", "manage-team"),
     hasPermission("projects", "view-budget"),
   ]);
+  const user = updateUser ?? updateOwnUser;
+  if (!user) return errorResponse("You do not have permission to edit project details.");
+  if (!updateUser && !(await canViewProject(parsed.data.projectId, user.id))) {
+    return errorResponse("Project not found or you do not have access.");
+  }
   if (!canManageTeam && (
     parsed.data.projectManagerId !== undefined ||
     parsed.data.teamMemberIds !== undefined
@@ -636,6 +683,9 @@ export async function updateProjectAction(input: unknown) {
   }
   if (!canManageBudget && parsed.data.budgetAmount !== undefined) {
     return errorResponse("You do not have permission to change project budgets.");
+  }
+  if (!updateUser && parsed.data.internalNotes !== undefined) {
+    return errorResponse("You do not have permission to change internal project notes.");
   }
 
   try {
@@ -665,14 +715,15 @@ export async function updateProjectAction(input: unknown) {
 export async function updateProjectStatusAction(input: unknown) {
   const parsed = projectStatusUpdateSchema.safeParse(input);
   if (!parsed.success) return errorResponse("Project status update is invalid.", parsed.error.issues);
-  const [statusUser, adminUser] = await Promise.all([
+  const [statusUser, adminUser, ownUser] = await Promise.all([
     hasPermission("projects", "update-status"),
     hasPermission("projects", "update"),
+    hasPermission("projects", "update-own"),
   ]);
-  const user = statusUser ?? adminUser;
+  const user = statusUser ?? adminUser ?? ownUser;
   if (!user) return errorResponse("You do not have permission to change project status.");
-  const isAdmin = user.role !== UserRole.STAFF;
-  if (!isAdmin && !(await canViewProject(parsed.data.projectId, user.id))) {
+  const canReadAllProjects = await hasPermission("projects", "read-all");
+  if (!canReadAllProjects && !(await canViewProject(parsed.data.projectId, user.id))) {
     return errorResponse("Project not found or you do not have access.");
   }
 
@@ -687,10 +738,17 @@ export async function updateProjectStatusAction(input: unknown) {
 }
 
 export async function archiveProjectAction(projectId: string) {
-  const user = await hasPermission("projects", "archive");
+  const [archiveUser, deleteOwnUser] = await Promise.all([
+    hasPermission("projects", "archive"),
+    hasPermission("projects", "delete-own"),
+  ]);
+  const user = archiveUser ?? deleteOwnUser;
   if (!user) return errorResponse("You do not have permission to archive projects.");
   if (typeof projectId !== "string" || projectId.trim().length === 0) {
     return errorResponse("Project ID is required.");
+  }
+  if (!archiveUser && !(await canViewProject(projectId, user.id))) {
+    return errorResponse("Project not found or you do not have access.");
   }
 
   try {
@@ -708,7 +766,7 @@ export async function createProjectTaskAction(input: unknown) {
   if (!user) return errorResponse("You do not have permission to create tasks.");
   const parsed = projectTaskInputSchema.safeParse(input);
   if (!parsed.success) return errorResponse("Task details are invalid.", parsed.error.issues);
-  if (user.role === UserRole.STAFF && !(await canViewProject(parsed.data.projectId, user.id))) {
+  if (!(await canAccessProjectForTaskAction(parsed.data.projectId, user.id))) {
     return errorResponse("Project not found or you do not have access.");
   }
 
@@ -727,7 +785,7 @@ export async function createProjectTaskFolderAction(input: unknown) {
   if (!parsed.success) return errorResponse("Folder details are invalid.", parsed.error.issues);
   const user = await hasPermission("projects", "update");
   if (!user) return errorResponse("You do not have permission to manage project folders.");
-  if (user.role === UserRole.STAFF && !(await canViewProject(parsed.data.projectId, user.id))) {
+  if (!(await canAccessProjectForTaskAction(parsed.data.projectId, user.id))) {
     return errorResponse("Project not found or you do not have access.");
   }
 
@@ -749,7 +807,7 @@ export async function updateProjectTaskFolderAction(input: unknown) {
   if (!parsed.success) return errorResponse("Folder details are invalid.", parsed.error.issues);
   const user = await hasPermission("projects", "update");
   if (!user) return errorResponse("You do not have permission to manage project folders.");
-  if (user.role === UserRole.STAFF && !(await canViewProject(parsed.data.projectId, user.id))) {
+  if (!(await canAccessProjectForTaskAction(parsed.data.projectId, user.id))) {
     return errorResponse("Project not found or you do not have access.");
   }
 
@@ -771,7 +829,7 @@ export async function deleteProjectTaskFolderAction(input: unknown) {
   if (!parsed.success) return errorResponse("Folder details are invalid.", parsed.error.issues);
   const user = await hasPermission("projects", "update");
   if (!user) return errorResponse("You do not have permission to manage project folders.");
-  if (user.role === UserRole.STAFF && !(await canViewProject(parsed.data.projectId, user.id))) {
+  if (!(await canAccessProjectForTaskAction(parsed.data.projectId, user.id))) {
     return errorResponse("Project not found or you do not have access.");
   }
 
@@ -795,7 +853,7 @@ export async function updateProjectTaskAction(input: unknown) {
   const user = updateUser ?? ownUser;
   if (!user) return errorResponse("You do not have permission to update tasks.");
   const isAdmin = updateUser !== null;
-  if (!isAdmin && !(await canUpdateAssignedTask(parsed.data.taskId, user.id))) {
+  if (!isAdmin && !(await canUpdateOwnedTask(parsed.data.taskId, user.id))) {
     return errorResponse("Task not found or you do not have access.");
   }
 
@@ -816,10 +874,15 @@ async function revalidateTaskViews(taskId: string) {
 }
 
 async function authorizeTaskUpdate(taskId: string) {
-  const user = await hasPermission("tasks", "update");
+  const [updateUser, ownUser] = await Promise.all([
+    hasPermission("tasks", "update"),
+    hasPermission("tasks", "update-own"),
+  ]);
+  const user = updateUser ?? ownUser;
   if (!user) return null;
   const task = await findTaskForProject(taskId);
-  return task ? { user, task } : null;
+  if (!task || (!updateUser && !(await canUpdateOwnedTask(taskId, user.id)))) return null;
+  return { user, task };
 }
 
 async function authorizeTaskTimer(taskId: string) {
@@ -830,26 +893,28 @@ async function authorizeTaskTimer(taskId: string) {
   const user = updateUser ?? ownUser;
   if (!user) return null;
   const task = await findTaskForProject(taskId);
-  if (!task || (!updateUser && !(await canUpdateAssignedTask(taskId, user.id)))) return null;
+  if (!task || (!updateUser && !(await canUpdateOwnedTask(taskId, user.id)))) return null;
   return { user, task };
 }
 
 export async function getProjectTaskPreviewAction(input: unknown) {
   const parsed = projectTaskIdSchema.safeParse(input);
   if (!parsed.success) return errorResponse("Task ID is invalid.", parsed.error.issues);
-  const [readAllUser, readAssignedUser, updateUser, updateOwnUser, createUser] =
+  const [readAllUser, readAssignedUser, readOwnUser, updateUser, updateOwnUser, createUser] =
     await Promise.all([
       hasPermission("tasks", "read-all"),
       hasPermission("tasks", "read-assigned"),
+      hasPermission("tasks", "read-own"),
       hasPermission("tasks", "update"),
       hasPermission("tasks", "update-own"),
       hasPermission("tasks", "create"),
     ]);
-  const [readAllProjectsUser, readAssignedProjectsUser] = await Promise.all([
+  const [readAllProjectsUser, readAssignedProjectsUser, readOwnProjectsUser] = await Promise.all([
     hasPermission("projects", "read-all"),
     hasPermission("projects", "read-assigned"),
+    hasPermission("projects", "read-own"),
   ]);
-  const user = readAllUser ?? readAssignedUser ?? readAllProjectsUser ?? readAssignedProjectsUser;
+  const user = readAllUser ?? readAssignedUser ?? readOwnUser ?? readAllProjectsUser ?? readAssignedProjectsUser ?? readOwnProjectsUser;
   if (!user) return errorResponse("You do not have permission to view tasks.");
 
   try {
@@ -858,25 +923,29 @@ export async function getProjectTaskPreviewAction(input: unknown) {
       return errorResponse("Task not found or you do not have access.");
     }
     const canReadThroughProject = Boolean(readAllProjectsUser) ||
-      Boolean(readAssignedProjectsUser && await canViewProject(task.projectId, user.id));
+      Boolean((readAssignedProjectsUser || readOwnProjectsUser) && await canViewProject(task.projectId, user.id));
     const canReadTask = Boolean(readAllUser) ||
       Boolean(readAssignedUser && task.assigneeId === user.id) ||
+      Boolean(readOwnUser && (task.assigneeId === user.id || task.createdById === user.id)) ||
       canReadThroughProject;
     if (!canReadTask) return errorResponse("Task not found or you do not have access.");
     const preview = await getProjectTaskPreview(task.id, {
       id: user.id,
       canReadAll: Boolean(readAllUser || canReadThroughProject),
+      canReadAssigned: Boolean(readAssignedUser),
+      canReadOwn: Boolean(readOwnUser),
     });
     if (!preview) return errorResponse("Task not found or you do not have access.");
+    const canReadAllProjects = Boolean(await hasPermission("projects", "read-all"));
     const canCreateSubtasks = Boolean(createUser) &&
-      (user.role !== UserRole.STAFF || Boolean(await getProjectAssignment(task.projectId, user.id)));
+      (canReadAllProjects || Boolean(await getProjectAssignment(task.projectId, user.id)));
     return successResponse("Task details loaded.", {
       ...preview,
       actorId: user.id,
       permissions: {
-        canUpdate: Boolean(updateUser),
+        canUpdate: Boolean(updateUser || (updateOwnUser && await canUpdateOwnedTask(task.id, user.id))),
         canCreateSubtasks,
-        canTrackTime: Boolean(updateUser || (updateOwnUser && task.assigneeId === user.id)),
+        canTrackTime: Boolean(updateUser || (updateOwnUser && await canUpdateOwnedTask(task.id, user.id))),
       },
     });
   } catch (error) {
@@ -1037,10 +1106,17 @@ export async function stopProjectTaskTimerAction(input: unknown) {
 }
 
 export async function deleteProjectTaskAction(taskId: string) {
-  const user = await hasPermission("tasks", "delete");
+  const [deleteUser, deleteOwnUser] = await Promise.all([
+    hasPermission("tasks", "delete"),
+    hasPermission("tasks", "delete-own"),
+  ]);
+  const user = deleteUser ?? deleteOwnUser;
   if (!user) return errorResponse("You do not have permission to delete tasks.");
   if (typeof taskId !== "string" || taskId.trim().length === 0) {
     return errorResponse("Task ID is required.");
+  }
+  if (!deleteUser && !(await canUpdateOwnedTask(taskId, user.id))) {
+    return errorResponse("Task not found or you do not have access.");
   }
 
   try {

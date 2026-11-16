@@ -40,10 +40,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { getUsers } from "@/actions/user";
 import { formatInIST, getAttendanceDate } from "@/lib/date";
 
-type UserRow = Awaited<ReturnType<typeof getUsers>>["users"][number];
+type EmployeeOffboardingUser = {
+  id: string;
+  name: string;
+  employmentStatus: EmploymentStatus;
+  employmentEndedAt: Date | null;
+};
 
 const formSchema = z.object({
   effectiveDate: z.string().min(1, "Choose an effective date."),
@@ -60,7 +64,7 @@ export function OffboardEmployeeDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  user: UserRow;
+  user: EmployeeOffboardingUser;
 }) {
   const [error, setError] = useState<string | null>(null);
   const isActive = user.employmentStatus === EmploymentStatus.ACTIVE;

@@ -1,7 +1,7 @@
 "use server";
 
+import { checkOrganizationPermission } from "@/lib/organization-authorization";
 import { randomBytes } from "node:crypto";
-import { UserRole } from "@/app/generated/prisma/enums";
 import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { sendSalaryPinResetEmail } from "@/lib/email";
@@ -35,22 +35,7 @@ async function getSalaryManager() {
     return null;
   }
 
-  const isSalaryManager =
-    session.user.role === UserRole.SUPER_ADMIN ||
-    session.user.role === UserRole.ADMIN ||
-    (session.user.role === UserRole.STAFF && session.user.department === "HR");
-
-  if (!isSalaryManager) {
-    return null;
-  }
-  if (
-    session.user.role === UserRole.STAFF &&
-    session.user.department === "HR"
-  ) {
-    return session.user;
-  }
-
-  const permission = await auth.api.userHasPermission({
+  const permission = await checkOrganizationPermission({
     headers: requestHeaders,
     body: { permissions: { salary: ["read-all"] } },
   });

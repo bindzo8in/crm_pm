@@ -1,16 +1,17 @@
 "use client"
 
-import { ColumnDef } from "@tanstack/react-table"
+import type { ColumnDef } from "@tanstack/react-table"
 import { CheckCircle, XCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { UserActions } from "./user-actions"
-import { getUsers } from "@/actions/user"
-import { EmploymentStatus } from "@/app/generated/prisma/enums"
-import { formatInIST } from "@/lib/date"
-import { getDepartmentMemberships } from "@/lib/departments"
+import type { getUsers } from "@/actions/user"
 
 type UserRow = Awaited<ReturnType<typeof getUsers>>["users"][number];
+
+function formatRole(role: string) {
+    return role.replace(/[-_]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 function initials(name: string) {
     return name
@@ -22,7 +23,8 @@ function initials(name: string) {
         .toUpperCase() || "U";
 }
 
-export const columns: ColumnDef<UserRow>[] = [
+export function createUserColumns(canManageOrganization: boolean): ColumnDef<UserRow>[] {
+  return [
     {
         accessorKey: "name",
         header: "Name",
@@ -46,43 +48,30 @@ export const columns: ColumnDef<UserRow>[] = [
         accessorKey: "role",
         header: "Role",
         cell: ({ row }) => (
-            <div className="flex items-center gap-x-2">
-                {row.original.role ? row.original.role : "-"}
-            </div>
+            <Badge variant={row.original.role === "owner" ? "secondary" : "outline"}>
+                {formatRole(row.original.role)}
+            </Badge>
         )
     },
     {
-        accessorKey: "department",
-        header: "Department",
+        accessorKey: "teams",
+        header: "Teams",
         cell: ({ row }) => {
-            const departments = getDepartmentMemberships(row.original);
             return (
-                <div
-                    aria-label={
-                        row.original.department
-                            ? `Primary department: ${row.original.department}. Additional departments: ${departments.filter((department) => department !== row.original.department).join(", ") || "none"}.`
-                            : "No primary department assigned."
-                    }
-                    className="flex flex-wrap gap-1"
-                >
-                    {departments.length > 0
-                    ? departments.map((department) => (
+                <div className="flex flex-wrap gap-1">
+                    {row.original.teams.length > 0
+                    ? row.original.teams.map((team) => (
                         <Badge
-                            key={department}
-                            variant={department === row.original.department ? "secondary" : "outline"}
+                            key={team.id}
+                            variant="outline"
                             className="rounded-md px-2 py-0.5 text-xs font-medium"
                         >
-                            {department}
-                            {department === row.original.department && (
-                                <span className="ml-1 text-[10px] text-muted-foreground">
-                                    Primary
-                                </span>
-                            )}
+                            {team.name}
                         </Badge>
                     ))
                     : (
                         <Badge variant="secondary" className="rounded-md px-2 py-0.5 text-xs font-medium">
-                            Unassigned
+                            No team
                         </Badge>
                     )}
                 </div>
@@ -90,83 +79,42 @@ export const columns: ColumnDef<UserRow>[] = [
         }
     },
     {
-        accessorKey: "employmentStatus",
-        header: "Employment",
-        cell: ({ row }) => {
-            const isActive = row.original.employmentStatus === EmploymentStatus.ACTIVE;
-            return (
-                <div className="space-y-1">
-                    <Badge
-                        variant="outline"
-                        className={isActive ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}
-                    >
-                        {isActive ? "Active" : "Inactive"}
-                    </Badge>
-                    {!isActive && row.original.employmentEndedAt && (
-                        <p className="text-xs text-muted-foreground">
-                            Since {formatInIST(new Date(row.original.employmentEndedAt), "dd/MM/yyyy")}
-                        </p>
-                    )}
-                </div>
-            );
-        },
-    },
-    {
-        accessorKey: "workMode",
-        header: "Work Mode",
-        cell: ({ row }) => (
-            <Badge variant="secondary" className="text-xs">
-                {row.original.workMode ?? "OFFICE"}
-            </Badge>
-        )
-    },
-    {
-        accessorKey: "includeInAttendanceReports",
-        header: "Attendance report",
-        cell: ({ row }) => (
-            <Badge
-                variant={row.original.includeInAttendanceReports ? "outline" : "secondary"}
-                className={
-                    row.original.includeInAttendanceReports
-                        ? "text-emerald-600 dark:text-emerald-400"
-                        : "text-muted-foreground"
-                }
-            >
-                {row.original.includeInAttendanceReports ? "Included" : "Excluded"}
-            </Badge>
-        ),
-    },
-    {
         accessorKey: "emailVerified",
-        header: "Email Verified",
-        cell: ({ row }) => (
-            <>
-                {row.original.emailVerified ? (
-                    <div className="flex items-center gap-x-2">
-                        <CheckCircle className="size-4 text-green-500" />
-                        <span className="text-sm font-medium text-green-500">Yes</span>
-                    </div>
-                ) : (
-                    <div className="flex items-center gap-x-2">
-                        <XCircle className="size-4 text-red-500" />
-                        <span>No</span>
-                    </div>
-                )}
-            </>
-        )
+        header: "Email verified",
+        cell: ({ row }) =>
+            row.original.emailVerified ? (
+                <Badge variant="secondary" className="gap-1.5">
+                    <CheckCircle />
+                    Verified
+                </Badge>
+            ) : (
+                <Badge variant="outline" className="gap-1.5">
+                    <XCircle />
+                    Not verified
+                </Badge>
+            ),
     },
     {
         accessorKey: "createdAt",
-        header: "Created At",
+        header: "Joined",
         cell: ({ row }) => {
-            const dateValue = row.getValue("createdAt") as Date;
-            if (!dateValue) return "N/A";
-            return formatInIST(new Date(dateValue), "dd/MM/yyyy");
+            const dateValue = row.original.createdAt;
+            return new Intl.DateTimeFormat("en-IN", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+            }).format(new Date(dateValue));
         },
     },
     {
         id: "actions",
         header: "Actions",
-        cell: ({ row }) => <UserActions user={row.original} />
+        cell: ({ row }) => (
+            <UserActions
+                user={row.original}
+                canManageOrganization={canManageOrganization}
+            />
+        )
     }
-]
+  ];
+}

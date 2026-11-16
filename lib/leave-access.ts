@@ -1,44 +1,17 @@
+import { checkOrganizationPermission } from "@/lib/organization-authorization";
 import { auth } from "@/lib/auth";
 import { ActionError } from "@/lib/action-error";
-import {
-  canManageHolidays,
-  isLeaveManager,
-} from "@/lib/leave-permissions";
-import type { Department } from "@/app/generated/prisma/enums";
-import { hasWorkspaceAccess } from "@/lib/workspace-access";
 import { headers } from "next/headers";
-import prisma from "@/lib/prisma";
-import { getDepartmentMemberships } from "@/lib/departments";
 
 type Session = typeof auth.$Infer.Session;
 export type LeaveUser = Session["user"];
-
-export { canManageHolidays, isLeaveManager };
-
-export async function getHolidayDepartments(
-  user: LeaveUser,
-): Promise<Department[] | undefined> {
-  if (canManageHolidays(user)) return undefined;
-  const record = await prisma.user.findUnique({
-    where: { id: user.id },
-    select: { department: true, additionalDepartments: true },
-  });
-  const memberships = record ? getDepartmentMemberships(record) : [];
-  if (memberships.length === 0) {
-    throw new ActionError(
-      "Your department memberships are not configured for holiday access.",
-      403,
-    );
-  }
-  return memberships;
-}
 
 type LeaveSelfPermission = "create" | "read-own" | "cancel-own";
 type LeaveManagerPermission = "read-all" | "review";
 type HolidayManagerPermission = "create" | "update" | "delete";
 
 async function hasLeavePermission(permission: LeaveSelfPermission | LeaveManagerPermission) {
-  const result = await auth.api.userHasPermission({
+  const result = await checkOrganizationPermission({
     headers: await headers(),
     body: { permissions: { leave: [permission] } },
   });
@@ -46,29 +19,42 @@ async function hasLeavePermission(permission: LeaveSelfPermission | LeaveManager
 }
 
 async function hasHolidayPermission(permission: "read" | HolidayManagerPermission) {
-  const result = await auth.api.userHasPermission({
+  const result = await checkOrganizationPermission({
     headers: await headers(),
     body: { permissions: { holidays: [permission] } },
   });
   return result.success;
 }
 
-export async function requireLeaveUser(
-  permission: LeaveSelfPermission = "read-own",
-): Promise<LeaveUser> {
-  const session = await auth.api.getSession({ headers: await headers() });
+export async function isLeaveManager(): Promise<boolean> {
+  const [canReadAll, canReview] = await Promise.all([
+    hasLeavePermission("read-all"),
+    hasLeavePermission("review"),
+  ]);
+  return canReadAll && canReview;
+}
 
+export async function canManageHolidays(): Promise<boolean> {
+  const permissions = await Promise.all([
+    hasHolidayPermission("create"),
+    hasHolidayPermission("update"),
+    hasHolidayPermission("delete"),
+  ]);
+  return permissions.every(Boolean);
+}
+
+async function requireSignedInUser(): Promise<LeaveUser> {
+  const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) {
     throw new ActionError("Sign in to access leave and holiday information.", 401);
   }
+  return session.user;
+}
 
-  const user = session.user;
-  if (!hasWorkspaceAccess(user)) {
-    throw new ActionError(
-      "Ask your administrator or HR manager to assign you to a department before using this workspace.",
-      403,
-    );
-  }
+export async function requireLeaveUser(
+  permission: LeaveSelfPermission = "read-own",
+): Promise<LeaveUser> {
+  const user = await requireSignedInUser();
   if (!(await hasLeavePermission(permission))) {
     throw new ActionError("You do not have permission to access this leave operation.", 403);
   }
@@ -79,21 +65,15 @@ export async function requireLeaveUser(
 export async function requireLeaveManager(
   permission: LeaveManagerPermission = "read-all",
 ): Promise<LeaveUser> {
-  const user = await requireLeaveUser();
-  if (!isLeaveManager(user)) {
-    throw new ActionError("You do not have permission to manage leave requests.", 403);
-  }
-  if (
-    user.role !== "STAFF" &&
-    !(await hasLeavePermission(permission))
-  ) {
+  const user = await requireSignedInUser();
+  if (!(await hasLeavePermission(permission))) {
     throw new ActionError("You do not have permission to manage leave requests.", 403);
   }
   return user;
 }
 
 export async function requireHolidayUser(): Promise<LeaveUser> {
-  const user = await requireLeaveUser();
+  const user = await requireSignedInUser();
   if (!(await hasHolidayPermission("read"))) {
     throw new ActionError("You do not have permission to view company holidays.", 403);
   }
@@ -103,14 +83,8 @@ export async function requireHolidayUser(): Promise<LeaveUser> {
 export async function requireHolidayManager(
   permission: HolidayManagerPermission,
 ): Promise<LeaveUser> {
-  const user = await requireHolidayUser();
-  if (!canManageHolidays(user)) {
-    throw new ActionError("Only HR staff and administrators can manage holidays.", 403);
-  }
-  if (
-    user.role !== "STAFF" &&
-    !(await hasHolidayPermission(permission))
-  ) {
+  const user = await requireSignedInUser();
+  if (!(await hasHolidayPermission(permission))) {
     throw new ActionError("You do not have permission to manage holidays.", 403);
   }
   return user;

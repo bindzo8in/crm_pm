@@ -150,7 +150,7 @@ export function WeeklyScheduleSettings({
         <p className="text-xs leading-5 text-muted-foreground">
           Changing the schedule affects future leave calculations. Previously
           submitted leave requests keep their saved day totals.
-          {!isManager && " Contact HR or an administrator to request a change."}
+          {!isManager && " Ask your organization owner to grant attendance management access."}
         </p>
       </div>
     </section>

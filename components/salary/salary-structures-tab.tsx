@@ -35,6 +35,10 @@ const grossSalaryFormatter = new Intl.NumberFormat("en-IN", {
   maximumFractionDigits: 2,
 });
 
+function formatOrganizationRole(role: string) {
+  return role.replace(/[-_]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 interface SalaryStructuresTabProps {
   initialUsers: SalaryEmployee[];
   initialPage: SalaryRosterPageInfo;
@@ -222,7 +226,7 @@ export function SalaryStructuresTab({
         </p>
         <p>
           <span className="font-medium text-foreground">Designation:</span>{" "}
-          Optional role context from the employee’s payroll profile; it does not affect pay.
+          Optional job title from the payroll profile; it does not affect pay.
         </p>
       </div>
 
@@ -255,8 +259,8 @@ export function SalaryStructuresTab({
             </div>
             <dl className="grid grid-cols-2 gap-3 rounded-md bg-muted/40 p-3">
               <div className="space-y-1">
-                <dt className="text-xs text-muted-foreground">Role</dt>
-                <dd><Badge variant="outline" className="text-xs">{u.role}</Badge></dd>
+                <dt className="text-xs text-muted-foreground">Organization role</dt>
+                <dd><Badge variant="outline" className="text-xs">{formatOrganizationRole(u.organizationRole)}</Badge></dd>
               </div>
               <div className="space-y-1">
                 <dt className="text-xs text-muted-foreground">Designation</dt>
@@ -296,7 +300,7 @@ export function SalaryStructuresTab({
         <TableHeader className="bg-muted/40">
           <TableRow>
             <TableHead className="font-semibold">Employee</TableHead>
-            <TableHead className="font-semibold">Account role</TableHead>
+            <TableHead className="font-semibold">Organization role</TableHead>
             <TableHead className="font-semibold">Designation</TableHead>
             <TableHead className="font-semibold">Department</TableHead>
             <TableHead className="font-semibold">Payroll</TableHead>
@@ -323,7 +327,7 @@ export function SalaryStructuresTab({
                   <div className="text-xs text-muted-foreground">{u.email}</div>
                 </TableCell>
                 <TableCell>
-                  <Badge variant="outline" className="text-xs">{u.role}</Badge>
+                  <Badge variant="outline" className="text-xs">{formatOrganizationRole(u.organizationRole)}</Badge>
                 </TableCell>
                 <TableCell>{u.designation || "Not assigned"}</TableCell>
                 <TableCell>

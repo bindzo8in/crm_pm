@@ -1,7 +1,6 @@
 "use server";
 
 import { errorResponse, successResponse } from "@/lib/action-response";
-import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { getErrorMessage } from "@/lib/schemas/prisma-utils";
 import {
@@ -15,37 +14,21 @@ import {
   CustomLineItemCreateSchema,
   ProposalTotalsUpdateSchema,
 } from "@/lib/schemas/proposal-pricing-schema";
-import { headers } from "next/headers";
 import { Prisma } from "@/app/generated/prisma/client";
+import type { ProposalWhereInput } from "@/app/generated/prisma/models";
 import { syncProposalComposerTermsAndFeatures } from "@/actions/proposal-composer";
-import { hasBusinessWorkspaceAccess } from "@/lib/workspace-access";
 import { getProposalDraftError } from "@/lib/proposal-draft";
+import { getProposalPermissionScope } from "@/lib/proposal-permissions";
 
-async function checkPermission(permission: "read" | "create" | "update" | "delete") {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-  if (!session?.user) {
-    return { success: false, error: "You are not authenticated" };
-  }
-  if (!hasBusinessWorkspaceAccess(session.user)) {
-    return { success: false, error: "Proposals are available to administrators and staff in HR or Sales." };
-  }
-
-  const hasPermission = await auth.api.userHasPermission({
-    headers: await headers(),
-    body: {
-      permissions: {
-        proposals: [permission],
-      },
-    },
-  });
-
-  if (!hasPermission.success) {
-    return { success: false, error: `You don't have permission to ${permission} proposal pricing` };
-  }
-
-  return { success: true, session };
+async function checkPermission(permission: "read" | "update", proposalId: string) {
+  const access = await getProposalPermissionScope(
+    permission,
+    permission === "read" ? "read-own" : "update-own",
+    proposalId,
+  );
+  return access
+    ? { success: true as const }
+    : { success: false as const, error: `You don't have permission to ${permission} proposal pricing` };
 }
 
 function calculateItemFinancials(
@@ -133,15 +116,18 @@ async function recalculateAndSaveTotals(proposalId: string, tx: Prisma.Transacti
 
 export async function getProposalPricing(proposalId: string, isPublic = false) {
   try {
+    if (!proposalId.trim()) return errorResponse("Proposal ID is required.");
+    let proposalWhere: ProposalWhereInput = { id: proposalId };
     if (!isPublic) {
-      const perm = await checkPermission("read");
-      if (!perm.success) return errorResponse(perm.error!);
+      const access = await getProposalPermissionScope("read", "read-own", proposalId);
+      if (!access) return errorResponse("You don't have permission to read proposal pricing");
+      proposalWhere = access.where;
     }
 
     // Totals are now only calculated on mutations to prevent transaction timeouts during fetches
 
-    const proposal = await prisma.proposal.findUnique({
-      where: { id: proposalId },
+    const proposal = await prisma.proposal.findFirst({
+      where: proposalWhere,
       include: {
         customer: {
           select: {
@@ -211,8 +197,10 @@ export async function getProposalPricing(proposalId: string, isPublic = false) {
       include: { bankAccounts: true },
     });
 
+    const { assignedToId, ...proposalForOutput } = proposal;
+    void assignedToId;
     const serialized = {
-      ...proposal,
+      ...proposalForOutput,
       exchangeRate: proposal.exchangeRate ? proposal.exchangeRate.toNumber() : 83.50,
       subtotal: proposal.subtotal.toNumber(),
       discount: proposal.discount.toNumber(),
@@ -250,15 +238,14 @@ export async function getProposalPricing(proposalId: string, isPublic = false) {
 
 export async function importServicePackageToProposal(data: ImportServicePackageSchema) {
   try {
-    const perm = await checkPermission("update");
-    if (!perm.success) return errorResponse(perm.error!);
-
     const validated = importServicePackageSchema.safeParse(data);
     if (!validated.success) {
       return errorResponse("Invalid import data", validated.error.issues);
     }
 
     const { proposalId, serviceId, packageId, customName } = validated.data;
+    const perm = await checkPermission("update", proposalId);
+    if (!perm.success) return errorResponse(perm.error!);
     const draftError = await getProposalDraftError(proposalId);
     if (draftError) return errorResponse(draftError);
 
@@ -354,13 +341,12 @@ export async function importServicePackageToProposal(data: ImportServicePackageS
 
 export async function updateProposalLineItem(data: ProposalLineItemEditSchema) {
   try {
-    const perm = await checkPermission("update");
-    if (!perm.success) return errorResponse(perm.error!);
-
     const validated = proposalLineItemEditSchema.safeParse(data);
     if (!validated.success) {
       return errorResponse("Invalid item update data", validated.error.issues);
     }
+    const perm = await checkPermission("update", validated.data.proposalId);
+    if (!perm.success) return errorResponse(perm.error!);
 
     const {
       id,
@@ -389,6 +375,11 @@ export async function updateProposalLineItem(data: ProposalLineItemEditSchema) {
     const fin = calculateItemFinancials(quantity, unitPrice, discountType, discountValue, effectiveTaxRate);
 
     await prisma.$transaction(async (tx) => {
+      const lineItem = await tx.proposalLineItem.findFirst({
+        where: { id, proposalService: { proposalId } },
+        select: { id: true },
+      });
+      if (!lineItem) throw new Error("The selected proposal line item was not found");
       await tx.proposalLineItem.update({
         where: { id },
         data: {
@@ -419,13 +410,12 @@ export async function updateProposalLineItem(data: ProposalLineItemEditSchema) {
 
 export async function addCustomLineItem(data: CustomLineItemCreateSchema) {
   try {
-    const perm = await checkPermission("update");
-    if (!perm.success) return errorResponse(perm.error!);
-
     const validated = customLineItemCreateSchema.safeParse(data);
     if (!validated.success) {
       return errorResponse("Invalid custom item data", validated.error.issues);
     }
+    const perm = await checkPermission("update", validated.data.proposalId);
+    if (!perm.success) return errorResponse(perm.error!);
 
     const {
       proposalServiceId,
@@ -537,16 +527,19 @@ export async function addCustomLineItem(data: CustomLineItemCreateSchema) {
 
 export async function deleteProposalLineItem(itemId: string, proposalId: string) {
   try {
-    const perm = await checkPermission("update");
+    const perm = await checkPermission("update", proposalId);
     if (!perm.success) return errorResponse(perm.error!);
 
     const draftError = await getProposalDraftError(proposalId);
     if (draftError) return errorResponse(draftError);
 
     await prisma.$transaction(async (tx) => {
-      await tx.proposalLineItem.delete({
-        where: { id: itemId },
+      const lineItem = await tx.proposalLineItem.findFirst({
+        where: { id: itemId, proposalService: { proposalId } },
+        select: { id: true },
       });
+      if (!lineItem) throw new Error("The selected proposal line item was not found");
+      await tx.proposalLineItem.delete({ where: { id: lineItem.id } });
 
       await recalculateAndSaveTotals(proposalId, tx);
     });
@@ -560,16 +553,19 @@ export async function deleteProposalLineItem(itemId: string, proposalId: string)
 
 export async function deleteProposalService(serviceId: string, proposalId: string) {
   try {
-    const perm = await checkPermission("update");
+    const perm = await checkPermission("update", proposalId);
     if (!perm.success) return errorResponse(perm.error!);
 
     const draftError = await getProposalDraftError(proposalId);
     if (draftError) return errorResponse(draftError);
 
     await prisma.$transaction(async (tx) => {
-      await tx.proposalService.delete({
-        where: { id: serviceId },
+      const service = await tx.proposalService.findFirst({
+        where: { id: serviceId, proposalId },
+        select: { id: true },
       });
+      if (!service) throw new Error("The selected proposal section was not found");
+      await tx.proposalService.delete({ where: { id: service.id } });
 
       await recalculateAndSaveTotals(proposalId, tx);
     });
@@ -593,9 +589,6 @@ export async function updateProposalService(
   data: { serviceName: string; description?: string | null }
 ) {
   try {
-    const perm = await checkPermission("update");
-    if (!perm.success) return errorResponse(perm.error!);
-
     const validated = proposalServiceEditSchema.safeParse({
       proposalServiceId: serviceId,
       proposalId,
@@ -604,16 +597,19 @@ export async function updateProposalService(
     if (!validated.success) {
       return errorResponse("Invalid section data", validated.error.issues);
     }
+    const perm = await checkPermission("update", proposalId);
+    if (!perm.success) return errorResponse(perm.error!);
     const draftError = await getProposalDraftError(validated.data.proposalId);
     if (draftError) return errorResponse(draftError);
 
-    await prisma.proposalService.update({
-      where: { id: serviceId },
+    const updated = await prisma.proposalService.updateMany({
+      where: { id: serviceId, proposalId },
       data: {
         serviceName: validated.data.serviceName.trim(),
         description: validated.data.description?.trim() ?? null,
       },
     });
+    if (updated.count === 0) return errorResponse("Proposal section not found");
 
     try {
       await syncProposalComposerTermsAndFeatures(proposalId, true);
@@ -633,7 +629,7 @@ export async function reorderProposalLineItems(
   items: { id: string; sortOrder: number }[]
 ) {
   try {
-    const perm = await checkPermission("update");
+    const perm = await checkPermission("update", proposalId);
     if (!perm.success) return errorResponse(perm.error!);
 
     const draftError = await getProposalDraftError(proposalId);
@@ -641,8 +637,13 @@ export async function reorderProposalLineItems(
 
     await prisma.$transaction(async (tx) => {
       for (const item of items) {
+        const lineItem = await tx.proposalLineItem.findFirst({
+          where: { id: item.id, proposalService: { proposalId } },
+          select: { id: true },
+        });
+        if (!lineItem) throw new Error("The selected proposal line item was not found");
         await tx.proposalLineItem.update({
-          where: { id: item.id },
+          where: { id: lineItem.id },
           data: { sortOrder: item.sortOrder },
         });
       }
@@ -660,7 +661,7 @@ export async function reorderProposalServices(
   services: { id: string; sortOrder: number }[]
 ) {
   try {
-    const perm = await checkPermission("update");
+    const perm = await checkPermission("update", proposalId);
     if (!perm.success) return errorResponse(perm.error!);
 
     const draftError = await getProposalDraftError(proposalId);
@@ -668,10 +669,11 @@ export async function reorderProposalServices(
 
     await prisma.$transaction(async (tx) => {
       for (const svc of services) {
-        await tx.proposalService.update({
-          where: { id: svc.id },
+        const updated = await tx.proposalService.updateMany({
+          where: { id: svc.id, proposalId },
           data: { sortOrder: svc.sortOrder },
         });
+        if (updated.count === 0) throw new Error("The selected proposal section was not found");
       }
     });
 
@@ -690,15 +692,14 @@ export async function reorderProposalServices(
 
 export async function updateProposalTotals(data: ProposalTotalsUpdateSchema) {
   try {
-    const perm = await checkPermission("update");
-    if (!perm.success) return errorResponse(perm.error!);
-
     const validated = proposalTotalsUpdateSchema.safeParse(data);
     if (!validated.success) {
       return errorResponse("Invalid totals data", validated.error.issues);
     }
 
     const { proposalId, discount, tax } = validated.data;
+    const perm = await checkPermission("update", proposalId);
+    if (!perm.success) return errorResponse(perm.error!);
     const draftError = await getProposalDraftError(proposalId);
     if (draftError) return errorResponse(draftError);
 

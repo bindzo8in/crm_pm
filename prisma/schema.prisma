@@ -77,12 +77,12 @@ model User {
   image                        String?
   createdAt                    DateTime                    @default(now())
   updatedAt                    DateTime                    @updatedAt
-  role                         UserRole                    @default(STAFF)
+  role                         String                      @default("USER")
   employmentStatus             EmploymentStatus            @default(ACTIVE)
   employmentEndedAt            DateTime?
   department                   Department?
-  additionalDepartments       Department[]                @default([]) @map("additional_departments")
-  workMode                    WorkMode                    @default(OFFICE)
+  additionalDepartments        Department[]                @default([]) @map("additional_departments")
+  workMode                     WorkMode                    @default(OFFICE)
   includeInAttendanceReports   Boolean                     @default(true) @map("include_in_attendance_reports")
   includeInPayroll             Boolean                     @default(false) @map("include_in_payroll")
   banned                       Boolean?                    @default(false)
@@ -94,6 +94,7 @@ model User {
   createdCustomers             Customer[]                  @relation("CreatedCustomers")
   proposalActivities           ProposalActivity[]
   proposals                    Proposal[]
+  assignedProposals            Proposal[]                  @relation("AssignedProposals")
   managedProjects              Project[]                   @relation("ProjectManager")
   createdProjects              Project[]                   @relation("ProjectCreator")
   projectMemberships           ProjectMember[]
@@ -105,6 +106,7 @@ model User {
   taskAttachments              ProjectTaskAttachment[]     @relation("TaskAttachmentUploader")
   taskComments                 ProjectTaskComment[]        @relation("TaskCommentAuthor")
   createdInvoices              Invoice[]
+  assignedInvoices             Invoice[]                   @relation("AssignedInvoices")
   invoiceActivities            InvoiceActivity[]
   attendanceRecords            AttendanceRecord[]
   leaveRequests                LeaveRequest[]
@@ -116,6 +118,9 @@ model User {
   removedSalarySlipAdjustments SalarySlipAdjustment[]      @relation("SalarySlipAdjustmentRemover")
   salaryPin                    SalaryPin?
   salaryPinResetTokens         SalaryPinResetToken[]
+  organizationMemberships      Member[]
+  sentOrganizationInvitations  Invitation[]                @relation("InvitationInviter")
+  teamMemberships              TeamMember[]
   expenses                     Expense[]
   expenseHistory               ExpenseHistory[]
   notifications                Notification[]
@@ -178,16 +183,18 @@ model EmployeeStatusHistory {
 }
 
 model Session {
-  id             String   @id
-  expiresAt      DateTime
-  token          String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  ipAddress      String?
-  userAgent      String?
-  userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  impersonatedBy String?
+  id                   String   @id
+  expiresAt            DateTime
+  token                String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  ipAddress            String?
+  userAgent            String?
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  impersonatedBy       String?
+  activeOrganizationId String?
+  activeTeamId         String?
 
   @@unique([token])
   @@index([userId])
@@ -226,6 +233,102 @@ model Verification {
   @@map("verification")
 }
 
+model Organization {
+  id        String   @id
+  name      String
+  slug      String   @unique
+  logo      String?
+  metadata  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members            Member[]
+  invitations        Invitation[]
+  teams              Team[]
+  roles              OrganizationRole[]
+  customers          Customer[]
+  services           Service[]
+  products           Product[]
+  proposals          Proposal[]
+  companies          Company[]
+  invoices           Invoice[]
+  attendanceSettings AttendanceSettings[]
+
+  @@map("organization")
+}
+
+model Member {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           String       @default("member")
+  createdAt      DateTime     @default(now())
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@map("member")
+}
+
+model Invitation {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  role           String
+  teamId         String?
+  status         String       @default("pending")
+  expiresAt      DateTime
+  createdAt      DateTime     @default(now())
+  inviterId      String
+  inviter        User         @relation("InvitationInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([email])
+  @@map("invitation")
+}
+
+model OrganizationRole {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role           String
+  permission     String       @db.Text
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, role])
+  @@index([organizationId])
+  @@map("organization_role")
+}
+
+model Team {
+  id             String       @id
+  name           String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  members        TeamMember[]
+
+  @@index([organizationId, name])
+  @@map("team")
+}
+
+model TeamMember {
+  id        String   @id
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([teamId, userId])
+  @@index([userId])
+  @@map("team_member")
+}
+
 // ------------------- Auth Models End -------------------
 
 enum CustomerSource {
@@ -246,6 +349,9 @@ enum CustomerType {
 
 model Customer {
   id String @id @default(cuid())
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   customerNumber           Int     @unique @default(autoincrement())
   displayName              String
@@ -303,6 +409,7 @@ model Customer {
   @@index([assignedToId])
   @@index([createdById])
   @@index([deletedAt])
+  @@index([organizationId, deletedAt])
 }
 
 model CustomerContact {
@@ -335,8 +442,11 @@ enum BillingCycle {
 model Service {
   id String @id @default(cuid())
 
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   name String
-  slug String @unique
+  slug String
 
   description String?
 
@@ -350,7 +460,32 @@ model Service {
   deletedAt        DateTime?
   proposalServices ProposalService[]
 
-  @@index([isActive])
+  @@index([organizationId, isActive])
+  @@unique([organizationId, slug])
+}
+
+model Product {
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sku            String?
+  name           String
+  description    String?
+  unit           String        @default("item")
+  basePrice      Decimal       @default(0) @db.Decimal(12, 2)
+  basePriceUSD   Decimal       @default(0) @db.Decimal(12, 2)
+  taxRate        Int           @default(18)
+  hsnCode        String?
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  proposalLineItems ProposalLineItem[]
+  invoiceLineItems  InvoiceLineItem[]
+
+  @@unique([organizationId, sku])
+  @@index([organizationId, isActive, deletedAt])
 }
 
 model ServicePackage {
@@ -496,6 +631,9 @@ model ProposalTemplate {
 model Proposal {
   id String @id @default(cuid())
 
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   proposalNumber Int @unique @default(autoincrement())
 
   customerId String
@@ -503,6 +641,8 @@ model Proposal {
 
   preparedById String
   preparedBy   User   @relation(fields: [preparedById], references: [id])
+  assignedToId String?
+  assignedTo   User?  @relation("AssignedProposals", fields: [assignedToId], references: [id], onDelete: SetNull)
 
   templateId String?
   template   ProposalTemplate? @relation(fields: [templateId], references: [id])
@@ -545,6 +685,8 @@ model Proposal {
 
   @@index([customerId])
   @@index([status])
+  @@index([organizationId, status])
+  @@index([assignedToId])
 }
 
 enum ProposalBlockType {
@@ -632,6 +774,9 @@ model ProposalLineItem {
 
   packageItemId String?
 
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
   name String
 
   description String?
@@ -711,6 +856,9 @@ model ProposalActivity {
 
 model Company {
   id String @id @default(cuid())
+
+  organizationId String?       @unique
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   financialAccounts FinancialAccount[]
 
@@ -1186,6 +1334,9 @@ enum InvoiceStatus {
 model Invoice {
   id String @id @default(cuid())
 
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   invoiceNumber Int @unique @default(autoincrement())
 
   customerId String
@@ -1196,6 +1347,8 @@ model Invoice {
 
   createdById String
   createdBy   User   @relation(fields: [createdById], references: [id])
+  assignedToId String?
+  assignedTo   User?  @relation("AssignedInvoices", fields: [assignedToId], references: [id], onDelete: SetNull)
 
   customerDisplayName String
   customerCompanyName String?
@@ -1231,6 +1384,8 @@ model Invoice {
   @@index([customerId])
   @@index([status])
   @@index([deletedAt])
+  @@index([organizationId, status, deletedAt])
+  @@index([assignedToId, deletedAt])
 }
 
 model InvoiceLineItem {
@@ -1241,6 +1396,9 @@ model InvoiceLineItem {
 
   servicePackageId String?
   servicePackage   ServicePackage? @relation(fields: [servicePackageId], references: [id], onDelete: SetNull)
+
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
   name         String
   description  String?
@@ -1679,21 +1837,23 @@ model AttendanceReminder {
 }
 
 model AttendanceSettings {
-  id                      String   @id @default(cuid())
-  expectedClockIn         String   @default("09:00") // 24hr format HH:mm
-  expectedClockOut        String   @default("18:00") // 24hr format HH:mm
-  gracePeriodMinutes      Int      @default(15)
-  halfDayThresholdMinutes Int      @default(240) // 4 hours late = Half Day
-  maxShiftHoursCap        Int      @default(16) // 16 hours max before auto checkout
-  allowOvernightShift     Boolean  @default(true)
+  id                      String        @id @default(cuid())
+  organizationId          String?       @unique
+  organization            Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  expectedClockIn         String        @default("09:00") // 24hr format HH:mm
+  expectedClockOut        String        @default("18:00") // 24hr format HH:mm
+  gracePeriodMinutes      Int           @default(15)
+  halfDayThresholdMinutes Int           @default(240) // 4 hours late = Half Day
+  maxShiftHoursCap        Int           @default(16) // 16 hours max before auto checkout
+  allowOvernightShift     Boolean       @default(true)
   officeLatitude          Float?
   officeLongitude         Float?
-  officeRadiusMeters      Int      @default(500)
-  enforceOfficeGeofence   Boolean  @default(true)
-  weekendDays             Int[]    @default([0]) @map("weekend_days")
-  isConfigured            Boolean  @default(false) @map("is_configured")
-  attendanceReminderTime  String   @default("08:30") @map("attendance_reminder_time")
-  updatedAt               DateTime @updatedAt
+  officeRadiusMeters      Int           @default(500)
+  enforceOfficeGeofence   Boolean       @default(true)
+  weekendDays             Int[]         @default([0]) @map("weekend_days")
+  isConfigured            Boolean       @default(false) @map("is_configured")
+  attendanceReminderTime  String        @default("08:30") @map("attendance_reminder_time")
+  updatedAt               DateTime      @updatedAt
 
   @@map("attendance_settings")
 }
