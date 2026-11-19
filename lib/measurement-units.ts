@@ -1,0 +1,65 @@
+export const UQC_OPTIONS = [
+  { code: "BAG", description: "Bags", unitName: "bag" },
+  { code: "BAL", description: "Bale", unitName: "bale" },
+  { code: "BDL", description: "Bundles", unitName: "bundle" },
+  { code: "BKL", description: "Buckles", unitName: "buckle" },
+  { code: "BOU", description: "Billions of units", unitName: "billion units" },
+  { code: "BOX", description: "Box", unitName: "box" },
+  { code: "BTL", description: "Bottles", unitName: "bottle" },
+  { code: "BUN", description: "Bunches", unitName: "bunch" },
+  { code: "CAN", description: "Cans", unitName: "can" },
+  { code: "CBM", description: "Cubic metres", unitName: "m³" },
+  { code: "CCM", description: "Cubic centimetres", unitName: "cm³" },
+  { code: "CMS", description: "Centimetres", unitName: "cm" },
+  { code: "CTN", description: "Cartons", unitName: "carton" },
+  { code: "DOZ", description: "Dozens", unitName: "dozen" },
+  { code: "DRM", description: "Drums", unitName: "drum" },
+  { code: "GGR", description: "Great gross", unitName: "great gross" },
+  { code: "GMS", description: "Grams", unitName: "g" },
+  { code: "GRS", description: "Gross", unitName: "gross" },
+  { code: "GYD", description: "Gross yards", unitName: "gross yd" },
+  { code: "KGS", description: "Kilograms", unitName: "kg" },
+  { code: "KLR", description: "Kilolitre", unitName: "kL" },
+  { code: "KME", description: "Kilometre", unitName: "km" },
+  { code: "MLT", description: "Millilitre", unitName: "mL" },
+  { code: "MTR", description: "Metres", unitName: "m" },
+  { code: "MTS", description: "Metric ton", unitName: "metric ton" },
+  { code: "NOS", description: "Numbers", unitName: "number" },
+  { code: "OTH", description: "Others", unitName: "other" },
+  { code: "PAC", description: "Packs", unitName: "pack" },
+  { code: "PCS", description: "Pieces", unitName: "piece" },
+  { code: "PRS", description: "Pairs", unitName: "pair" },
+  { code: "QTL", description: "Quintal", unitName: "quintal" },
+  { code: "ROL", description: "Rolls", unitName: "roll" },
+  { code: "SET", description: "Sets", unitName: "set" },
+  { code: "SQF", description: "Square feet", unitName: "ft²" },
+  { code: "SQM", description: "Square metres", unitName: "m²" },
+  { code: "SQY", description: "Square yards", unitName: "yd²" },
+  { code: "TBS", description: "Tablets", unitName: "tablet" },
+  { code: "TGM", description: "Ten grams", unitName: "10 g" },
+  { code: "THD", description: "Thousands", unitName: "thousand" },
+  { code: "TON", description: "Tonnes", unitName: "tonne" },
+  { code: "TUB", description: "Tubes", unitName: "tube" },
+  { code: "UGS", description: "US gallons", unitName: "US gal" },
+  { code: "UNT", description: "Units", unitName: "Unit" },
+  { code: "YDS", description: "Yards", unitName: "yd" },
+] as const;
+
+export const DEFAULT_MEASUREMENT_UNITS = [
+  ...UQC_OPTIONS.map(({ code, unitName }) => ({
+    name: unitName,
+    uqcCode: code,
+  })),
+  { name: "item", uqcCode: null },
+  { name: "package", uqcCode: null },
+  { name: "hour", uqcCode: null },
+  { name: "day", uqcCode: null },
+  { name: "month", uqcCode: null },
+  { name: "project", uqcCode: null },
+] as const;
+
+export type UqcCode = (typeof UQC_OPTIONS)[number]["code"];
+
+export function getUqcDescription(code: string | null) {
+  return UQC_OPTIONS.find((option) => option.code === code)?.description ?? null;
+}

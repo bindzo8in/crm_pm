@@ -83,7 +83,7 @@ export const proposalLineItemSchema = z.object({
     description: z.string().optional(),
 
     quantiry: z.number(),
-    unit: z.string(),
+    unit: z.string().trim().min(1, "Unit is required").max(40),
     unitPrice: z.number(),
 
     billingCycle: z.enum(BillingCycle),

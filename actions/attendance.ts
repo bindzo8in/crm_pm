@@ -25,6 +25,8 @@ import {
   RegularizeAttendanceInput,
   updateAttendanceSettingsSchema,
   UpdateAttendanceSettingsInput,
+  updateAttendanceAlarmPreferencesSchema,
+  UpdateAttendanceAlarmPreferencesInput,
   editAttendanceSchema,
   EditAttendanceInput,
   createManualAttendanceSchema,
@@ -1248,6 +1250,49 @@ export async function updateAttendanceSettingsAction(input: UpdateAttendanceSett
     console.error("Error updating attendance settings:", error);
     return { success: false, error: error.message || "Failed to update settings" };
   }
+}
+
+export async function getAttendanceAlarmPreferencesAction() {
+  const { session } = await getAuthenticatedUser("read-own");
+  const preferences = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: {
+      clockInAlarmEnabled: true,
+      clockOutAlarmEnabled: true,
+    },
+  });
+
+  if (!preferences) {
+    throw new Error("Attendance alarm preferences could not be found.");
+  }
+
+  return {
+    clockInEnabled: preferences.clockInAlarmEnabled,
+    clockOutEnabled: preferences.clockOutAlarmEnabled,
+  };
+}
+
+export async function updateAttendanceAlarmPreferencesAction(
+  input: UpdateAttendanceAlarmPreferencesInput,
+) {
+  const { session } = await getAuthenticatedUser("read-own");
+  const validated = updateAttendanceAlarmPreferencesSchema.parse(input);
+  const preferences = await prisma.user.update({
+    where: { id: session.user.id },
+    data: {
+      clockInAlarmEnabled: validated.clockInEnabled,
+      clockOutAlarmEnabled: validated.clockOutEnabled,
+    },
+    select: {
+      clockInAlarmEnabled: true,
+      clockOutAlarmEnabled: true,
+    },
+  });
+
+  return {
+    clockInEnabled: preferences.clockInAlarmEnabled,
+    clockOutEnabled: preferences.clockOutAlarmEnabled,
+  };
 }
 
 export async function editAttendanceAction(input: EditAttendanceInput) {

@@ -469,8 +469,16 @@ export function ExpenseEntryForm({ accounts, expense }: Props) {
             <input type="hidden" name="expenseType" value={expenseType} />
 
             <div className={rowClassName}>
-              <Label htmlFor="expense-sac" className="text-xs font-normal">SAC</Label>
-              <Input id="expense-sac" maxLength={20} {...form.register("sacCode")} className="h-9 bg-background text-sm" />
+              <Label htmlFor="expense-hsn-sac" className="text-xs font-normal">
+                {expenseType === "GOODS" ? "HSN code" : "SAC code"}
+              </Label>
+              <Input
+                id="expense-hsn-sac"
+                maxLength={20}
+                placeholder={expenseType === "GOODS" ? "Enter HSN code" : "Enter SAC code"}
+                {...form.register("sacCode")}
+                className="h-9 bg-background text-sm"
+              />
             </div>
 
             <div className={rowClassName}>

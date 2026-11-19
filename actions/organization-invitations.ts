@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { auth } from "@/lib/auth";
 import { GlobalRole, isPlatformSuperAdmin } from "@/lib/global-role";
 import {
@@ -123,6 +124,22 @@ export async function inviteOrganizationOwner(
 
   const requestHeaders = await headers();
   try {
+    await prisma.member.upsert({
+      where: {
+        organizationId_userId: {
+          organizationId,
+          userId: session.user.id,
+        },
+      },
+      create: {
+        id: randomUUID(),
+        organizationId,
+        userId: session.user.id,
+        role: "owner",
+      },
+      update: { role: "owner" },
+    });
+
     await auth.api.createInvitation({
       headers: requestHeaders,
       body: {

@@ -56,6 +56,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { UnitSelect } from "@/components/catalog/measurement-units";
 
 export interface LineItem {
   id: string;
@@ -84,11 +85,11 @@ interface LineItemsTableProps {
 }
 
 const billingCycleLabels: Record<string, string> = {
-  ONE_TIME: "One Time",
+  ONE_TIME: "One-time",
   MONTHLY: "Monthly",
   QUARTERLY: "Quarterly",
-  HALF_YEARLY: "Half-Yearly",
-  YEARLY: "Yearly",
+  HALF_YEARLY: "Every six months",
+  YEARLY: "Annually",
 };
 
 const taxOptions = [0, 18, 28];
@@ -184,12 +185,11 @@ function SortableRow({
               className="h-8 w-14 text-right text-xs"
               title="Quantity"
             />
-            <Input
-              value={editForm.unit || ""}
-              onChange={(e) => setEditForm({ ...editForm, unit: e.target.value })}
-              placeholder="Unit"
-              className="h-8 w-14 text-xs"
-              title="Unit (e.g. Hrs, Days, Unit)"
+            <UnitSelect
+              id={`pricing-line-item-unit-${item.id}`}
+              value={editForm.unit || "Unit"}
+              onValueChange={(unit) => setEditForm({ ...editForm, unit })}
+              showManage={idx === 0}
             />
           </div>
         </td>
@@ -727,10 +727,11 @@ export function LineItemsTable({ pricingApi,
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Unit *</label>
-                  <Input
+                  <UnitSelect
+                    id="custom-pricing-line-item-unit"
                     value={customUnit}
-                    onChange={(e) => setCustomUnit(e.target.value)}
-                    placeholder="e.g. Hrs, Days, Unit"
+                    onValueChange={setCustomUnit}
+                    showManage
                   />
                 </div>
                 <div className="space-y-1">

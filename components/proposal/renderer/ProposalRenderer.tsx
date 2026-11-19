@@ -11,6 +11,7 @@ import { CoverFooter } from "./templates/CoverFooter";
 
 import { PageHeader } from "./templates/PageHeader";
 import { PageFooter } from "./templates/PageFooter";
+import { isProposalBlockVisible } from "@/lib/proposal-block-visibility";
 
 interface ProposalRendererProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -31,7 +32,7 @@ interface ProposalRendererProps {
 }
 
 export function ProposalRenderer({ proposal, blocks, company, bankAccount, template }: ProposalRendererProps) {
-  const visibleBlocks = blocks.filter((b) => b.isVisible !== false);
+  const visibleBlocks = blocks.filter(isProposalBlockVisible);
   const otherBlocks = visibleBlocks.filter(b => b.type !== "COVER" && b.type !== "PAGE_BREAK");
 
   return (

@@ -26,6 +26,7 @@ import { ProposalBlockType } from "@/app/generated/prisma/client";
 import { ProposalCover } from "./templates/ProposalCover";
 import { CoverFooter } from "./templates/CoverFooter";
 import { PageHeader } from "./templates/PageHeader";
+import { isProposalBlockVisible } from "@/lib/proposal-block-visibility";
 
 // A4 at 96dpi = 793px wide, 1122px tall (strictly within A4 210mm x 297mm to prevent Chromium overflow onto extra blank pages).
 const A4_WIDTH_PX = 793;
@@ -56,7 +57,7 @@ export function ProposalPdfRenderer({
   bankAccount,
   template,
 }: ProposalPdfRendererProps) {
-  const visibleBlocks = blocks.filter((b) => b.isVisible !== false);
+  const visibleBlocks = blocks.filter(isProposalBlockVisible);
   const otherBlocks = visibleBlocks.filter(
     (b) => b.type !== "COVER" && b.type !== "PAGE_BREAK"
   );

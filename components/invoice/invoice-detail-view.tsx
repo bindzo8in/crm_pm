@@ -744,7 +744,7 @@ export function InvoiceDetailView({
               <tr>
                 <th className="text-center py-2 px-2.5 font-bold w-8">#</th>
                 <th className="text-left py-2 px-2.5 font-bold">Item & Description</th>
-                <th className="text-center py-2 px-2.5 font-bold">HSN / SAC</th>
+                <th className="text-center py-2 px-2.5 font-bold">HSN / SAC code</th>
                 <th className="text-center py-2 px-2.5 font-bold">Qty</th>
                 <th className="text-right py-2 px-2.5 font-bold">Rate</th>
                 <th className="text-right py-2 px-2.5 font-bold">Tax Rate</th>
@@ -774,7 +774,7 @@ export function InvoiceDetailView({
                           )}
                         </td>
                         <td className="py-2.5 px-3 text-center font-mono text-[11px] font-semibold text-gray-900 whitespace-nowrap">
-                          {item.sacCode || "9983"}
+                          {item.itemType === "GOODS" ? "HSN" : "SAC"}: {item.sacCode || "—"}
                         </td>
                         <td className="py-2.5 px-3 text-center text-gray-900 font-semibold whitespace-nowrap">
                           <span>{item.quantity} {item.unit}</span>

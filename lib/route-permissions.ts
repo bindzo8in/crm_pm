@@ -89,6 +89,7 @@ const organizationRoutePermissions: Array<{
     ],
   },
   { path: "/dashboard/services", anyOf: [{ resource: "services", permission: "read" }] },
+  { path: "/dashboard/products", anyOf: [{ resource: "products", permission: "read" }] },
   { path: "/dashboard/terms", anyOf: [{ resource: "terms", permission: "read" }] },
   { path: "/dashboard/reports", anyOf: [{ resource: "reports", permission: "read" }] },
   { path: "/dashboard/users", anyOf: [{ resource: "users", permission: "read" }] },
@@ -164,6 +165,10 @@ export const routePermissions: RoutePermission[] = [
   // Administrative configuration routes; the holiday calendar is intentionally staff-readable.
   {
     path: "/dashboard/services",
+    roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN],
+  },
+  {
+    path: "/dashboard/products",
     roles: [UserRole.SUPER_ADMIN, UserRole.ADMIN],
   },
   {

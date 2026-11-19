@@ -73,6 +73,7 @@ export function CoverBlockEditor({ block, proposal, onSave }: CoverBlockEditorPr
   const [justSaved, setJustSaved] = useState(false);
 
   const handleSave = useCallback(async () => {
+    if (!isDirty || isSaving) return;
     setIsSaving(true);
     try {
       await onSave(block.id, form as Record<string, unknown>);
@@ -85,7 +86,7 @@ export function CoverBlockEditor({ block, proposal, onSave }: CoverBlockEditorPr
     } finally {
       setIsSaving(false);
     }
-  }, [block.id, form, onSave]);
+  }, [block.id, form, isDirty, isSaving, onSave]);
 
   useEffect(() => {
     const handleGlobalSave = (e: Event) => {
@@ -215,7 +216,7 @@ export function CoverBlockEditor({ block, proposal, onSave }: CoverBlockEditorPr
       </div>
 
       <div className="flex justify-end pt-2">
-        <Button onClick={handleSave} disabled={isSaving || (!isDirty && !justSaved)} className="w-full gap-2 sm:w-auto">
+        <Button onClick={handleSave} disabled={isSaving || !isDirty} className="w-full gap-2 sm:w-auto">
           {justSaved ? (
             <>
               <Check className="h-4 w-4 text-emerald-500" />

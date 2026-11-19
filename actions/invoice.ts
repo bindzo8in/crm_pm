@@ -2,6 +2,7 @@
 
 import { checkOrganizationPermission } from "@/lib/organization-authorization";
 import { Prisma } from "@/app/generated/prisma/client";
+import { BillableItemType } from "@/app/generated/prisma/enums";
 import { errorResponse, successResponse } from "@/lib/action-response";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
@@ -57,6 +58,77 @@ async function getSessionUser() {
     return null;
   }
   return session.user;
+}
+
+type PackageItemizationSettings = {
+  hasItems: boolean;
+  name: string;
+  description: string | null;
+};
+
+async function getPackageItemizationSettings(
+  organizationId: string | null,
+  packageIds: string[],
+): Promise<Map<string, PackageItemizationSettings>> {
+  const uniquePackageIds = [...new Set(packageIds)];
+  if (!organizationId || uniquePackageIds.length === 0) return new Map();
+
+  const packages = await prisma.servicePackage.findMany({
+    where: {
+      id: { in: uniquePackageIds },
+      service: { organizationId },
+    },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      hasItems: true,
+      _count: { select: { items: true } },
+    },
+  });
+
+  return new Map(
+    packages.map((servicePackage) => [
+      servicePackage.id,
+      {
+        hasItems: servicePackage.hasItems && servicePackage._count.items > 0,
+        name: servicePackage.name,
+        description: servicePackage.description,
+      },
+    ]),
+  );
+}
+
+async function validateInvoiceCatalogLinks(
+  organizationId: string | null,
+  lineItems: Array<{ productId?: string | null; servicePackageId?: string | null }>,
+) {
+  const productIds = [...new Set(lineItems.flatMap((item) => item.productId ? [item.productId] : []))];
+  const packageIds = [...new Set(lineItems.flatMap((item) => item.servicePackageId ? [item.servicePackageId] : []))];
+  if (productIds.length === 0 && packageIds.length === 0) return null;
+  if (!organizationId) return "Choose an organization before adding catalog items.";
+
+  const [products, packages] = await Promise.all([
+    productIds.length
+      ? prisma.product.findMany({
+          where: { id: { in: productIds }, organizationId, deletedAt: null },
+          select: { id: true },
+        })
+      : Promise.resolve([]),
+    packageIds.length
+      ? prisma.servicePackage.findMany({
+          where: {
+            id: { in: packageIds },
+            service: { organizationId, deletedAt: null },
+          },
+          select: { id: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  if (products.length !== productIds.length || packages.length !== packageIds.length) {
+    return "One or more selected catalog items do not belong to this organization.";
+  }
+  return null;
 }
 
 type InvoicePermissionAction =
@@ -297,6 +369,8 @@ async function getInvoiceDataById(
           select: {
             id: true,
             servicePackageId: true,
+            productId: true,
+            itemType: true,
             name: true,
             description: true,
             quantity: true,
@@ -307,9 +381,12 @@ async function getInvoiceDataById(
             sacCode: true,
             billingCycle: true,
             sortOrder: true,
+            packageHasItems: true,
             servicePackage: {
               select: {
                 name: true,
+                hasItems: true,
+                _count: { select: { items: true } },
                 service: {
                   select: { id: true, name: true },
                 },
@@ -370,7 +447,8 @@ async function getInvoiceDataById(
         unitPrice: li.unitPrice.toNumber(),
         total: li.total.toNumber(),
         taxRate: invoice.currency === "USD" ? 0 : (li.taxRate ?? 18),
-        sacCode: li.sacCode || "9983",
+        itemType: li.productId ? BillableItemType.GOODS : li.itemType,
+        sacCode: li.sacCode ?? "",
       })),
       payments: (invoice.payments ?? []).map((p) => ({
         ...p,
@@ -462,7 +540,19 @@ export async function createInvoice(input: CreateInvoiceInput) {
     });
     if (!customer) return errorResponse("Selected customer not found");
 
+    const catalogLinkError = await validateInvoiceCatalogLinks(
+      organizationId,
+      validated.data.lineItems,
+    );
+    if (catalogLinkError) return errorResponse(catalogLinkError);
+
     const isUSD = validated.data.currency === "USD";
+    const packageItemizationSettings = await getPackageItemizationSettings(
+      organizationId,
+      validated.data.lineItems.flatMap((item) =>
+        item.servicePackageId ? [item.servicePackageId] : [],
+      ),
+    );
     let subtotalAcc = 0;
     let taxAcc = 0;
 
@@ -473,15 +563,28 @@ export async function createInvoice(input: CreateInvoiceInput) {
       subtotalAcc += lineSubtotal;
       taxAcc += lineTax;
 
+      const packageSettings = item.servicePackageId
+        ? packageItemizationSettings.get(item.servicePackageId)
+        : undefined;
+
       return {
         servicePackageId: item.servicePackageId || null,
-        name: item.name,
-        description: item.description || null,
+        productId: item.productId || null,
+        itemType: item.productId
+          ? BillableItemType.GOODS
+          : item.servicePackageId
+            ? BillableItemType.SERVICE
+            : item.itemType,
+        packageHasItems: packageSettings?.hasItems ?? null,
+        name: packageSettings && !packageSettings.hasItems ? packageSettings.name : item.name,
+        description: packageSettings && !packageSettings.hasItems
+          ? packageSettings.description
+          : item.description || null,
         quantity: item.quantity,
         unit: item.unit || "item",
         unitPrice: new Prisma.Decimal(item.unitPrice),
         taxRate: effectiveTaxRate,
-        sacCode: item.sacCode || "9983",
+        sacCode: item.sacCode?.trim() || null,
         billingCycle: item.billingCycle || "ONE_TIME",
         total: new Prisma.Decimal(lineSubtotal + lineTax),
         sortOrder: index,
@@ -623,6 +726,11 @@ export async function updateInvoice(input: UpdateInvoiceInput) {
       return errorResponse("Paid invoices are immutable and cannot be edited.");
     }
 
+    const catalogLinkError = lineItems
+      ? await validateInvoiceCatalogLinks(existing.organizationId, lineItems)
+      : null;
+    if (catalogLinkError) return errorResponse(catalogLinkError);
+
     if (status === InvoiceStatus.PAID && existing.amountPaid.toNumber() < existing.grandTotal.toNumber()) {
       return errorResponse("Record the received payment before marking this invoice as paid.");
     }
@@ -641,11 +749,19 @@ export async function updateInvoice(input: UpdateInvoiceInput) {
 
     const activeCurrency = currency || existing.currency;
     const isUSD = activeCurrency === "USD";
+    const packageItemizationSettings = lineItems
+      ? await getPackageItemizationSettings(
+          existing.organizationId,
+          lineItems.flatMap((item) =>
+            item.servicePackageId ? [item.servicePackageId] : [],
+          ),
+        )
+      : new Map<string, PackageItemizationSettings>();
 
     let subtotalAcc = 0;
     let taxAcc = 0;
 
-    let lineItemsData: any[] = [];
+    let lineItemsData: Prisma.InvoiceLineItemUncheckedCreateWithoutInvoiceInput[] = [];
     if (lineItems) {
       lineItemsData = lineItems.map((item, index) => {
         const lineSubtotal = item.quantity * item.unitPrice;
@@ -653,16 +769,28 @@ export async function updateInvoice(input: UpdateInvoiceInput) {
         const lineTax = (lineSubtotal * effectiveTaxRate) / 100;
         subtotalAcc += lineSubtotal;
         taxAcc += lineTax;
+        const packageSettings = item.servicePackageId
+          ? packageItemizationSettings.get(item.servicePackageId)
+          : undefined;
 
         return {
           servicePackageId: item.servicePackageId || null,
-          name: item.name,
-          description: item.description || null,
+          productId: item.productId || null,
+          itemType: item.productId
+            ? BillableItemType.GOODS
+            : item.servicePackageId
+              ? BillableItemType.SERVICE
+              : item.itemType,
+          packageHasItems: packageSettings?.hasItems ?? null,
+          name: packageSettings && !packageSettings.hasItems ? packageSettings.name : item.name,
+          description: packageSettings && !packageSettings.hasItems
+            ? packageSettings.description
+            : item.description || null,
           quantity: item.quantity,
           unit: item.unit || "item",
           unitPrice: new Prisma.Decimal(item.unitPrice),
           taxRate: effectiveTaxRate,
-          sacCode: item.sacCode || "9983",
+          sacCode: item.sacCode?.trim() || null,
           billingCycle: item.billingCycle || "ONE_TIME",
           total: new Prisma.Decimal(lineSubtotal + lineTax),
           sortOrder: index,
@@ -972,10 +1100,18 @@ export async function searchServicePackages(searchQuery: string) {
   try {
     const user = await getSessionUser();
     if (!user) return errorResponse("Unauthorized");
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return errorResponse("Choose an organization to search service packages");
+    const canReadServices = await checkOrganizationPermission({
+      headers: await headers(),
+      body: { permissions: { services: ["read"] } },
+    });
+    if (!canReadServices.success) return errorResponse("You don't have permission to search service packages");
 
     const packages = await prisma.servicePackage.findMany({
       where: {
         isActive: true,
+        service: { organizationId, isActive: true, deletedAt: null },
         OR: [
           { name: { contains: searchQuery, mode: "insensitive" } },
           { service: { name: { contains: searchQuery, mode: "insensitive" } } },
@@ -993,6 +1129,7 @@ export async function searchServicePackages(searchQuery: string) {
       id: pkg.id,
       name: pkg.name,
       serviceName: pkg.service.name,
+      hasItems: pkg.hasItems && pkg.items.length > 0,
       description: pkg.description,
       totalPrice: pkg.totalPrice.toNumber(),
       totalPriceUSD: pkg.totalPriceUSD ? pkg.totalPriceUSD.toNumber() : 0,
@@ -1113,7 +1250,7 @@ export async function createInvoiceFromProposal(proposalId: string) {
 
     if (!proposal) return errorResponse("Proposal not found");
 
-    const lineItemsData: any[] = [];
+    const lineItemsData: Prisma.InvoiceLineItemUncheckedCreateWithoutInvoiceInput[] = [];
     let sortOrder = 0;
 
     const isUSD = proposal.currency === "USD";
@@ -1122,13 +1259,16 @@ export async function createInvoiceFromProposal(proposalId: string) {
       for (const item of service.items) {
         lineItemsData.push({
           servicePackageId: service.packageId || null,
+          productId: item.productId || null,
+          itemType: item.productId ? BillableItemType.GOODS : item.itemType,
+          packageHasItems: service.hasItems,
           name: item.name,
           description: item.description || service.description || null,
           quantity: item.quantity,
           unit: item.unit || "item",
           unitPrice: item.unitPrice,
           taxRate: isUSD ? 0 : (item.taxRate || 18),
-          sacCode: item.sacCode || "9983",
+          sacCode: item.sacCode ?? null,
           billingCycle: item.billingCycle || "ONE_TIME",
           total: item.total,
           sortOrder: sortOrder++,

@@ -41,6 +41,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { MultiSelect, type MultiSelectOption } from "@/components/ui/multi-select";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { isAttendanceInProgress } from "@/lib/attendance-display-status";
 
 const attendanceStatusStyles: Record<string, string> = {
   PRESENT: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
@@ -51,10 +52,15 @@ const attendanceStatusStyles: Record<string, string> = {
   HOLIDAY: "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-400",
   WEEKEND: "border-slate-400/30 bg-slate-400/10 text-slate-600 dark:text-slate-300",
   AWAITING_ATTENDANCE: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400",
+  IN_PROGRESS: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400",
 };
 
 function getAttendanceStatusLabel(record: {
   status: string;
+  clockIn?: Date | string | null;
+  clockOut?: Date | string | null;
+  isAutoCheckedOut?: boolean;
+  isSynthetic?: boolean;
   lateMinutes?: number;
   leaveType?: string;
   holidayName?: string;
@@ -63,6 +69,8 @@ function getAttendanceStatusLabel(record: {
   leaveHalfDayPeriod?: "MORNING" | "AFTERNOON" | null;
   leaveRequestStatus?: string;
 }) {
+  if (isAttendanceInProgress(record)) return "IN PROGRESS";
+
   if (record.holidayName && record.holidayIsHalfDay) {
     const leaveDetail = record.leaveIsHalfDay
       ? ` · ${record.leaveHalfDayPeriod === "AFTERNOON" ? "afternoon" : "morning"} leave`
@@ -851,13 +859,15 @@ export function AttendanceReportView() {
               ? "—"
               : rec.clockOut
               ? formatInIST(new Date(rec.clockOut), "hh:mm a")
+              : rec.isSynthetic
+                ? "—"
               : rec.isAutoCheckedOut
                 ? "Not clocked out"
-                : "Active";
+                : "In Progress";
             const grossMins = rec.clockIn && rec.clockOut
               ? Math.max(0, Math.round((new Date(rec.clockOut).getTime() - new Date(rec.clockIn).getTime()) / (1000 * 60)))
               : 0;
-            const statusClass = attendanceStatusStyles[rec.status] ??
+            const statusClass = attendanceStatusStyles[isAttendanceInProgress(rec) ? "IN_PROGRESS" : rec.status] ??
               "border-border bg-muted text-muted-foreground";
             const deviation = rec.overtimeMinutes > 0
               ? `+${Math.floor(rec.overtimeMinutes / 60)}h ${rec.overtimeMinutes % 60}m overtime`
@@ -979,7 +989,7 @@ export function AttendanceReportView() {
                     ? "—"
                     : rec.isAutoCheckedOut
                     ? "Not clocked out"
-                    : "Active";
+                    : "In Progress";
 
                   const grossMins =
                     rec.clockIn && rec.clockOut
@@ -1019,7 +1029,7 @@ export function AttendanceReportView() {
                           variant="outline"
                           className={cn(
                             "h-5 max-w-none whitespace-nowrap px-2 py-0.5 text-[10px] font-semibold",
-                            attendanceStatusStyles[rec.status] ??
+                            attendanceStatusStyles[isAttendanceInProgress(rec) ? "IN_PROGRESS" : rec.status] ??
                               "border-border bg-muted text-muted-foreground",
                           )}
                           title={rec.holidayName || getAttendanceStatusLabel(rec)}

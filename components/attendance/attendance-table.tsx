@@ -15,6 +15,7 @@ import { RegularizationModal } from "./regularization-modal";
 import { AttendanceAuditViewer } from "./attendance-audit-viewer";
 import { ManualAttendanceEntryDialog } from "./manual-attendance-entry-dialog";
 import { formatInIST, formatTimeInIST } from "@/lib/date";
+import { isAttendanceInProgress } from "@/lib/attendance-display-status";
 import {
   LaptopIcon,
   Building2Icon,
@@ -88,8 +89,18 @@ export function AttendanceTable({ canManageAttendance, canViewAuditLogs }: Atten
     void fetchLogs();
   }, [fetchLogs]);
 
-  const getStatusBadge = (status: string, workMinutes?: number, clockOut?: string | null) => {
-    switch (status) {
+  const getStatusBadge = (record: {
+    status: string;
+    workMinutes?: number;
+    clockIn?: Date | string | null;
+    clockOut?: Date | string | null;
+    isAutoCheckedOut?: boolean;
+  }) => {
+    if (isAttendanceInProgress(record)) {
+      return <Badge variant="outline" className="border-blue-500/30 bg-blue-500/10 font-semibold text-blue-700 dark:text-blue-400">IN PROGRESS</Badge>;
+    }
+
+    switch (record.status) {
       case "PRESENT":
         return <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 font-semibold">PRESENT</Badge>;
       case "LATE":
@@ -100,11 +111,11 @@ export function AttendanceTable({ canManageAttendance, canViewAuditLogs }: Atten
             <Badge variant="outline" className="bg-amber-500/10 text-amber-500 border-amber-500/30 font-semibold">
               HALF DAY
             </Badge>
-            {clockOut && workMinutes !== undefined && workMinutes > 0 && workMinutes < 240 && (
+            {record.clockOut && record.workMinutes !== undefined && record.workMinutes > 0 && record.workMinutes < 240 && (
               <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
                 <span className="inline-flex items-center gap-1">
                   <Clock3 aria-hidden="true" className="size-3" />
-                  &lt; 4h ({Math.floor(workMinutes / 60)}h {workMinutes % 60}m)
+                  &lt; 4h ({Math.floor(record.workMinutes / 60)}h {record.workMinutes % 60}m)
                 </span>
               </span>
             )}
@@ -113,7 +124,7 @@ export function AttendanceTable({ canManageAttendance, canViewAuditLogs }: Atten
       case "ABSENT":
         return <Badge variant="outline" className="bg-rose-500/10 text-rose-500 border-rose-500/30 font-semibold">ABSENT</Badge>;
       default:
-        return <Badge variant="outline">{status}</Badge>;
+        return <Badge variant="outline">{record.status}</Badge>;
     }
   };
 
@@ -128,8 +139,8 @@ export function AttendanceTable({ canManageAttendance, canViewAuditLogs }: Atten
     }
   };
 
-  const formatDuration = (clockIn: string, clockOut?: string, breaks: any[] = []) => {
-    if (!clockOut) return "In Progress";
+  const formatDuration = (clockIn: string, clockOut?: string, breaks: any[] = [], isAutoCheckedOut = false) => {
+    if (!clockOut) return isAutoCheckedOut ? "Not clocked out" : "In Progress";
     const start = new Date(clockIn).getTime();
     const end = new Date(clockOut).getTime();
     let diff = end - start;
@@ -409,10 +420,12 @@ export function AttendanceTable({ canManageAttendance, canViewAuditLogs }: Atten
                   <TableCell className="text-xs font-semibold text-rose-600 dark:text-rose-400">
                     {record.clockOut
                       ? formatTimeInIST(new Date(record.clockOut))
-                      : "--:--"}
+                      : record.isAutoCheckedOut
+                        ? "Not clocked out"
+                        : "In Progress"}
                   </TableCell>
                   <TableCell className="text-xs font-medium">
-                    {formatDuration(record.clockIn, record.clockOut, record.breaks)}
+                    {formatDuration(record.clockIn, record.clockOut, record.breaks, record.isAutoCheckedOut)}
                     {record.isManuallyEdited && (
                       <div className="mt-1">
                         <Badge variant="outline" className="text-[9px] bg-amber-500/10 text-amber-600 border-amber-500/30">Manual Entry</Badge>
@@ -435,7 +448,7 @@ export function AttendanceTable({ canManageAttendance, canViewAuditLogs }: Atten
                       </div>
                     )}
                   </TableCell>
-                  <TableCell>{getStatusBadge(record.status, record.workMinutes, record.clockOut)}</TableCell>
+                  <TableCell>{getStatusBadge(record)}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
                       {canManageAttendance && (
@@ -491,7 +504,7 @@ export function AttendanceTable({ canManageAttendance, canViewAuditLogs }: Atten
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  {getStatusBadge(record.status, record.workMinutes, record.clockOut)}
+                  {getStatusBadge(record)}
                   {(canManageAttendance || canViewAuditLogs) && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -536,7 +549,9 @@ export function AttendanceTable({ canManageAttendance, canViewAuditLogs }: Atten
                   <div className="font-semibold text-rose-600 dark:text-rose-400">
                     {record.clockOut
                       ? formatTimeInIST(new Date(record.clockOut))
-                      : "In Progress"}
+                      : record.isAutoCheckedOut
+                        ? "Not clocked out"
+                        : "In Progress"}
                   </div>
                 </div>
               </div>
@@ -546,7 +561,7 @@ export function AttendanceTable({ canManageAttendance, canViewAuditLogs }: Atten
                   {getWorkModeIcon(record.workMode)}
                   <span>{record.workMode}</span>
                   <span>•</span>
-                  <span>{formatDuration(record.clockIn, record.clockOut, record.breaks)}</span>
+                  <span>{formatDuration(record.clockIn, record.clockOut, record.breaks, record.isAutoCheckedOut)}</span>
                   {record.isManuallyEdited && (
                     <Badge variant="outline" className="text-[9px] bg-amber-500/10 text-amber-600 border-amber-500/30 ml-1">Manual</Badge>
                   )}

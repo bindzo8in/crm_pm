@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { completeInitialSetup } from "@/actions/initial-setup";
 import {
   initialSetupSchema,
@@ -13,7 +13,16 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { LoaderCircle, MapPin, ShieldCheck } from "lucide-react";
+import { LocationAutocomplete } from "@/components/ui/location-autocomplete";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { OfficeLocationMap, type OfficeMapPosition } from "./office-location-map";
+import { LoaderCircle, Map, MapPin, ShieldCheck } from "lucide-react";
 
 type InitialSetupDefaults = Partial<
   Omit<
@@ -42,6 +51,7 @@ export function InitialSetupForm({
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [locationMessage, setLocationMessage] = useState<string | null>(null);
+  const [mapOpen, setMapOpen] = useState(false);
   const form = useForm<InitialSetupFormInput, undefined, InitialSetupInput>({
     resolver: zodResolver(initialSetupSchema),
     defaultValues: {
@@ -69,6 +79,10 @@ export function InitialSetupForm({
       officeRadiusMeters: String(defaults.officeRadiusMeters ?? 500),
     },
   });
+  const country = useWatch({ control: form.control, name: "country" });
+  const state = useWatch({ control: form.control, name: "state" });
+  const latitude = useWatch({ control: form.control, name: "officeLatitude" });
+  const longitude = useWatch({ control: form.control, name: "officeLongitude" });
 
   const locateOffice = () => {
     setLocationMessage(null);
@@ -108,6 +122,19 @@ export function InitialSetupForm({
 
   const fieldError = (name: keyof InitialSetupFormInput) =>
     form.formState.errors[name]?.message;
+  const latitudeNumber = Number(latitude);
+  const longitudeNumber = Number(longitude);
+  const initialMapPosition: OfficeMapPosition | null =
+    latitude &&
+    longitude &&
+    Number.isFinite(latitudeNumber) &&
+    latitudeNumber >= -90 &&
+    latitudeNumber <= 90 &&
+    Number.isFinite(longitudeNumber) &&
+    longitudeNumber >= -180 &&
+    longitudeNumber <= 180
+      ? { latitude: latitudeNumber, longitude: longitudeNumber }
+      : null;
 
   return (
     <form onSubmit={onSubmit} className="space-y-6">
@@ -162,12 +189,37 @@ export function InitialSetupForm({
           </label>
           <label className="space-y-1.5 text-sm font-medium">
             State or region *
-            <Input autoComplete="address-level1" {...form.register("state")} aria-invalid={Boolean(fieldError("state"))} />
+            <LocationAutocomplete
+              type="state"
+              id="state"
+              value={state}
+              countryCode={country}
+              placeholder="Start typing state or region..."
+              aria-invalid={Boolean(fieldError("state"))}
+              onChange={(value) =>
+                form.setValue("state", value, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                })
+              }
+            />
             {fieldError("state") && <span className="block text-xs text-destructive">{fieldError("state")}</span>}
           </label>
           <label className="space-y-1.5 text-sm font-medium">
             Country *
-            <Input autoComplete="country-name" {...form.register("country")} aria-invalid={Boolean(fieldError("country"))} />
+            <LocationAutocomplete
+              type="country"
+              id="country"
+              value={country}
+              placeholder="Start typing country..."
+              aria-invalid={Boolean(fieldError("country"))}
+              onChange={(value) =>
+                form.setValue("country", value, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                })
+              }
+            />
             {fieldError("country") && <span className="block text-xs text-destructive">{fieldError("country")}</span>}
           </label>
           <label className="space-y-1.5 text-sm font-medium">
@@ -226,9 +278,15 @@ export function InitialSetupForm({
                 </p>
               </div>
             </div>
-            <Button type="button" variant="outline" onClick={locateOffice} className="w-full sm:w-auto">
-              Use current location
-            </Button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button type="button" variant="outline" onClick={() => setMapOpen(true)} className="w-full sm:w-auto">
+                <Map aria-hidden="true" />
+                Select from map
+              </Button>
+              <Button type="button" variant="outline" onClick={locateOffice} className="w-full sm:w-auto">
+                Use current location
+              </Button>
+            </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
@@ -251,6 +309,35 @@ export function InitialSetupForm({
           {locationMessage && <p role="status" className="text-xs text-muted-foreground">{locationMessage}</p>}
         </div>
       </section>
+
+      <Dialog open={mapOpen} onOpenChange={setMapOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Choose office location</DialogTitle>
+            <DialogDescription>
+              Click the map or drag the pin to set your office coordinates.
+            </DialogDescription>
+          </DialogHeader>
+          {mapOpen && (
+            <OfficeLocationMap
+              initialPosition={initialMapPosition}
+              onCancel={() => setMapOpen(false)}
+              onConfirm={(position) => {
+                form.setValue("officeLatitude", String(position.latitude), {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                });
+                form.setValue("officeLongitude", String(position.longitude), {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                });
+                setLocationMessage("Office location selected from the map.");
+                setMapOpen(false);
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="flex items-start gap-2 text-xs text-muted-foreground">

@@ -432,7 +432,7 @@ export async function createServicePackage(data: ServicePackageSchema) {
             );
         }
 
-        const { name, description, serviceId, items, features, sacCode } = validatedData.data
+        const { name, description, serviceId, items, features, sacCode, hasItems } = validatedData.data
         const service = await prisma.service.findFirst({
             where: { id: serviceId, organizationId, deletedAt: null },
             select: { id: true },
@@ -455,6 +455,7 @@ export async function createServicePackage(data: ServicePackageSchema) {
                 totalPrice,
                 totalPriceUSD,
                 sacCode: sacCode || "9983",
+                hasItems,
                 items: {
                     create: items.map((item, index) => ({
                         name: item.name,
@@ -530,7 +531,8 @@ export async function editServicePackage(
             features,
             isActive,
             isPopular,
-            sacCode
+            sacCode,
+            hasItems,
         } = validatedData.data;
         const targetService = await prisma.service.findFirst({
             where: { id: serviceId, organizationId, deletedAt: null },
@@ -578,6 +580,7 @@ export async function editServicePackage(
                 existingPackage.isActive !== isActive ||
                 existingPackage.isPopular !== isPopular ||
                 existingPackage.sacCode !== sacCode ||
+                existingPackage.hasItems !== hasItems ||
                 existingPackage.totalPrice.toNumber() !== totalPrice ||
                 existingPackage.totalPriceUSD.toNumber() !== totalPriceUSD;
 
@@ -590,6 +593,7 @@ export async function editServicePackage(
                         serviceId,
                         isActive,
                         isPopular,
+                        hasItems,
                         sacCode: sacCode || "9983",
                         totalPrice,
                         totalPriceUSD,

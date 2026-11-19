@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ServicePackageImporter } from "./service-package-importer";
+import { ProposalCatalogItemPicker } from "./catalog-item-picker";
 import { ServiceSectionCard, ProposalServiceSection } from "./service-section-card";
 import { PricingSummaryCard } from "./pricing-summary-card";
 import { getProposalPricing, reorderProposalServices } from "@/actions/proposal-pricing";
@@ -34,7 +34,6 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { ProposalWorkflowNav } from "@/components/proposal/proposal-workflow-nav";
 import { ProposalWorkflowActionBar } from "@/components/proposal/proposal-workflow-action-bar";
-import { CustomLineItemDialog } from "./custom-line-item-dialog";
 import { proposalPricingStepSchema } from "@/lib/schemas/proposal-workflow-schema";
 
 interface ProposalPriceBuilderProps {
@@ -289,26 +288,20 @@ export function ProposalPriceBuilder({ proposalId }: ProposalPriceBuilderProps) 
           <div className="space-y-1">
             <h1 className="text-xl font-semibold tracking-tight">Proposal pricing</h1>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              Add services or custom items, then review the total before creating the document.
+              Add catalog items or proposal-specific line items, then review pricing before moving to the document.
             </p>
           </div>
           <Badge variant="outline" className="w-fit shrink-0 font-normal">
             {data.currency}
           </Badge>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
-          <div className="min-w-0 [&_button]:w-full sm:[&_button]:w-auto">
-            <ServicePackageImporter proposalId={proposalId} onSuccess={() => loadPricingData(true)} />
-          </div>
-          <div className="min-w-0 [&_button]:w-full sm:[&_button]:w-auto">
-            <CustomLineItemDialog proposalId={proposalId} currency={data.currency} onAdded={() => loadPricingData(true)} />
-          </div>
+        <div className="flex justify-end">
           <Button
             variant="outline"
             size="default"
             onClick={() => loadPricingData(true)}
             disabled={refreshing}
-            className="col-span-2 gap-2 sm:col-span-1 sm:size-9 sm:px-0"
+            className="w-full gap-2 sm:w-auto sm:size-9 sm:px-0"
             aria-label={refreshing ? "Refreshing pricing" : "Refresh pricing"}
             title="Refresh pricing"
           >
@@ -336,6 +329,16 @@ export function ProposalPriceBuilder({ proposalId }: ProposalPriceBuilderProps) 
               {itemCount} {itemCount === 1 ? "item" : "items"}
             </Badge>
           </div>
+          <div className="rounded-xl border bg-card p-3 sm:p-4">
+            <label htmlFor="proposal-catalog-item" className="mb-2 block text-sm font-medium">
+              Add a catalog item
+            </label>
+            <ProposalCatalogItemPicker
+              proposalId={proposalId}
+              currency={data.currency}
+              onAdded={() => loadPricingData(true)}
+            />
+          </div>
 
           {data.proposalServices.length === 0 ? (
             <div className="rounded-xl border border-dashed bg-muted/10 px-5 py-9 text-center sm:px-6 sm:py-10">
@@ -345,7 +348,7 @@ export function ProposalPriceBuilder({ proposalId }: ProposalPriceBuilderProps) 
               <div className="mx-auto max-w-md space-y-1">
                 <h3 className="font-semibold">No pricing items yet</h3>
                 <p className="text-sm text-muted-foreground">
-                  Add a service package or a custom item using the actions above.
+                  Search the item field above or add a custom line item.
                 </p>
               </div>
             </div>
@@ -386,7 +389,9 @@ export function ProposalPriceBuilder({ proposalId }: ProposalPriceBuilderProps) 
         </div>
       </div>
       <ProposalWorkflowActionBar>
-        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className={`flex w-full flex-col gap-2 sm:flex-row sm:items-center ${
+          pricingValidation.success ? "sm:justify-end" : "sm:justify-between"
+        }`}>
           {!pricingValidation.success && (
             <p role="status" className="text-xs text-muted-foreground">
               Add at least one priced item to continue.

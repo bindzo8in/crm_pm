@@ -4,10 +4,10 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   ArrowUpRight,
+  ArrowLeft,
   ClipboardCheck,
   Copy,
   FileDown,
-  List,
   ZoomIn,
   ZoomOut,
   Maximize,
@@ -20,6 +20,11 @@ import { toast } from "sonner";
 import { ProposalWorkflowNav } from "@/components/proposal/proposal-workflow-nav";
 import Link from "next/link";
 import { formatInIST } from "@/lib/date";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface PreviewToolbarProps {
   proposalId: string;
@@ -56,7 +61,6 @@ export function PreviewToolbar({ proposalId, proposalNumber, proposalStatus, cli
   const [isDownloading, setIsDownloading] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [isLinkCopied, setIsLinkCopied] = useState(false);
-  const [isAfterSharingOpen, setIsAfterSharingOpen] = useState(false);
 
   const handleCopyPublicLink = async () => {
     const publicUrl = `${window.location.origin}/p/${proposalId}`;
@@ -210,7 +214,7 @@ export function PreviewToolbar({ proposalId, proposalNumber, proposalStatus, cli
         />
       </div>
 
-      <div className="mx-auto flex w-full max-w-[1760px] items-center justify-between gap-2 px-3 py-2 sm:px-6">
+      <div className="mx-auto flex w-full max-w-[1760px] flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-6">
         <div className="flex w-fit items-center gap-1 rounded-lg border bg-muted/20 p-1 sm:gap-2">
         <Button 
           variant="ghost" 
@@ -245,7 +249,58 @@ export function PreviewToolbar({ proposalId, proposalNumber, proposalStatus, cli
         </Button>
         </div>
 
-        <div className="flex shrink-0 items-center justify-end gap-1 sm:gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1 sm:gap-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="outline"
+              aria-label={isLinkCopied ? "Link copied" : "Copy public link"}
+              title={isLinkCopied ? "Link copied" : "Copy public link"}
+              onClick={handleCopyPublicLink}
+            >
+              {isLinkCopied ? (
+                <ClipboardCheck aria-hidden="true" data-icon="inline-start" />
+              ) : (
+                <Copy aria-hidden="true" data-icon="inline-start" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{isLinkCopied ? "Link copied" : "Copy public link"}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              asChild
+              size="icon-sm"
+              variant="outline"
+              aria-label="Open public view"
+              title="Open public view"
+            >
+              <Link href={`/p/${proposalId}`} target="_blank" rel="noopener noreferrer">
+                <ArrowUpRight aria-hidden="true" data-icon="inline-start" />
+              </Link>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Open public view</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              asChild
+              size="icon-sm"
+              variant="outline"
+              aria-label="Back to proposals"
+              title="Back to proposals"
+            >
+              <Link href="/dashboard/proposals">
+                <ArrowLeft aria-hidden="true" data-icon="inline-start" />
+              </Link>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Back to proposals</TooltipContent>
+        </Tooltip>
         {clientEmail && (
           <>
           <Button onClick={handleEmailShare} disabled={isSendingEmail} size="sm" variant="outline" className="hidden gap-2 border-blue-200 text-blue-600 hover:bg-blue-50 sm:flex">
@@ -293,18 +348,6 @@ export function PreviewToolbar({ proposalId, proposalNumber, proposalStatus, cli
             <FileDown className="h-4 w-4" />
           )}
         </Button>
-        <Button
-          type="button"
-          size="icon-sm"
-          variant="outline"
-          aria-label={isAfterSharingOpen ? "Hide next steps" : "Show next steps"}
-          aria-expanded={isAfterSharingOpen}
-          title="Next steps"
-          className="sm:hidden"
-          onClick={() => setIsAfterSharingOpen((open) => !open)}
-        >
-          <List className="h-4 w-4" />
-        </Button>
         {!clientEmail && (
           <span className="hidden text-xs text-muted-foreground sm:inline">
             Add a customer email to send this proposal.
@@ -313,55 +356,6 @@ export function PreviewToolbar({ proposalId, proposalNumber, proposalStatus, cli
         </div>
       </div>
 
-      <section
-        aria-labelledby="proposal-next-steps-title"
-        className={`border-t bg-muted/20 px-3 py-3 sm:px-6 ${
-          isAfterSharingOpen ? "block" : "hidden sm:block"
-        }`}
-      >
-        <div className="mx-auto flex w-full max-w-[1760px] flex-col gap-3">
-          <div className="min-w-0">
-            <h2 id="proposal-next-steps-title" className="text-sm font-semibold">
-              After sharing
-            </h2>
-            <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground sm:text-sm">
-              {proposalStatus === "ACCEPTED"
-                ? "This proposal is accepted. Open Proposals to create an invoice or convert it to a project."
-                : proposalStatus === "SENT"
-                  ? "Your client can review and accept the proposal from the public link. After acceptance, create an invoice or project from Proposals."
-                  : "Share the public link with your client. They can review the proposal there; once it is sent and accepted, continue from Proposals."}
-            </p>
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="w-full gap-2"
-              onClick={handleCopyPublicLink}
-            >
-              {isLinkCopied ? (
-                <ClipboardCheck aria-hidden="true" className="size-4" />
-              ) : (
-                <Copy aria-hidden="true" className="size-4" />
-              )}
-              {isLinkCopied ? "Link copied" : "Copy public link"}
-            </Button>
-            <Button asChild size="sm" variant="outline" className="w-full gap-2">
-              <Link href={`/p/${proposalId}`} target="_blank" rel="noopener noreferrer">
-                Open public view
-                <ArrowUpRight aria-hidden="true" className="size-4" />
-              </Link>
-            </Button>
-            <Button asChild size="sm" variant="ghost" className="w-full gap-2">
-              <Link href="/dashboard/proposals">
-                <List aria-hidden="true" className="size-4" />
-                Back to proposals
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </section>
     </div>
   );
 }

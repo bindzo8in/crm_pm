@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
+import { networkInterfaces } from "node:os";
 import next from "next";
 import { WebSocket, WebSocketServer } from "ws";
 
@@ -211,4 +212,19 @@ server.listen(port, hostname, () => {
   const displayHostname = hostname === "0.0.0.0" ? "localhost" : hostname;
   const bindDescription = hostname === "0.0.0.0" ? " (bound to all interfaces)" : "";
   console.log(`CRM listening on http://${displayHostname}:${port}${bindDescription}`);
+
+  if (hostname === "0.0.0.0") {
+    const addresses = Object.values(networkInterfaces())
+      .flatMap((interfaces) => interfaces ?? [])
+      .filter((address) => address.family === "IPv4" && !address.internal)
+      .map((address) => address.address);
+
+    for (const address of new Set(addresses)) {
+      console.log(`Network: http://${address}:${port}`);
+    }
+
+    if (addresses.length === 0) {
+      console.log("No external IPv4 network address found.");
+    }
+  }
 });

@@ -33,6 +33,7 @@ interface PricingRendererProps {
         discountValue?: number | null;
         taxRate: number;
         sacCode?: string | null;
+        itemType?: "GOODS" | "SERVICE";
       }>;
     }>;
   };
@@ -46,6 +47,7 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
   const exRate = proposal.exchangeRate || 83.5;
   const inrEquivalent = proposal.grandTotal * exRate;
   const company = proposal.company;
+  let itemNumber = 0;
 
   const formatCurrency = (val: number) => {
     const currency = proposal.currency || "INR";
@@ -54,16 +56,6 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
       currency: currency,
       maximumFractionDigits: 2,
     });
-  };
-
-  const formatCycle = (cycle: string) => {
-    switch (cycle) {
-      case "MONTHLY": return "per month";
-      case "QUARTERLY": return "per quarter";
-      case "YEARLY": return "per year";
-      case "HALF_YEARLY": return "per 6 months";
-      default: return "";
-    }
   };
 
   return (
@@ -76,66 +68,88 @@ export function PricingRenderer({ block, proposal, bankAccount }: PricingRendere
       ) : (
         <div className="space-y-10">
           <div>
-            <table className="proposal-table w-full">
-              <thead>
-                <tr>
-                  <th className="w-[48%]">Description</th>
-                  <th className="text-center w-[10%]">Qty</th>
-                  <th className="text-right w-[14%]">Rate</th>
-                  <th className="text-right w-[13%]">Tax</th>
-                  <th className="text-right w-[15%]">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {services.map((service) => (
-                  <React.Fragment key={service.id}>
-                    {service.items.map((item) => (
-                      <tr key={item.id} className="break-inside-avoid">
-                        <td className="align-top">
-                          {service.serviceName.trim() && service.serviceName.trim() !== "Custom items" ? (
-                            <>
-                              <div className="font-bold text-black text-sm">
-                                {service.packageName
-                                  ? (service.packageName.trim().toLowerCase() === service.serviceName.trim().toLowerCase()
-                                      ? service.serviceName
-                                      : `${service.serviceName} (${service.packageName})`)
-                                  : service.serviceName}
-                              </div>
-                              {item.name &&
-                                item.name.trim().toLowerCase() !== service.serviceName.trim().toLowerCase() &&
-                                (!service.packageName || item.name.trim().toLowerCase() !== service.packageName.trim().toLowerCase()) && (
-                                  <div className="font-medium text-black text-xs mt-1">{item.name}</div>
+            <div className="overflow-hidden rounded-md border border-gray-300">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-100 text-gray-900 font-bold border-b border-gray-300">
+                  <tr>
+                    <th className="text-center py-2 px-2.5 font-bold w-8">#</th>
+                    <th className="text-left py-2 px-2.5 font-bold">Item &amp; Description</th>
+                    <th className="text-center py-2 px-2.5 font-bold">HSN / SAC code</th>
+                    <th className="text-center py-2 px-2.5 font-bold">Qty</th>
+                    <th className="text-right py-2 px-2.5 font-bold">Rate</th>
+                    <th className="text-right py-2 px-2.5 font-bold">Tax Rate</th>
+                    <th className="text-right py-2 px-2.5 font-bold">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {services.map((service) => {
+                    const hasServiceHeading =
+                      service.serviceName.trim() !== "" &&
+                      service.serviceName.trim() !== "Custom items";
+                    const hasSingleItem = service.items.length === 1;
+                    const serviceHeading = service.packageName
+                      ? service.packageName.trim().toLowerCase() === service.serviceName.trim().toLowerCase()
+                        ? service.serviceName
+                        : `${service.serviceName} (${service.packageName})`
+                      : service.serviceName;
+
+                    return (
+                      <React.Fragment key={service.id}>
+                        {hasServiceHeading && !hasSingleItem && (
+                          <tr className="bg-gray-50">
+                            <td colSpan={7} className="px-3 py-2 font-bold text-gray-900">
+                              {serviceHeading}
+                            </td>
+                          </tr>
+                        )}
+                        {service.items.map((item) => {
+                          const isNameRepeated =
+                            item.name.trim().toLowerCase() === service.serviceName.trim().toLowerCase() ||
+                            item.name.trim().toLowerCase() === service.packageName?.trim().toLowerCase();
+                          const itemTitle = hasServiceHeading && isNameRepeated
+                            ? hasSingleItem ? serviceHeading : "Service Package"
+                            : hasServiceHeading && hasSingleItem
+                              ? `${serviceHeading} — ${item.name}`
+                              : item.name;
+
+                          return (
+                            <tr key={item.id} className="align-top">
+                              <td className="py-2.5 px-2 text-center text-gray-900 font-bold text-xs">{++itemNumber}</td>
+                              <td className="py-2.5 px-3">
+                                {itemTitle && (
+                                  <div className="font-bold text-gray-900 leading-snug">{itemTitle}</div>
                                 )}
-                            </>
-                          ) : (
-                            <div className="font-bold text-black text-sm">{item.name}</div>
-                          )}
-                          {item.description && (
-                            <div className="text-xs text-black font-medium mt-1 whitespace-pre-wrap leading-relaxed">{item.description}</div>
-                          )}
-                        </td>
-                        <td className="text-center whitespace-nowrap align-top text-black font-medium">
-                          {item.quantity} <span className="text-xs font-semibold text-black">{item.unit || "Unit"}</span>
-                        </td>
-                        <td className="text-right whitespace-nowrap align-top text-black font-semibold">
-                          {formatCurrency(item.unitPrice)}
-                          {item.billingCycle && formatCycle(item.billingCycle) && (
-                            <div className="text-black font-medium text-[11px] mt-0.5">{formatCycle(item.billingCycle)}</div>
-                          )}
-                        </td>
-                        <td className="text-right whitespace-nowrap align-top text-black">
-                          {item.sacCode && <div className="text-xs font-mono font-semibold text-black">{item.sacCode}</div>}
-                          <div className="text-[11px] font-medium text-black mt-0.5">{isUSD ? "0% (Nil)" : `${item.taxRate}%`}</div>
-                        </td>
-                        <td className="text-right font-bold text-black whitespace-nowrap align-top">
-                          {formatCurrency(item.total)}
-                        </td>
-                      </tr>
-                    ))}
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
+                                {item.description && (
+                                  <div className="text-[11px] font-medium text-gray-700 mt-0.5 leading-relaxed whitespace-pre-wrap">{item.description}</div>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 text-center font-mono text-[11px] font-semibold text-gray-900 whitespace-nowrap">
+                                {item.sacCode || "—"}
+                              </td>
+                              <td className="py-2.5 px-3 text-center text-gray-900 font-semibold whitespace-nowrap">
+                                <span>{item.quantity} {item.unit || "Unit"}</span>
+                                {item.billingCycle && item.billingCycle !== "ONE_TIME" && (
+                                  <div className="text-[10px] text-gray-700 font-bold uppercase tracking-tight">{item.billingCycle.replace("_", " ")}</div>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 text-right text-gray-900 font-semibold whitespace-nowrap">
+                                {formatCurrency(item.unitPrice)}
+                              </td>
+                              <td className="py-2.5 px-3 text-right whitespace-nowrap text-[11px] font-semibold text-gray-800">
+                                {isUSD ? "0% (Nil)" : `${item.taxRate}%`}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-bold text-gray-900 whitespace-nowrap">
+                                {formatCurrency(item.total)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {/* Export LUT Notice Banner if USD */}

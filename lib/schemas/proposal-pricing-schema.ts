@@ -1,4 +1,4 @@
-import { BillingCycle, DiscountType } from "@/app/generated/prisma/enums";
+import { BillableItemType, BillingCycle, DiscountType } from "@/app/generated/prisma/enums";
 import { z } from "zod";
 
 export const importServicePackageSchema = z.object({
@@ -9,6 +9,14 @@ export const importServicePackageSchema = z.object({
 });
 
 export type ImportServicePackageSchema = z.infer<typeof importServicePackageSchema>;
+
+export const addCatalogLineItemSchema = z.object({
+  proposalId: z.string().min(1, "Proposal ID is required"),
+  itemType: z.enum(["product", "service-package"]),
+  catalogItemId: z.string().min(1, "Catalog item is required"),
+});
+
+export type AddCatalogLineItemSchema = z.infer<typeof addCatalogLineItemSchema>;
 
 export const proposalServiceEditSchema = z.object({
   proposalServiceId: z.string().nonempty("Proposal Service ID is required"),
@@ -22,10 +30,10 @@ export type ProposalServiceEditSchema = z.infer<typeof proposalServiceEditSchema
 export const proposalLineItemEditSchema = z.object({
   id: z.string().nonempty("Item ID is required"),
   proposalId: z.string().nonempty("Proposal ID is required"),
-  name: z.string().min(1, "Item name is required"),
+  name: z.string().min(1, "Line item name is required"),
   description: z.string().optional().nullable(),
   quantity: z.coerce.number().int().min(1, "Quantity must be at least 1"),
-  unit: z.string().optional(),
+  unit: z.string().trim().min(1, "Unit is required").max(40).optional(),
   unitPrice: z.coerce.number().min(0, "Unit price must be non-negative"),
   billingCycle: z.enum(BillingCycle),
   sortOrder: z.number().int().optional(),
@@ -33,6 +41,7 @@ export const proposalLineItemEditSchema = z.object({
   discountValue: z.coerce.number().min(0).optional().nullable(),
   taxRate: z.coerce.number().min(0).default(0),
   sacCode: z.string().optional().nullable(),
+  itemType: z.enum(BillableItemType).optional(),
 });
 
 export type ProposalLineItemEditSchema = z.infer<typeof proposalLineItemEditSchema>;
@@ -40,16 +49,17 @@ export type ProposalLineItemEditSchema = z.infer<typeof proposalLineItemEditSche
 export const customLineItemCreateSchema = z.object({
   proposalServiceId: z.string().optional().nullable(),
   proposalId: z.string().nonempty("Proposal ID is required"),
-  name: z.string().min(1, "Item name is required"),
+  name: z.string().min(1, "Line item name is required"),
   description: z.string().optional().nullable(),
   quantity: z.coerce.number().int().min(1, "Quantity must be at least 1").default(1),
-  unit: z.string().nonempty("Unit is required").default("Unit"),
+  unit: z.string().trim().min(1, "Unit is required").max(40).default("Unit"),
   unitPrice: z.coerce.number().min(0, "Unit price must be non-negative").default(0),
   billingCycle: z.enum(BillingCycle).default("ONE_TIME"),
   discountType: z.enum(DiscountType).optional().nullable(),
   discountValue: z.coerce.number().min(0).optional().nullable(),
   taxRate: z.coerce.number().min(0).default(0),
   sacCode: z.string().optional().nullable(),
+  itemType: z.enum(BillableItemType).default("SERVICE"),
 });
 
 export type CustomLineItemCreateSchema = z.infer<typeof customLineItemCreateSchema>;

@@ -14,8 +14,10 @@ import {
   getOrganizationRoutePermissions,
 } from "../lib/route-permissions";
 import {
+  organizationAdminRole,
   organizationCustomRoleStatement,
   organizationMemberRole,
+  organizationOwnerRole,
 } from "../lib/organization-permissions";
 import { organizationRoleTemplates } from "../lib/organization-role-templates";
 import { hasBusinessWorkspaceAccess } from "../lib/workspace-access";
@@ -146,6 +148,12 @@ test("staff model permissions remain limited to self-service and read-only data"
   assert.equal("bankAccounts" in staffRole.statements, false);
   assert.deepEqual(staffRole.statements.projects, ["read-assigned", "update-status"]);
   assert.deepEqual(staffRole.statements.tasks, ["read-assigned", "update-own"]);
+});
+
+test("measurement unit management is limited to organization administrators", () => {
+  assert.deepEqual(organizationOwnerRole.statements.referenceData, ["read", "manage"]);
+  assert.deepEqual(organizationAdminRole.statements.referenceData, ["read", "manage"]);
+  assert.deepEqual(organizationMemberRole.statements.referenceData, ["read"]);
 });
 
 test("project management stays scoped between staff and administrators", () => {

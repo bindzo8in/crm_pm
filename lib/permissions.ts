@@ -184,6 +184,7 @@ export const crmStatement = {
 
     referenceData: [
         "read",
+        "manage",
     ],
 } as const;
 
@@ -296,6 +297,9 @@ export const staffRole = ac.newRole({
 
     invoices: ["create", "read", "update", "send", "record-payment", "mark-paid"],
 
+    services: ["read"],
+    products: ["read"],
+
     projects: ["read-assigned", "update-status"],
     tasks: ["read-assigned", "update-own"],
 
@@ -358,9 +362,11 @@ export const prismaModelPermissions = {
     AttendanceBreak: "attendance",
     WebPushSubscription: "attendance",
     AttendanceReminder: "attendance",
+    AttendanceAlarm: "attendance",
     LeaveRequest: "leave",
     Holiday: "holidays",
     Notification: "holidays",
+    MeasurementUnit: "referenceData",
     AttendanceSettings: "attendance",
     AttendanceAuditLog: "attendance",
     SalaryStructure: "salary",

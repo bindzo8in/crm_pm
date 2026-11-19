@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/sidebar"
 import {
   Banknote,
+  Box,
   BookUser,
   Building2,
   CalendarDays,
@@ -114,6 +115,12 @@ const data = {
       section: "Catalog",
       url: "/dashboard/services",
       icon: <Package />
+    },
+    {
+      title: "Products",
+      section: "Catalog",
+      url: "/dashboard/products",
+      icon: <Box />
     },
     {
       title: "Tariffs",

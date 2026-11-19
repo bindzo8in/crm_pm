@@ -4,6 +4,8 @@ Admins and Super Admins can set the reminder time in Attendance → Shift Rules.
 
 Each user can enable browser notifications on the device they use to access Attendance. In-app notifications continue to work when browser push is not configured.
 
+At the configured shift end, employees who are still clocked in receive one in-app clock-out reminder. Each employee can independently opt in to push alarms at the configured shift start and end under Attendance settings. Clock-in alarms are skipped after the employee has clocked in and on weekends, applicable holidays, or approved leave. Push alarms require browser alerts to be enabled on the device; audible behavior is controlled by the browser and operating system.
+
 Attendance reminder scheduling runs in a Docker Compose service deployed with each app. The scheduler uses the `Asia/Kolkata` timezone and checks every five minutes; the app sends reminders only between the configured reminder time and shift start (IST), and only to eligible staff who have not checked in, taken approved leave, or reached a weekend/holiday. Outside that window, the endpoint reports that it skipped delivery.
 
 The reminder endpoint reports `notified` (new in-app reminders), `pushSent` (successful browser deliveries), `pushSkipped` (eligible users without a push attempt, such as no subscription), and `pushFailures` (push delivery/configuration failures). Review a specific deployment with `docker compose logs -f attendance-reminder-scheduler` from that app's server directory. The optional GitHub Actions **Run workflow** trigger is manual only and is not needed for scheduled reminders; a manual run can notify all eligible employees for each configured environment.

@@ -54,7 +54,7 @@ export function TimelineBlockEditor({ block, onSave }: TimelineBlockEditorProps)
   };
 
   const handleSave = async () => {
-    if (!isDirty && !justSaved) return;
+    if (!isDirty || isSaving) return;
     setIsSaving(true);
     try {
       await onSave(block.id, { milestones } as Record<string, unknown>);
@@ -92,7 +92,7 @@ export function TimelineBlockEditor({ block, onSave }: TimelineBlockEditorProps)
           <span>Structured Project Timeline (Phases, Duration & Key Deliverables)</span>
         </div>
 
-        <Button onClick={handleSave} disabled={isSaving || (!isDirty && !justSaved)} size="sm" className="h-8 w-full gap-1.5 px-3 text-xs sm:w-auto">
+        <Button onClick={handleSave} disabled={isSaving || !isDirty} size="sm" className="h-8 w-full gap-1.5 px-3 text-xs sm:w-auto">
           {justSaved ? (
             <>
               <Check className="h-3.5 w-3.5 text-emerald-500" />
@@ -195,7 +195,7 @@ export function TimelineBlockEditor({ block, onSave }: TimelineBlockEditorProps)
             Add Another Phase
           </Button>
 
-          <Button onClick={handleSave} disabled={isSaving || (!isDirty && !justSaved)} size="sm" className="w-full gap-1.5 text-xs sm:w-auto">
+          <Button onClick={handleSave} disabled={isSaving || !isDirty} size="sm" className="w-full gap-1.5 text-xs sm:w-auto">
             {justSaved ? (
               <>
                 <Check className="h-3.5 w-3.5 text-emerald-500" />

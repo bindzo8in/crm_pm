@@ -1,6 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { BillableItemType } from "@/app/generated/prisma/enums";
+import {
+  BillableItemTypeFields,
+  getDefaultHsnSacCode,
+} from "@/components/catalog/billable-item-type-fields";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -56,11 +61,13 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Textarea } from "@/components/ui/textarea";
+import { UnitSelect } from "@/components/catalog/measurement-units";
 
 export interface LineItem {
   id: string;
   proposalServiceId: string;
   packageItemId?: string | null;
+  productId?: string | null;
   name: string;
   description?: string | null;
   quantity: number;
@@ -73,28 +80,32 @@ export interface LineItem {
   discountType?: string | null;
   discountValue?: number | null;
   taxRate?: number;
+  itemType?: BillableItemType;
+  sacCode?: string | null;
 }
 
 interface LineItemsTableProps {
   proposalId: string;
   proposalServiceId: string;
   items: LineItem[];
+  hasItems?: boolean;
   onRefresh: () => void;
   currency?: string;
 }
 
 const billingCycleLabels: Record<string, string> = {
-  ONE_TIME: "One Time",
+  ONE_TIME: "One-time",
   MONTHLY: "Monthly",
   QUARTERLY: "Quarterly",
-  HALF_YEARLY: "Half-Yearly",
-  YEARLY: "Yearly",
+  HALF_YEARLY: "Every six months",
+  YEARLY: "Annually",
 };
 
 const taxOptions = [0, 18, 28];
 
 interface SortableRowProps {
   item: LineItem;
+  hasItems: boolean;
   currencySymbol: string;
   currencyLocale: string;
   idx: number;
@@ -112,6 +123,7 @@ interface SortableRowProps {
 
 function SortableRow({
   item,
+  hasItems,
   currencySymbol,
   currencyLocale,
   idx,
@@ -126,6 +138,7 @@ function SortableRow({
   onDelete,
   onReorderArrow,
 }: SortableRowProps) {
+  const canReorder = totalItems > 1;
   const {
     attributes,
     listeners,
@@ -133,7 +146,7 @@ function SortableRow({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: item.id, disabled: isEditing || isLoading });
+  } = useSortable({ id: item.id, disabled: !canReorder || isEditing || isLoading });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -157,49 +170,72 @@ function SortableRow({
     <article
       ref={setNodeRef}
       style={style}
-      className={`min-w-0 rounded-lg border bg-background ${isEditing ? "border-primary/40 bg-primary/[0.03]" : ""}`}
+      className={`min-w-0 py-3 ${isEditing ? "rounded-md bg-primary/[0.03]" : ""}`}
     >
-      <header className="flex min-w-0 items-start gap-2.5 px-3 py-3 sm:gap-3 sm:px-4">
-        <div className="flex shrink-0 items-center gap-1 pt-0.5">
-          <button
-            type="button"
-            {...attributes}
-            {...listeners}
-            className="touch-none cursor-grab rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
-            title="Drag to reorder"
-            aria-label={`Drag to reorder ${item.name}`}
-            disabled={isLoading || isEditing}
-          >
-            <GripVertical className="size-4" aria-hidden="true" />
-          </button>
-          <span className="w-5 text-center text-xs tabular-nums text-muted-foreground">
-            {idx + 1}
-          </span>
-        </div>
+      <header className="flex min-w-0 items-start gap-2.5 sm:gap-3">
+        {canReorder && (
+          <div className="flex shrink-0 items-center gap-1 pt-0.5">
+            <button
+              type="button"
+              {...attributes}
+              {...listeners}
+              className="touch-none cursor-grab rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+              title="Drag to reorder"
+              aria-label={`Drag to reorder ${item.name}`}
+              disabled={isLoading || isEditing}
+            >
+              <GripVertical className="size-4" aria-hidden="true" />
+            </button>
+            <span className="w-5 text-center text-xs tabular-nums text-muted-foreground">
+              {idx + 1}
+            </span>
+          </div>
+        )}
 
         <div className="min-w-0 flex-1">
           {isEditing ? (
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <label htmlFor={`line-item-name-${item.id}`} className="text-xs font-medium text-muted-foreground">Item name</label>
-                <Input
-                  id={`line-item-name-${item.id}`}
-                  value={editForm.name || ""}
-                  onChange={(event) => setEditForm({ ...editForm, name: event.target.value })}
-                  placeholder="Item name"
-                  className="h-9"
+            <>
+              {hasItems && (
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <label htmlFor={`line-item-name-${item.id}`} className="text-xs font-medium text-muted-foreground">Line item name</label>
+                    <Input
+                      id={`line-item-name-${item.id}`}
+                      value={editForm.name || ""}
+                      onChange={(event) => setEditForm({ ...editForm, name: event.target.value })}
+                      placeholder="Line item name"
+                      className="h-9"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label htmlFor={`line-item-description-${item.id}`} className="text-xs font-medium text-muted-foreground">Description</label>
+                    <Textarea
+                      id={`line-item-description-${item.id}`}
+                      value={editForm.description || ""}
+                      onChange={(event) => setEditForm({ ...editForm, description: event.target.value })}
+                      placeholder="Add a short description (optional)"
+                      className="min-h-16"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {item.isCustom && (
+                <BillableItemTypeFields
+                  itemType={editForm.itemType ?? BillableItemType.SERVICE}
+                  sacCode={editForm.sacCode ?? ""}
+                  idPrefix={`line-item-${item.id}`}
+                  className="mt-3"
+                  onItemTypeChange={(itemType) =>
+                    setEditForm({
+                      ...editForm,
+                      itemType,
+                      sacCode: getDefaultHsnSacCode(itemType),
+                    })
+                  }
+                  onSacCodeChange={(sacCode) => setEditForm({ ...editForm, sacCode })}
                 />
-              </div>
-              <div className="space-y-1.5">
-                <label htmlFor={`line-item-description-${item.id}`} className="text-xs font-medium text-muted-foreground">Description</label>
-                <Textarea
-                  id={`line-item-description-${item.id}`}
-                  value={editForm.description || ""}
-                  onChange={(event) => setEditForm({ ...editForm, description: event.target.value })}
-                  placeholder="Add a short description (optional)"
-                  className="min-h-16"
-                />
-              </div>
+              )}
 
               <div className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-3">
                 <div className="min-w-0 space-y-1.5">
@@ -214,11 +250,11 @@ function SortableRow({
                 </div>
                 <div className="min-w-0 space-y-1.5">
                   <label htmlFor={`line-item-unit-${item.id}`} className="text-xs font-medium text-muted-foreground">Unit</label>
-                  <Input
+                  <UnitSelect
                     id={`line-item-unit-${item.id}`}
-                    value={editForm.unit || ""}
-                    onChange={(event) => setEditForm({ ...editForm, unit: event.target.value })}
-                    placeholder="Unit"
+                    value={editForm.unit || "Unit"}
+                    onValueChange={(unit) => setEditForm({ ...editForm, unit })}
+                    showManage={idx === 0}
                   />
                 </div>
                 <div className="col-span-2 min-w-0 space-y-1.5 sm:col-span-1">
@@ -324,7 +360,7 @@ function SortableRow({
                   </Button>
                 </div>
               </div>
-            </div>
+            </>
           ) : (
             <>
               <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -337,7 +373,7 @@ function SortableRow({
                       : "bg-blue-500/10 text-blue-600 dark:text-blue-400"
                   }`}
                 >
-                  {item.isCustom ? "Custom" : "From package"}
+                  {item.isCustom ? "Custom" : item.productId ? "Product" : "From package"}
                 </Badge>
               </div>
               {item.description && (
@@ -381,7 +417,7 @@ function SortableRow({
       </header>
 
       {!isEditing && (
-        <div className="grid grid-cols-2 gap-x-3 gap-y-3 border-t bg-muted/15 px-3 py-3 sm:grid-cols-4 sm:px-4 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2 pt-3 sm:grid-cols-4 lg:grid-cols-4">
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">Unit price</p>
             <p className="mt-0.5 break-words text-sm tabular-nums">
@@ -412,7 +448,7 @@ function SortableRow({
       )}
 
       {!isEditing && totalItems > 1 && (
-        <footer className="flex items-center justify-end gap-1 border-t px-3 py-1.5 sm:px-4">
+        <footer className="flex items-center justify-end gap-1 pt-1">
           <span className="mr-auto text-xs text-muted-foreground">Reorder item</span>
           <Button
             type="button"
@@ -448,6 +484,7 @@ export function LineItemsTable({
   proposalId,
   proposalServiceId,
   items,
+  hasItems = true,
   onRefresh,
   currency = "INR",
 }: LineItemsTableProps) {
@@ -468,6 +505,8 @@ export function LineItemsTable({
   const [customDiscountType, setCustomDiscountType] = useState<string>("NONE");
   const [customDiscountVal, setCustomDiscountVal] = useState<number>(0);
   const [customTaxRate, setCustomTaxRate] = useState<number>(18);
+  const [customItemType, setCustomItemType] = useState<BillableItemType>(BillableItemType.SERVICE);
+  const [customSacCode, setCustomSacCode] = useState(getDefaultHsnSacCode(BillableItemType.SERVICE));
   const [addingCustom, setAddingCustom] = useState(false);
 
   const sensors = useSensors(
@@ -487,6 +526,8 @@ export function LineItemsTable({
       discountType: item.discountType || "NONE",
       discountValue: item.discountValue || 0,
       taxRate: item.taxRate ?? 18,
+      itemType: item.itemType ?? BillableItemType.SERVICE,
+      sacCode: item.sacCode ?? "",
     });
   };
 
@@ -497,37 +538,71 @@ export function LineItemsTable({
 
   const handleSaveEdit = async (itemId: string) => {
     if (!editForm.name) {
-      toast.error("Item name cannot be empty");
+      toast.error("Enter a line item name");
       return;
     }
+    const currentItem = items.find((item) => item.id === itemId);
+    const discType: "PERCENTAGE" | "FIXED" | null =
+      editForm.discountType === "PERCENTAGE"
+        ? "PERCENTAGE"
+        : editForm.discountType === "FIXED"
+          ? "FIXED"
+          : null;
+    const discVal = discType ? Number(editForm.discountValue || 0) : null;
+    const currentDiscountValue =
+      currentItem?.discountType && currentItem.discountType !== "NONE"
+        ? currentItem.discountValue ?? 0
+        : null;
+    const nextValues = {
+      name: editForm.name,
+      description: editForm.description || null,
+      quantity: Number(editForm.quantity) || 1,
+      unit: editForm.unit || "Unit",
+      unitPrice: Number(editForm.unitPrice) || 0,
+      billingCycle: editForm.billingCycle || "ONE_TIME",
+      discountType: discType,
+      discountValue: discVal,
+      taxRate: Number(editForm.taxRate ?? 18),
+      itemType: editForm.itemType ?? BillableItemType.SERVICE,
+      sacCode: editForm.sacCode?.trim() || null,
+    };
+
+    if (
+      currentItem &&
+      currentItem.name === nextValues.name &&
+      (currentItem.description || null) === nextValues.description &&
+      currentItem.quantity === nextValues.quantity &&
+      currentItem.unit === nextValues.unit &&
+      currentItem.unitPrice === nextValues.unitPrice &&
+      currentItem.billingCycle === nextValues.billingCycle &&
+      (currentItem.discountType === "NONE" ? null : currentItem.discountType || null) === nextValues.discountType &&
+      currentDiscountValue === nextValues.discountValue &&
+      (currentItem.taxRate ?? 18) === nextValues.taxRate &&
+      (currentItem.itemType ?? BillableItemType.SERVICE) === nextValues.itemType &&
+      (currentItem.sacCode ?? null) === nextValues.sacCode
+    ) {
+      handleCancelEdit();
+      return;
+    }
+
     setLoadingActionId(itemId);
     try {
-      const discType = editForm.discountType === "NONE" || !editForm.discountType ? null : editForm.discountType;
-      const discVal = discType ? Number(editForm.discountValue || 0) : null;
 
       const res = await updateProposalLineItem({
         id: itemId,
         proposalId,
-        name: editForm.name,
-        description: editForm.description || null,
-        quantity: Number(editForm.quantity) || 1,
-        unit: editForm.unit || "Unit",
-        unitPrice: Number(editForm.unitPrice) || 0,
-        billingCycle: (editForm.billingCycle as "ONE_TIME" | "MONTHLY" | "QUARTERLY" | "HALF_YEARLY" | "YEARLY") || "ONE_TIME",
-        discountType: discType as "PERCENTAGE" | "FIXED" | null,
-        discountValue: discVal,
-        taxRate: Number(editForm.taxRate ?? 18),
+        ...nextValues,
       });
 
       if (res.success) {
-        toast.success("Item updated & totals synced");
+        toast.success("Line item updated and proposal totals recalculated");
         setEditingItemId(null);
         onRefresh();
       } else {
-        toast.error(res.message || "Failed to update item");
+        toast.error(res.message || "Could not update the line item");
       }
     } catch {
-      toast.error("An error occurred while saving");
+      toast.error("Could not save the line item. Try again.");
     } finally {
       setLoadingActionId(null);
     }
@@ -541,10 +616,10 @@ export function LineItemsTable({
         toast.success(`Removed "${item.name}" from proposal`);
         onRefresh();
       } else {
-        toast.error(res.message || "Failed to delete item");
+        toast.error(res.message || "Could not remove the line item");
       }
     } catch {
-      toast.error("An error occurred while deleting");
+      toast.error("Could not remove the line item. Try again.");
     } finally {
       setLoadingActionId(null);
     }
@@ -567,10 +642,10 @@ export function LineItemsTable({
       if (res.success) {
         onRefresh();
       } else {
-        toast.error("Failed to reorder items");
+        toast.error("Could not update the line item order");
       }
     } catch {
-      toast.error("Reorder error");
+      toast.error("Could not update the line item order. Try again.");
     }
   };
 
@@ -590,10 +665,10 @@ export function LineItemsTable({
           if (res.success) {
             onRefresh();
           } else {
-            toast.error("Failed to reorder items");
+            toast.error("Could not update the line item order");
           }
         } catch {
-          toast.error("Reorder error");
+          toast.error("Could not update the line item order. Try again.");
         }
       }
     }
@@ -601,7 +676,7 @@ export function LineItemsTable({
 
   const handleAddCustomItem = async () => {
     if (!customName.trim()) {
-      toast.error("Please enter a custom item name");
+      toast.error("Enter a line item name");
       return;
     }
     setAddingCustom(true);
@@ -621,10 +696,12 @@ export function LineItemsTable({
         discountType: discType as "PERCENTAGE" | "FIXED" | null,
         discountValue: discVal,
         taxRate: Number(customTaxRate ?? 18),
+        itemType: customItemType,
+        sacCode: customSacCode.trim() || null,
       });
 
       if (res.success) {
-        toast.success("Custom item added!");
+        toast.success("Line item added to proposal");
         setCustomModalOpen(false);
         setCustomName("");
         setCustomDescription("");
@@ -635,12 +712,14 @@ export function LineItemsTable({
         setCustomDiscountType("NONE");
         setCustomDiscountVal(0);
         setCustomTaxRate(18);
+        setCustomItemType(BillableItemType.SERVICE);
+        setCustomSacCode(getDefaultHsnSacCode(BillableItemType.SERVICE));
         onRefresh();
       } else {
-        toast.error(res.message || "Failed to add custom item");
+        toast.error(res.message || "Could not add the line item");
       }
     } catch {
-      toast.error("Error adding custom item");
+      toast.error("Could not add the line item. Try again.");
     } finally {
       setAddingCustom(false);
     }
@@ -652,19 +731,20 @@ export function LineItemsTable({
     <div className="min-w-0 space-y-4">
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         {items.length === 0 ? (
-          <div className="rounded-lg border border-dashed px-4 py-6 text-center">
-            <p className="text-sm font-medium">No items in this section yet</p>
+          <div className="py-5 text-center">
+            <p className="text-sm font-medium text-muted-foreground">No items in this section yet</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Add a custom item or import a package to get started.
+              Add a custom line item or select an item from the catalog to get started.
             </p>
           </div>
         ) : (
           <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
-            <div className="min-w-0 space-y-3">
+            <div className="min-w-0 divide-y divide-border/70">
               {items.map((item, idx) => (
                 <SortableRow
                   key={item.id}
                   item={item}
+                  hasItems={hasItems}
                   currencySymbol={currencySymbol}
                   currencyLocale={currencyLocale}
                   idx={idx}
@@ -686,7 +766,7 @@ export function LineItemsTable({
       </DndContext>
 
       {/* Add Custom Item Modal / Trigger */}
-      <div className="flex justify-start">
+      {hasItems && <div className="flex justify-start">
         <Dialog open={customModalOpen} onOpenChange={setCustomModalOpen}>
           <DialogTrigger asChild>
             <Button
@@ -695,23 +775,23 @@ export function LineItemsTable({
               className="gap-2 border-dashed border-primary/40 text-primary hover:bg-primary/5 hover:border-primary font-medium"
             >
               <Plus className="size-4" />
-              <span>Add Custom Item</span>
+              <span>Add custom line item</span>
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-lg p-6 max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Tag className="size-5 text-violet-500" />
-                <span>Add Custom Line Item</span>
+                <span>Add custom line item</span>
               </DialogTitle>
               <DialogDescription className="text-xs">
-                Custom items are specific to this proposal (e.g., Training, Migration, API Integration).
+                Use a proposal-specific line item for a charge or deliverable that is not available in the catalog.
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4 my-2">
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground">Quick Suggestions</label>
+                <label className="text-xs font-semibold text-muted-foreground">Common examples</label>
                 <div className="flex flex-wrap gap-1.5">
                   {presetSuggestions.map((preset) => (
                     <Badge
@@ -727,11 +807,11 @@ export function LineItemsTable({
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-medium">Item Name *</label>
+                <label className="text-xs font-medium">Line item name *</label>
                 <Input
                   value={customName}
                   onChange={(e) => setCustomName(e.target.value)}
-                  placeholder="e.g. Custom API Integration"
+                  placeholder="e.g. API integration"
                 />
               </div>
 
@@ -740,9 +820,20 @@ export function LineItemsTable({
                 <Input
                   value={customDescription}
                   onChange={(e) => setCustomDescription(e.target.value)}
-                  placeholder="Details of the scope or deliverable..."
+                  placeholder="Describe the scope, deliverable, or charge."
                 />
               </div>
+
+              <BillableItemTypeFields
+                itemType={customItemType}
+                sacCode={customSacCode}
+                idPrefix={`custom-item-${proposalServiceId}`}
+                onItemTypeChange={(itemType) => {
+                  setCustomItemType(itemType);
+                  setCustomSacCode(getDefaultHsnSacCode(itemType));
+                }}
+                onSacCodeChange={setCustomSacCode}
+              />
 
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
@@ -756,10 +847,11 @@ export function LineItemsTable({
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Unit *</label>
-                  <Input
+                  <UnitSelect
+                    id="custom-proposal-line-item-unit"
                     value={customUnit}
-                    onChange={(e) => setCustomUnit(e.target.value)}
-                    placeholder="e.g. Hrs, Days, Unit"
+                    onValueChange={setCustomUnit}
+                    showManage
                   />
                 </div>
                 <div className="space-y-1">
@@ -831,7 +923,7 @@ export function LineItemsTable({
               </div>
 
               <div className="space-y-1 pt-2 border-t">
-                <label className="text-xs font-medium">Billing Cycle</label>
+                <label className="text-xs font-medium">Billing cycle</label>
                 <Select value={customCycle} onValueChange={setCustomCycle}>
                   <SelectTrigger>
                     <SelectValue />
@@ -853,12 +945,12 @@ export function LineItemsTable({
               </Button>
               <Button size="sm" onClick={handleAddCustomItem} disabled={addingCustom} className="gap-1.5">
                 {addingCustom && <Loader2 className="size-3.5 animate-spin" />}
-                <span>Add Item</span>
+                <span>Add line item</span>
               </Button>
             </div>
           </DialogContent>
         </Dialog>
-      </div>
+      </div>}
     </div>
   );
 }

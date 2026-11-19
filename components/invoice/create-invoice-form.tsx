@@ -8,8 +8,14 @@ import { createInvoice, updateInvoice, getCompanyBankAccounts, getInvoiceById } 
 import { CanCreateBankAccount } from "@/actions/bank-accounts";
 import { getLiveExchangeRate } from "@/actions/exchange-rate";
 import { toast } from "sonner";
-import { ServicePackageSearch, ServicePackageSearchResult } from "@/components/invoice/service-package-search";
-import { InvoiceServiceAutocomplete } from "@/components/invoice/invoice-service-autocomplete";
+import { BillableItemAutocomplete } from "@/components/catalog/billable-item-autocomplete";
+import { UnitSelect } from "@/components/catalog/measurement-units";
+import {
+  BillableItemTypeFields,
+  getDefaultHsnSacCode,
+} from "@/components/catalog/billable-item-type-fields";
+import type { BillableCatalogItem } from "@/actions/products";
+import { BillableItemType } from "@/app/generated/prisma/enums";
 import { CustomerForm } from "@/components/customers/create-edit";
 import { CustomerCombobox, type CustomerOption } from "@/components/customers/customer-combobox";
 import { BankAccountForm } from "@/components/settings/bank-account-form";
@@ -187,6 +193,13 @@ export function CreateInvoiceForm({
         ? initialData.lineItems.map((item) => ({
           id: item.id,
           servicePackageId: item.servicePackageId || null,
+          productId: item.productId || null,
+          itemType: item.productId ? BillableItemType.GOODS : item.itemType ?? BillableItemType.SERVICE,
+          packageHasItems: item.packageHasItems ?? (
+            item.servicePackage
+              ? item.servicePackage.hasItems && item.servicePackage._count.items > 0
+              : true
+          ),
           serviceName: item.servicePackage?.service?.name || item.servicePackage?.name || null,
           name: item.name,
           description: item.description || "",
@@ -194,7 +207,7 @@ export function CreateInvoiceForm({
           unit: item.unit || "item",
           unitPrice: item.unitPrice,
           taxRate: initialData.currency === "USD" ? 0 : item.taxRate || 18,
-          sacCode: item.sacCode || "9983",
+          sacCode: item.sacCode ?? "",
           billingCycle: item.billingCycle || "ONE_TIME",
         }))
         : [{
@@ -204,6 +217,7 @@ export function CreateInvoiceForm({
           unit: "item",
           unitPrice: 0,
           taxRate: 18,
+          itemType: BillableItemType.SERVICE,
           sacCode: "9983",
           billingCycle: "ONE_TIME",
         }],
@@ -277,35 +291,6 @@ export function CreateInvoiceForm({
     }
   };
 
-  const handleAddPackage = (pkg: ServicePackageSearchResult) => {
-    const newItems = pkg.items.map((item) => {
-      const inrPrice = item.unitPrice;
-      const usdPrice = item.unitPriceUSD && item.unitPriceUSD > 0
-        ? item.unitPriceUSD
-        : Number((item.unitPrice / (exchangeRate || 83.5)).toFixed(2));
-      const priceToUse = currency === "USD" ? usdPrice : inrPrice;
-
-      return {
-        servicePackageId: pkg.id,
-        serviceName: pkg.serviceName || null,
-        name: item.name && item.name.toLowerCase() !== "package" ? item.name : (pkg.serviceName ? `${pkg.serviceName} - ${pkg.name}` : pkg.name),
-        description: item.description || pkg.description || "",
-        quantity: item.quantity,
-        unit: item.unit,
-        unitPrice: priceToUse,
-        taxRate: currency === "USD" ? 0 : 18,
-        sacCode: item.sacCode || pkg.sacCode || "9983",
-        billingCycle: item.billingCycle,
-      };
-    });
-
-    if (lineItems.length === 1 && !lineItems[0].name.trim()) {
-      replace(newItems);
-    } else {
-      newItems.forEach((item) => append(item));
-    }
-  };
-
   const handleAddLineItem = () => {
     append({
       name: "",
@@ -316,6 +301,10 @@ export function CreateInvoiceForm({
       taxRate: currency === "USD" ? 0 : 18,
       sacCode: "9983",
       billingCycle: "ONE_TIME",
+      packageHasItems: true,
+      productId: null,
+      servicePackageId: null,
+      itemType: BillableItemType.SERVICE,
     });
   };
 
@@ -324,30 +313,34 @@ export function CreateInvoiceForm({
     remove(index);
   };
 
-  const handleSelectService = (
+  const handleSelectCatalogItem = (
     index: number,
-    servicePackage: ServicePackageSearchResult,
-    item: ServicePackageSearchResult["items"][number],
+    item: BillableCatalogItem,
   ) => {
+    const isPackage = item.kind === "service-package";
     const unitPrice = currency === "USD"
-      ? item.unitPriceUSD > 0
-        ? item.unitPriceUSD
-        : Number((item.unitPrice / (exchangeRate || 83.5)).toFixed(2))
-      : item.unitPrice;
-    const name = item.name.toLowerCase() !== "package"
-      ? item.name
-      : `${servicePackage.serviceName} - ${servicePackage.name}`;
+      ? item.basePriceUSD > 0
+        ? item.basePriceUSD
+        : Number((item.basePrice / (exchangeRate || 83.5)).toFixed(2))
+      : item.basePrice;
     const options = { shouldDirty: true };
 
-    form.setValue(`lineItems.${index}.servicePackageId`, servicePackage.id, options);
-    form.setValue(`lineItems.${index}.serviceName`, servicePackage.serviceName, options);
-    form.setValue(`lineItems.${index}.name`, name, { ...options, shouldValidate: true });
-    form.setValue(`lineItems.${index}.description`, item.description || servicePackage.description || "", options);
-    form.setValue(`lineItems.${index}.quantity`, item.quantity, options);
+    form.setValue(`lineItems.${index}.servicePackageId`, isPackage ? item.id : null, options);
+    form.setValue(`lineItems.${index}.productId`, isPackage ? null : item.id, options);
+    form.setValue(`lineItems.${index}.itemType`, isPackage ? BillableItemType.SERVICE : BillableItemType.GOODS, options);
+    form.setValue(`lineItems.${index}.packageHasItems`, isPackage ? true : null, options);
+    form.setValue(`lineItems.${index}.serviceName`, isPackage ? item.serviceName : null, options);
+    form.setValue(`lineItems.${index}.name`, item.name, { ...options, shouldValidate: true });
+    form.setValue(`lineItems.${index}.description`, item.description || "", options);
+    form.setValue(`lineItems.${index}.quantity`, 1, options);
     form.setValue(`lineItems.${index}.unit`, item.unit, options);
     form.setValue(`lineItems.${index}.unitPrice`, unitPrice, options);
-    form.setValue(`lineItems.${index}.taxRate`, currency === "USD" ? 0 : 18, options);
-    form.setValue(`lineItems.${index}.sacCode`, item.sacCode || servicePackage.sacCode || "9983", options);
+    form.setValue(`lineItems.${index}.taxRate`, currency === "USD" ? 0 : item.taxRate, options);
+    form.setValue(
+      `lineItems.${index}.sacCode`,
+      item.hsnCode || (isPackage ? getDefaultHsnSacCode(BillableItemType.SERVICE) : ""),
+      options,
+    );
     form.setValue(`lineItems.${index}.billingCycle`, item.billingCycle, options);
     form.setFocus(`lineItems.${index}.quantity`);
   };
@@ -389,9 +382,19 @@ export function CreateInvoiceForm({
       dueDate: data.dueDate || null,
       bankAccountId: data.bankAccountId || null,
       lineItems: data.lineItems.map((li) => ({
-        ...li,
+        id: li.id,
+        servicePackageId: li.servicePackageId,
+        productId: li.productId,
+        itemType: li.productId ? BillableItemType.GOODS : li.itemType ?? BillableItemType.SERVICE,
+        name: li.name,
+        description: li.description,
+        quantity: li.quantity,
+        unit: li.unit,
+        unitPrice: li.unitPrice,
+        packageHasItems: li.packageHasItems,
         taxRate: data.currency === "USD" ? 0 : (li.taxRate || 0),
-        sacCode: li.sacCode || "9983",
+        sacCode: li.sacCode ?? "",
+        billingCycle: li.billingCycle,
       })),
     };
 
@@ -434,8 +437,10 @@ export function CreateInvoiceForm({
         unit: "item",
         unitPrice: 0,
         taxRate: val === "USD" ? 0 : 18,
+        itemType: BillableItemType.SERVICE,
         sacCode: "9983",
         billingCycle: "ONE_TIME",
+        packageHasItems: true,
       },
     ]);
 
@@ -814,10 +819,7 @@ export function CreateInvoiceForm({
             <div className="flex flex-col gap-3 border-b pb-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-base font-semibold">Line items <span className="font-normal text-muted-foreground">({lineItems.length})</span></h2>
-                <p className="mt-1 text-sm text-muted-foreground">Add services and set quantities, rates, and tax.</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <ServicePackageSearch onSelectPackage={handleAddPackage} currency={currency} />
+                <p className="mt-1 text-sm text-muted-foreground">Add catalog items or enter a custom line item, then set quantity, price, and tax.</p>
               </div>
             </div>
             <div className="space-y-3">
@@ -848,33 +850,67 @@ export function CreateInvoiceForm({
                       <SortableInvoiceLineItem key={row.formId} id={row.formId} index={index}>
                         <div className="relative space-y-4 border-b border-border/70 py-4 last:border-b-0 sm:space-y-3">
                       <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,3fr)_minmax(3.75rem,.8fr)_minmax(4.5rem,1.2fr)_minmax(4.25rem,1.1fr)_minmax(4.5rem,1.2fr)_2rem]">
-                        <Controller
-                          name={`lineItems.${index}.name`}
-                          control={form.control}
-                          render={({ field, fieldState }) => (
-                            <Field data-invalid={fieldState.invalid} className="lg:col-start-1 lg:row-start-1">
-                              <FieldLabel className="lg:sr-only" htmlFor={`line-item-${index}-name`}>Item or service name <span className="text-destructive">*</span></FieldLabel>
-                              <InvoiceServiceAutocomplete
-                                inputRef={field.ref}
-                                inputId={`line-item-${index}-name`}
-                                value={field.value}
-                                currency={currency}
-                                exchangeRate={exchangeRate}
-                                invalid={fieldState.invalid}
-                                onBlur={field.onBlur}
-                                onValueChange={(value) => {
-                                  field.onChange(value);
-                                  form.setValue(`lineItems.${index}.servicePackageId`, null, { shouldDirty: true });
-                                  form.setValue(`lineItems.${index}.serviceName`, null, { shouldDirty: true });
-                                }}
-                                onSelect={(servicePackage, serviceItem) => {
-                                  handleSelectService(index, servicePackage, serviceItem);
-                                }}
-                              />
-                              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                            </Field>
-                          )}
-                        />
+                        {item.packageHasItems === false ? (
+                          <Field className="lg:col-start-1 lg:row-start-1">
+                            <FieldLabel>Item or service name</FieldLabel>
+                            <div
+                              className="flex h-10 items-center truncate rounded-md border bg-muted/40 px-3 text-sm font-medium"
+                              title={item.name}
+                            >
+                              {item.name}
+                            </div>
+                            <Badge variant="outline" className="w-fit text-[10px]">
+                              Service package
+                            </Badge>
+                          </Field>
+                        ) : (
+                          <Controller
+                            name={`lineItems.${index}.name`}
+                            control={form.control}
+                            render={({ field, fieldState }) => (
+                              <Field data-invalid={fieldState.invalid} className="lg:col-start-1 lg:row-start-1">
+                                <FieldLabel className="lg:sr-only" htmlFor={`line-item-${index}-name`}>Item or service name <span className="text-destructive">*</span></FieldLabel>
+                                <BillableItemAutocomplete
+                                  inputRef={field.ref}
+                                  inputId={`line-item-${index}-name`}
+                                  placeholder="Search catalog or enter item name"
+                                  value={field.value}
+                                  currency={currency}
+                                  exchangeRate={exchangeRate}
+                                  invalid={fieldState.invalid}
+                                  onBlur={field.onBlur}
+                                  onValueChange={(value) => {
+                                    field.onChange(value);
+                                    form.setValue(`lineItems.${index}.servicePackageId`, null, { shouldDirty: true });
+                                    form.setValue(`lineItems.${index}.productId`, null, { shouldDirty: true });
+                                    form.setValue(`lineItems.${index}.itemType`, BillableItemType.SERVICE, { shouldDirty: true });
+                                    form.setValue(
+                                      `lineItems.${index}.sacCode`,
+                                      getDefaultHsnSacCode(BillableItemType.SERVICE),
+                                      { shouldDirty: true },
+                                    );
+                                    form.setValue(`lineItems.${index}.serviceName`, null, { shouldDirty: true });
+                                    form.setValue(`lineItems.${index}.packageHasItems`, true, { shouldDirty: true });
+                                  }}
+                                  onSelect={(catalogItem) => {
+                                    handleSelectCatalogItem(index, catalogItem);
+                                  }}
+                                />
+                                {item.productId && (
+                                  <Badge variant="outline" className="w-fit text-[10px]">
+                                    Product
+                                  </Badge>
+                                )}
+                                {item.servicePackageId && (
+                                  <Badge variant="outline" className="w-fit text-[10px]">
+                                    Service package{item.serviceName ? ` · ${item.serviceName}` : ""}
+                                  </Badge>
+                                )}
+                                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                              </Field>
+                            )}
+                          />
+                        )}
                         <Controller
                           name={`lineItems.${index}.billingCycle`}
                           control={form.control}
@@ -889,11 +925,11 @@ export function CreateInvoiceForm({
                                   <SelectValue placeholder="Select cycle" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="ONE_TIME">One Time</SelectItem>
+                                  <SelectItem value="ONE_TIME">One-time</SelectItem>
                                   <SelectItem value="MONTHLY">Monthly</SelectItem>
                                   <SelectItem value="QUARTERLY">Quarterly</SelectItem>
-                                  <SelectItem value="HALF_YEARLY">Half Yearly</SelectItem>
-                                  <SelectItem value="YEARLY">Yearly</SelectItem>
+                                  <SelectItem value="HALF_YEARLY">Every six months</SelectItem>
+                                  <SelectItem value="YEARLY">Annually</SelectItem>
                                 </SelectContent>
                               </Select>
                               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
@@ -943,6 +979,23 @@ export function CreateInvoiceForm({
                           )}
                         />
                         <Controller
+                          name={`lineItems.${index}.unit`}
+                          control={form.control}
+                          render={({ field, fieldState }) => (
+                            <Field data-invalid={fieldState.invalid} className="sm:col-span-2 lg:col-start-3 lg:col-span-1 lg:row-start-2">
+                              <FieldLabel htmlFor={`line-item-${index}-unit`}>Unit</FieldLabel>
+                              <UnitSelect
+                                id={`line-item-${index}-unit`}
+                                value={field.value || "item"}
+                                onValueChange={field.onChange}
+                                invalid={fieldState.invalid}
+                                showManage={index === 0}
+                              />
+                              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                            </Field>
+                          )}
+                        />
+                        <Controller
                           name={`lineItems.${index}.taxRate`}
                           control={form.control}
                           render={({ field, fieldState }) => (
@@ -968,42 +1021,61 @@ export function CreateInvoiceForm({
                             </Field>
                           )}
                         />
-                        <Controller
-                          name={`lineItems.${index}.sacCode`}
-                          control={form.control}
-                          render={({ field, fieldState }) => (
-                            <Field data-invalid={fieldState.invalid} className="lg:col-start-2 lg:row-start-2">
-                              <FieldLabel htmlFor={`line-item-${index}-sac`}>SAC / HSN</FieldLabel>
-                              <Input
-                                {...field}
-                                id={`line-item-${index}-sac`}
-                                value={field.value || ""}
-                                aria-invalid={fieldState.invalid}
-                                placeholder="9983"
-                                className="h-10 bg-background"
-                              />
-                              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                            </Field>
-                          )}
-                        />
-                        <Controller
-                          name={`lineItems.${index}.description`}
-                          control={form.control}
-                          render={({ field, fieldState }) => (
-                            <Field data-invalid={fieldState.invalid} className="sm:col-span-2 lg:col-start-3 lg:col-span-3 lg:row-start-2">
-                              <FieldLabel className="lg:sr-only" htmlFor={`line-item-${index}-description`}>Scope Notes <span className="font-normal text-muted-foreground">(Optional)</span></FieldLabel>
-                              <Input
-                                {...field}
-                                value={field.value || ""}
-                                id={`line-item-${index}-description`}
-                                aria-invalid={fieldState.invalid}
-                                placeholder="Add a short description…"
-                                className="h-10 bg-background"
-                              />
-                              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                            </Field>
-                          )}
-                        />
+                        {item.productId || item.servicePackageId ? (
+                          <Controller
+                            name={`lineItems.${index}.sacCode`}
+                            control={form.control}
+                            render={({ field, fieldState }) => (
+                              <Field data-invalid={fieldState.invalid} className="lg:col-start-2 lg:row-start-2">
+                                <FieldLabel htmlFor={`line-item-${index}-sac`}>
+                                  {item.itemType === BillableItemType.GOODS ? "HSN code" : "SAC code"}
+                                  <span className="ml-1 font-normal text-muted-foreground">(optional)</span>
+                                </FieldLabel>
+                                <Input
+                                  {...field}
+                                  id={`line-item-${index}-sac`}
+                                  value={field.value || ""}
+                                  aria-invalid={fieldState.invalid}
+                                  placeholder={item.itemType === BillableItemType.GOODS ? "Enter HSN code" : "Enter SAC code"}
+                                  className="h-10 bg-background"
+                                />
+                                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                              </Field>
+                            )}
+                          />
+                        ) : (
+                          <BillableItemTypeFields
+                            itemType={item.itemType ?? BillableItemType.SERVICE}
+                            sacCode={item.sacCode ?? ""}
+                            idPrefix={`line-item-${index}-classification`}
+                            className="sm:col-span-2 lg:col-start-2 lg:col-span-4 lg:row-start-3"
+                            onItemTypeChange={(itemType) => {
+                              form.setValue(`lineItems.${index}.itemType`, itemType, { shouldDirty: true });
+                              form.setValue(`lineItems.${index}.sacCode`, getDefaultHsnSacCode(itemType), { shouldDirty: true });
+                            }}
+                            onSacCodeChange={(sacCode) => form.setValue(`lineItems.${index}.sacCode`, sacCode, { shouldDirty: true })}
+                          />
+                        )}
+                        {item.packageHasItems !== false && (
+                          <Controller
+                            name={`lineItems.${index}.description`}
+                            control={form.control}
+                            render={({ field, fieldState }) => (
+                              <Field data-invalid={fieldState.invalid} className="sm:col-span-2 lg:col-start-4 lg:col-span-2 lg:row-start-2">
+                                <FieldLabel className="lg:sr-only" htmlFor={`line-item-${index}-description`}>Scope Notes <span className="font-normal text-muted-foreground">(Optional)</span></FieldLabel>
+                                <Input
+                                  {...field}
+                                  value={field.value || ""}
+                                  id={`line-item-${index}-description`}
+                                  aria-invalid={fieldState.invalid}
+                                  placeholder="Add a short description…"
+                                  className="h-10 bg-background"
+                                />
+                                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                              </Field>
+                            )}
+                          />
+                        )}
                         <div className="hidden text-right text-sm font-medium tabular-nums lg:col-start-5 lg:row-start-1 lg:block">
                           {formattedAmount(lineTotal)}
                         </div>

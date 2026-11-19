@@ -4,21 +4,26 @@ import { errorResponse, successResponse } from "@/lib/action-response";
 import prisma from "@/lib/prisma";
 import { getErrorMessage } from "@/lib/schemas/prisma-utils";
 import {
+  addCatalogLineItemSchema,
   importServicePackageSchema,
   proposalServiceEditSchema,
   proposalLineItemEditSchema,
   customLineItemCreateSchema,
   proposalTotalsUpdateSchema,
   ImportServicePackageSchema,
+  AddCatalogLineItemSchema,
   ProposalLineItemEditSchema,
   CustomLineItemCreateSchema,
   ProposalTotalsUpdateSchema,
 } from "@/lib/schemas/proposal-pricing-schema";
 import { Prisma } from "@/app/generated/prisma/client";
+import { BillableItemType } from "@/app/generated/prisma/enums";
 import type { ProposalWhereInput } from "@/app/generated/prisma/models";
 import { syncProposalComposerTermsAndFeatures } from "@/actions/proposal-composer";
 import { getProposalDraftError } from "@/lib/proposal-draft";
 import { getProposalPermissionScope } from "@/lib/proposal-permissions";
+import { checkOrganizationPermission, getActiveOrganizationId } from "@/lib/organization-authorization";
+import { headers } from "next/headers";
 
 async function checkPermission(permission: "read" | "update", proposalId: string) {
   const access = await getProposalPermissionScope(
@@ -211,17 +216,19 @@ export async function getProposalPricing(proposalId: string, isPublic = false) {
         ...service,
         items: service.items.map((item) => {
           const packageItem = item.packageItemId ? packageItemsById.get(item.packageItemId) : undefined;
+          const itemType = item.productId ? "GOODS" : item.itemType;
           return {
             ...item,
             unitPrice: item.unitPrice.toNumber(),
             total: item.total.toNumber(),
             discountValue: item.discountValue ? item.discountValue.toNumber() : null,
+            itemType,
             taxRate: proposal.currency === "USD" ? 0 : (item.taxRate ?? 18),
             sacCode:
               packageItem?.sacCode?.trim() ||
               packageItem?.package.sacCode?.trim() ||
-              item.sacCode?.trim() ||
-              null,
+             item.sacCode?.trim() ||
+             null,
           };
         }),
       })),
@@ -278,6 +285,7 @@ export async function importServicePackageToProposal(data: ImportServicePackageS
           serviceName: customName && customName.trim() ? customName.trim() : service.name,
           packageId: servicePackage.id,
           packageName: servicePackage.name,
+          hasItems: servicePackage.hasItems && servicePackage.items.length > 0,
           description: servicePackage.description,
           sortOrder: nextServiceOrder,
         },
@@ -289,8 +297,23 @@ export async function importServicePackageToProposal(data: ImportServicePackageS
       });
       const isUSD = proposal?.currency === "USD";
 
-      if (servicePackage.items.length > 0) {
-        const lineItemsData = servicePackage.items.map((item, idx) => {
+      const packageItems = servicePackage.items.length > 0
+        ? servicePackage.items
+        : [{
+            id: null,
+            name: servicePackage.name,
+            description: servicePackage.description,
+            quantity: 1,
+            unit: "Unit",
+            unitPrice: servicePackage.totalPrice,
+            unitPriceUSD: servicePackage.totalPriceUSD,
+            billingCycle: "MONTHLY" as const,
+            sortOrder: 0,
+            sacCode: servicePackage.sacCode,
+          }];
+
+      if (packageItems.length > 0) {
+        const lineItemsData = packageItems.map((item, idx) => {
           const usdVal = item.unitPriceUSD.toNumber();
           const inrVal = item.unitPrice.toNumber();
           const unitPriceNum = isUSD
@@ -311,6 +334,7 @@ export async function importServicePackageToProposal(data: ImportServicePackageS
             isCustom: false,
             taxRate: 18,
             sacCode: item.sacCode || servicePackage.sacCode || "9983",
+            itemType: BillableItemType.SERVICE,
             discountType: null,
             discountValue: null,
           };
@@ -339,6 +363,215 @@ export async function importServicePackageToProposal(data: ImportServicePackageS
   }
 }
 
+export async function addCatalogLineItemToProposal(data: AddCatalogLineItemSchema) {
+  try {
+    const validated = addCatalogLineItemSchema.safeParse(data);
+    if (!validated.success) {
+      return errorResponse("Invalid catalog item", validated.error.issues);
+    }
+
+    const { proposalId, itemType, catalogItemId } = validated.data;
+    const permission = await checkPermission("update", proposalId);
+    if (!permission.success) return errorResponse(permission.error!);
+    const catalogPermission = await checkOrganizationPermission({
+      headers: await headers(),
+      body: {
+        permissions:
+          itemType === "product"
+            ? { products: ["read"] }
+            : { services: ["read"] },
+      },
+    });
+    if (!catalogPermission.success) {
+      return errorResponse("You don't have permission to select this catalog item");
+    }
+    const draftError = await getProposalDraftError(proposalId);
+    if (draftError) return errorResponse(draftError);
+
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return errorResponse("Choose an organization before adding a catalog item");
+
+    const result = await prisma.$transaction(async (tx) => {
+      const proposal = await tx.proposal.findUnique({
+        where: { id: proposalId },
+        select: { currency: true, exchangeRate: true, organizationId: true },
+      });
+      if (!proposal) throw new Error("Proposal not found");
+      if (proposal.organizationId !== organizationId) {
+        throw new Error("The proposal does not belong to the active organization");
+      }
+      const isUSD = proposal.currency === "USD";
+      const exchangeRate = proposal.exchangeRate?.toNumber() || 83.5;
+
+      let proposalServiceId: string;
+      let name: string;
+      let description: string | null;
+      const quantity = 1;
+      let unit: string;
+      let unitPrice: number;
+      let billingCycle: "ONE_TIME" | "MONTHLY" | "QUARTERLY" | "HALF_YEARLY" | "YEARLY";
+      let taxRate: number;
+      let sacCode: string | null;
+      let lineItemType: "GOODS" | "SERVICE";
+      let productId: string | null = null;
+
+      if (itemType === "product") {
+        const product = await tx.product.findFirst({
+          where: {
+            id: catalogItemId,
+            organizationId,
+            isActive: true,
+            deletedAt: null,
+          },
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            unit: true,
+            basePrice: true,
+            basePriceUSD: true,
+            taxRate: true,
+            hsnCode: true,
+          },
+        });
+        if (!product) throw new Error("The selected product is no longer available");
+
+        const productSection = await tx.proposalService.findFirst({
+          where: {
+            proposalId,
+            serviceId: null,
+            packageId: null,
+            serviceName: "Products",
+          },
+          select: { id: true },
+        });
+        if (productSection) {
+          proposalServiceId = productSection.id;
+        } else {
+          const maxServiceOrder = await tx.proposalService.aggregate({
+            where: { proposalId },
+            _max: { sortOrder: true },
+          });
+          const section = await tx.proposalService.create({
+            data: {
+              proposalId,
+              serviceName: "Products",
+              description: "Products included in this proposal.",
+              sortOrder: (maxServiceOrder._max.sortOrder ?? -1) + 1,
+            },
+            select: { id: true },
+          });
+          proposalServiceId = section.id;
+        }
+
+        name = product.name;
+        description = product.description;
+        unit = product.unit;
+        const usdPrice = product.basePriceUSD.toNumber();
+        unitPrice = isUSD
+          ? usdPrice > 0
+            ? usdPrice
+            : Number((product.basePrice.toNumber() / exchangeRate).toFixed(2))
+          : product.basePrice.toNumber();
+        billingCycle = "ONE_TIME";
+        taxRate = isUSD ? 0 : product.taxRate;
+        sacCode = product.hsnCode;
+        lineItemType = "GOODS";
+        productId = product.id;
+      } else {
+        const servicePackage = await tx.servicePackage.findFirst({
+          where: {
+            id: catalogItemId,
+            isActive: true,
+            service: { organizationId, isActive: true, deletedAt: null },
+          },
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            totalPrice: true,
+            totalPriceUSD: true,
+            sacCode: true,
+            serviceId: true,
+            service: { select: { name: true } },
+            items: { select: { billingCycle: true } },
+          },
+        });
+        if (!servicePackage) throw new Error("The selected service package is no longer available");
+
+        const maxServiceOrder = await tx.proposalService.aggregate({
+          where: { proposalId },
+          _max: { sortOrder: true },
+        });
+        const section = await tx.proposalService.create({
+          data: {
+            proposalId,
+            serviceId: servicePackage.serviceId,
+            serviceName: servicePackage.service.name,
+            packageId: servicePackage.id,
+            packageName: servicePackage.name,
+            hasItems: false,
+            description: servicePackage.description,
+            sortOrder: (maxServiceOrder._max.sortOrder ?? -1) + 1,
+          },
+          select: { id: true },
+        });
+        proposalServiceId = section.id;
+
+        const usdPrice = servicePackage.totalPriceUSD.toNumber();
+        unitPrice = isUSD
+          ? usdPrice > 0
+            ? usdPrice
+            : Number((servicePackage.totalPrice.toNumber() / exchangeRate).toFixed(2))
+          : servicePackage.totalPrice.toNumber();
+        const cycles = new Set(servicePackage.items.map((item) => item.billingCycle));
+        billingCycle =
+          cycles.size === 1 ? servicePackage.items[0]?.billingCycle ?? "ONE_TIME" : "ONE_TIME";
+        name = servicePackage.name;
+        description = servicePackage.description;
+        unit = "package";
+        taxRate = isUSD ? 0 : 18;
+        sacCode = servicePackage.sacCode;
+        lineItemType = "SERVICE";
+      }
+
+      const maxItemOrder = await tx.proposalLineItem.aggregate({
+        where: { proposalServiceId },
+        _max: { sortOrder: true },
+      });
+      const financials = calculateItemFinancials(quantity, unitPrice, null, null, taxRate);
+      const item = await tx.proposalLineItem.create({
+        data: {
+          proposalServiceId,
+          packageItemId: null,
+          productId,
+          name,
+          description,
+          quantity,
+          unit,
+          unitPrice: new Prisma.Decimal(unitPrice),
+          total: new Prisma.Decimal(financials.total),
+          billingCycle,
+          sortOrder: (maxItemOrder._max.sortOrder ?? -1) + 1,
+          isCustom: false,
+          taxRate,
+          sacCode: sacCode || (lineItemType === "SERVICE" ? "9983" : null),
+          itemType: lineItemType,
+        },
+        select: { id: true },
+      });
+
+      await recalculateAndSaveTotals(proposalId, tx);
+      return item;
+    });
+
+    return successResponse("Item added to proposal", { id: result.id });
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") console.error(error);
+    return errorResponse("Failed to add catalog item", getErrorMessage(error));
+  }
+}
+
 export async function updateProposalLineItem(data: ProposalLineItemEditSchema) {
   try {
     const validated = proposalLineItemEditSchema.safeParse(data);
@@ -362,6 +595,7 @@ export async function updateProposalLineItem(data: ProposalLineItemEditSchema) {
       discountValue,
       taxRate,
       sacCode,
+      itemType,
     } = validated.data;
     const draftError = await getProposalDraftError(proposalId);
     if (draftError) return errorResponse(draftError);
@@ -377,14 +611,29 @@ export async function updateProposalLineItem(data: ProposalLineItemEditSchema) {
     await prisma.$transaction(async (tx) => {
       const lineItem = await tx.proposalLineItem.findFirst({
         where: { id, proposalService: { proposalId } },
-        select: { id: true },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          productId: true,
+          isCustom: true,
+          itemType: true,
+          proposalService: { select: { hasItems: true } },
+        },
       });
       if (!lineItem) throw new Error("The selected proposal line item was not found");
+      const effectiveItemType = lineItem.productId
+        ? "GOODS"
+        : lineItem.isCustom
+          ? itemType ?? lineItem.itemType
+          : "SERVICE";
       await tx.proposalLineItem.update({
         where: { id },
         data: {
-          name,
-          description: description || null,
+          name: lineItem.proposalService.hasItems ? name : lineItem.name,
+          description: lineItem.proposalService.hasItems
+            ? description || null
+            : lineItem.description,
           quantity,
           ...(unit ? { unit } : {}),
           unitPrice: new Prisma.Decimal(unitPrice),
@@ -394,7 +643,8 @@ export async function updateProposalLineItem(data: ProposalLineItemEditSchema) {
           discountType: discountType || null,
           discountValue: discountValue !== undefined && discountValue !== null ? new Prisma.Decimal(discountValue) : null,
           taxRate: effectiveTaxRate,
-          sacCode: sacCode || "9983",
+          sacCode: sacCode?.trim() || null,
+          itemType: effectiveItemType,
         },
       });
 
@@ -412,7 +662,7 @@ export async function addCustomLineItem(data: CustomLineItemCreateSchema) {
   try {
     const validated = customLineItemCreateSchema.safeParse(data);
     if (!validated.success) {
-      return errorResponse("Invalid custom item data", validated.error.issues);
+      return errorResponse("Invalid line item data", validated.error.issues);
     }
     const perm = await checkPermission("update", validated.data.proposalId);
     if (!perm.success) return errorResponse(perm.error!);
@@ -430,6 +680,7 @@ export async function addCustomLineItem(data: CustomLineItemCreateSchema) {
       discountValue,
       taxRate,
       sacCode,
+      itemType,
     } = validated.data;
     const draftError = await getProposalDraftError(proposalId);
     if (draftError) return errorResponse(draftError);
@@ -447,9 +698,12 @@ export async function addCustomLineItem(data: CustomLineItemCreateSchema) {
       if (proposalServiceId) {
         const service = await tx.proposalService.findFirst({
           where: { id: proposalServiceId, proposalId },
-          select: { id: true },
+          select: { id: true, hasItems: true },
         });
         if (!service) throw new Error("The selected proposal section was not found");
+        if (!service.hasItems) {
+          throw new Error("This package is configured as a single line item; its name and description cannot be edited.");
+        }
         targetServiceId = service.id;
       } else {
         const customSection = await tx.proposalService.findFirst({
@@ -510,7 +764,8 @@ export async function addCustomLineItem(data: CustomLineItemCreateSchema) {
           discountType: discountType || null,
           discountValue: discountValue !== undefined && discountValue !== null ? new Prisma.Decimal(discountValue) : null,
           taxRate: effectiveTaxRate,
-          sacCode: sacCode || "9983",
+          sacCode: sacCode?.trim() || null,
+          itemType,
         },
       });
 
@@ -518,10 +773,10 @@ export async function addCustomLineItem(data: CustomLineItemCreateSchema) {
       return created;
     });
 
-    return successResponse("Custom item added successfully", { id: newItem.id });
+    return successResponse("Line item added successfully", { id: newItem.id });
   } catch (error) {
     if (process.env.NODE_ENV === "development") console.error(error);
-    return errorResponse("Failed to add custom item", getErrorMessage(error));
+    return errorResponse("Failed to add line item", getErrorMessage(error));
   }
 }
 

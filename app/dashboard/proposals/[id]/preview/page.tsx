@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { getProposalWorkflowValidation } from "@/lib/proposal-workflow-validation";
 import { ProposalStepGate } from "@/components/proposal/proposal-step-gate";
+import { ProposalPreviewFooter } from "@/components/proposal/preview/ProposalPreviewFooter";
 
 export const metadata = {
   title: "Proposal Preview",
@@ -190,7 +191,7 @@ export default async function ProposalPreviewPage({ params }: ProposalPreviewPag
         </div>
       </main>
 
-      <footer className="fixed inset-x-0 bottom-0 z-40 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t bg-background/95 px-4 py-3 text-center shadow-[0_-4px_15px_-5px_rgba(0,0,0,0.1)] backdrop-blur-sm print:hidden">
+      <ProposalPreviewFooter>
         {companyLogoUrl && (
           <img src={companyLogoUrl} alt="Company logo" className="h-8 object-contain" />
         )}
@@ -212,7 +213,7 @@ export default async function ProposalPreviewPage({ params }: ProposalPreviewPag
             </a>
           </>
         )}
-      </footer>
+      </ProposalPreviewFooter>
     </div>
   );
 }

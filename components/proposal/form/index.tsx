@@ -113,10 +113,15 @@ export function ProposalCreateEditForm({ initialData, assignees }: ProposalCreat
         }
     };
     const {
-        formState: { isSubmitting },
+        formState: { isDirty, isSubmitting },
     } = form;
 
     const handleSubmit = form.handleSubmit(async (data) => {
+        if (initialData && !isDirty) {
+            router.push(`/dashboard/proposals/${initialData.id}/builder`);
+            return;
+        }
+
         let response;
         if (initialData) {
             response = await updateProposal(initialData.id, data);
@@ -247,28 +252,50 @@ export function ProposalCreateEditForm({ initialData, assignees }: ProposalCreat
                 <Controller
                     name="assignedToId"
                     control={form.control}
-                    render={({ field }) => (
-                        <Field className="gap-2">
-                            <FieldLabel htmlFor="proposal-assignee">Assigned to</FieldLabel>
-                            <Select
-                                value={field.value ?? "unassigned"}
-                                onValueChange={(value) => field.onChange(value === "unassigned" ? null : value)}
-                            >
-                                <SelectTrigger id="proposal-assignee" className="w-full">
-                                    <SelectValue placeholder="Choose an organization member" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="unassigned">Unassigned</SelectItem>
-                                    {assignees.map((assignee) => (
-                                        <SelectItem key={assignee.id} value={assignee.id}>
-                                            {assignee.name} ({assignee.email})
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            <FieldDescription>Assign proposal follow-up to an active workspace member.</FieldDescription>
-                        </Field>
-                    )}
+                    render={({ field }) => {
+                        const selectedAssignee = assignees.find((assignee) => assignee.id === field.value);
+
+                        return (
+                            <Field className="gap-2">
+                                <FieldLabel htmlFor="proposal-assignee">Assigned to</FieldLabel>
+                                <Select
+                                    value={field.value ?? "unassigned"}
+                                    onValueChange={(value) => field.onChange(value === "unassigned" ? null : value)}
+                                >
+                                    <SelectTrigger id="proposal-assignee" className="w-full">
+                                        <SelectValue placeholder="Choose an organization member">
+                                            {selectedAssignee ? (
+                                                <span className="flex w-full items-center justify-between gap-3">
+                                                    <span className="truncate">
+                                                        {selectedAssignee.name} ({selectedAssignee.email})
+                                                    </span>
+                                                    <span className="shrink-0 text-xs text-muted-foreground">
+                                                        {selectedAssignee.pendingTaskCount} pending · {selectedAssignee.completedTaskCount} completed
+                                                    </span>
+                                                </span>
+                                            ) : null}
+                                        </SelectValue>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="unassigned">Unassigned</SelectItem>
+                                        {assignees.map((assignee) => (
+                                            <SelectItem key={assignee.id} value={assignee.id}>
+                                                <span className="flex w-full items-center justify-between gap-3">
+                                                    <span className="truncate">
+                                                        {assignee.name} ({assignee.email})
+                                                    </span>
+                                                    <span className="shrink-0 text-xs text-muted-foreground">
+                                                        {assignee.pendingTaskCount} pending · {assignee.completedTaskCount} completed
+                                                    </span>
+                                                </span>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <FieldDescription>Assign proposal follow-up to an active workspace member.</FieldDescription>
+                            </Field>
+                        );
+                    }}
                 />
                     </FieldGroup>
                 </section>

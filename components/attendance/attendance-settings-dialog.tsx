@@ -16,6 +16,7 @@ import { updateAttendanceSettingsAction } from "@/actions/attendance";
 import { AlertCircleIcon, BellRingIcon, CheckCircle2Icon, ChevronDownIcon, Clock3, MapPin, RefreshCwIcon, Settings2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { AttendanceBrowserReminders } from "./attendance-browser-reminders";
+import { AttendanceScheduleAlarms } from "./attendance-schedule-alarms";
 
 interface AttendanceSettingsDialogProps {
   isOpen: boolean;
@@ -36,7 +37,7 @@ export function AttendanceSettingsDialog({
 }: AttendanceSettingsDialogProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[90dvh] w-[calc(100%-1rem)] max-w-2xl gap-0 overflow-x-hidden overflow-y-auto p-0 sm:w-[calc(100%-2rem)]">
+      <DialogContent className="max-h-[90dvh] w-[calc(100%-1rem)] max-w-2xl gap-0 overflow-x-hidden overflow-y-auto p-0 sm:w-[calc(100%-2rem)] sm:max-w-2xl">
         <DialogHeader className="sticky top-0 z-10 min-w-0 border-b bg-popover px-4 py-4 pr-12 sm:px-6">
           <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
             <Settings2Icon aria-hidden="true" className="size-5 text-primary" />
@@ -62,6 +63,8 @@ export function AttendanceSettingsDialog({
               <AttendanceBrowserReminders />
             </div>
           </section>
+
+          <AttendanceScheduleAlarms />
 
           <section aria-labelledby="shift-rules-title" className="space-y-3 border-t border-border/60 pt-5">
             <div className="flex items-start gap-3">
@@ -200,7 +203,7 @@ function AttendanceSettingsForm({ onClose, settings, canManageReminderTime, onSu
               <Clock3 aria-hidden="true" className="size-4 text-muted-foreground" />
               Shift schedule and grace rules
             </h4>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-[11px] font-semibold">Expected Start (HH:mm)</Label>
                 <Input
@@ -244,7 +247,7 @@ function AttendanceSettingsForm({ onClose, settings, canManageReminderTime, onSu
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-[11px] font-semibold">Grace Period (Mins)</Label>
                 <Input
@@ -285,7 +288,7 @@ function AttendanceSettingsForm({ onClose, settings, canManageReminderTime, onSu
 
           {/* Office Geofencing Section */}
           <div className="space-y-3 p-3 bg-primary/5 rounded-2xl border border-primary/20">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
                 <MapPin aria-hidden="true" className="size-4 text-muted-foreground" />
                 Office location and geofence rule
@@ -296,13 +299,13 @@ function AttendanceSettingsForm({ onClose, settings, canManageReminderTime, onSu
                 size="sm"
                 onClick={handleUseCurrentLocation}
                 disabled={fetchingLoc}
-                className="text-[11px] text-primary h-7 px-2"
+                className="h-7 self-start px-2 text-[11px] text-primary sm:self-auto"
               >
                 {fetchingLoc ? "Locating..." : "Use Current GPS"}
               </Button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-[11px] font-semibold">Office Latitude</Label>
                 <Input
@@ -325,7 +328,7 @@ function AttendanceSettingsForm({ onClose, settings, canManageReminderTime, onSu
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 items-center">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:items-center">
               <div className="space-y-1">
                 <Label className="text-[11px] font-semibold">Max Office Radius (Meters)</Label>
                 <Input
@@ -337,7 +340,7 @@ function AttendanceSettingsForm({ onClose, settings, canManageReminderTime, onSu
                   required
                 />
               </div>
-              <div className="flex items-center gap-2 pt-4">
+              <div className="flex items-center gap-2 sm:pt-4">
                 <input
                   type="checkbox"
                   id="enforceGeofence"
@@ -355,11 +358,11 @@ function AttendanceSettingsForm({ onClose, settings, canManageReminderTime, onSu
             </p>
           </div>
 
-          <DialogFooter className="flex items-center justify-between gap-3 pt-3">
-            <Button type="button" variant="outline" onClick={onClose} disabled={loading} className="w-full rounded-xl">
+          <DialogFooter className="gap-3 pt-3">
+            <Button type="button" variant="outline" onClick={onClose} disabled={loading} className="w-full rounded-xl sm:w-auto">
               Cancel
             </Button>
-            <Button type="submit" disabled={loading} className="w-full rounded-xl font-semibold">
+            <Button type="submit" disabled={loading} className="w-full rounded-xl font-semibold sm:w-auto">
               {loading ? (
                 <>
                   <RefreshCwIcon className="w-4 h-4 mr-2 animate-spin" /> Saving...

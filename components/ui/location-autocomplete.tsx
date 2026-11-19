@@ -13,6 +13,7 @@ interface LocationAutocompleteProps {
   placeholder?: string;
   id?: string;
   className?: string;
+  "aria-invalid"?: boolean;
 }
 
 export function LocationAutocomplete({
@@ -23,6 +24,7 @@ export function LocationAutocomplete({
   placeholder,
   id,
   className,
+  "aria-invalid": ariaInvalid,
 }: LocationAutocompleteProps) {
   const [open, setOpen] = React.useState(false);
   const [suggestions, setSuggestions] = React.useState<LocationItem[]>([]);
@@ -89,6 +91,7 @@ export function LocationAutocomplete({
         placeholder={placeholder || (type === "country" ? "e.g. India" : "e.g. Tamil Nadu")}
         className={className}
         autoComplete="off"
+        aria-invalid={ariaInvalid}
       />
 
       {open && (

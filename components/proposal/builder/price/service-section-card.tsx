@@ -18,6 +18,7 @@ export interface ProposalServiceSection {
   serviceName: string;
   packageId?: string | null;
   packageName?: string | null;
+  hasItems: boolean;
   description?: string | null;
   notes?: string | null;
   items: LineItem[];
@@ -60,6 +61,11 @@ export function ServiceSectionCard({
   const currencyLocale = currency === "USD" ? "en-US" : "en-IN";
 
   const handleSaveEdit = async () => {
+    if (editName.trim() === serviceName.trim() && editDesc.trim() === description.trim()) {
+      setIsEditing(false);
+      return;
+    }
+
     setSaving(true);
     try {
       const res = await updateProposalService(service.id, proposalId, {
@@ -277,11 +283,12 @@ export function ServiceSectionCard({
       </div>
 
       {!collapsed && (
-        <div className="p-4">
+        <div className="px-4 pb-3">
           <LineItemsTable
             proposalId={proposalId}
             proposalServiceId={service.id}
             items={service.items}
+            hasItems={service.hasItems}
             onRefresh={onRefresh}
             currency={currency}
           />

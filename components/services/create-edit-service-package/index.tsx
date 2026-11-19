@@ -1,6 +1,10 @@
 "use client";
 import * as z from "zod";
-import { servicePackageSchema } from "@/lib/schemas/service-package";
+import {
+    servicePackageSchema,
+    type ServicePackageInput,
+    type ServicePackageSchema,
+} from "@/lib/schemas/service-package";
 import { BillingCycle } from "@/app/generated/prisma/enums";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -45,6 +49,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
     Select,
     SelectContent,
+    SelectGroup,
     SelectItem,
     SelectTrigger,
     SelectValue,
@@ -53,6 +58,8 @@ import { createServicePackage, editServicePackage, getServicePackage } from "@/a
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { UnitSelect } from "@/components/catalog/measurement-units";
 
 const SortableItem = dynamic(
     () => import("@/components/sortable-items"),
@@ -60,8 +67,6 @@ const SortableItem = dynamic(
         ssr: false,
     }
 );
-type ServicePackageSchema = z.infer<typeof servicePackageSchema>;
-
 /* ------------------------------------------------------------------ */
 /* Sortable Item Wrapper - Flex layout for cleaner drag handle        */
 /* ------------------------------------------------------------------ */
@@ -115,7 +120,7 @@ type ServicePackageSchema = z.infer<typeof servicePackageSchema>;
 /* Live Preview Sidebar Component                                     */
 /* ------------------------------------------------------------------ */
 function LivePreviewSidebar() {
-    const { control } = useFormContext<ServicePackageSchema>();
+    const { control } = useFormContext<ServicePackageInput>();
 
     // useWatch efficiently subscribes to the items array without re-rendering the whole parent form
     const items = useWatch({
@@ -204,7 +209,33 @@ function LivePreviewSidebar() {
 /* ------------------------------------------------------------------ */
 export function CreateEditServicePackageForm({ serviceId, defaultValues }: { serviceId: string, defaultValues?: Extract<Awaited<ReturnType<typeof getServicePackage>>, { success: true }>['data'] }) {
     const router = useRouter();
-    const form = useForm<ServicePackageSchema>({
+    const hasInitialItemDetails = Boolean(
+        defaultValues?.items?.length &&
+        (defaultValues.items.length > 1 ||
+            defaultValues.items.some((item) =>
+                item.name.trim() !== defaultValues.name.trim() ||
+                (item.description ?? "").trim() !== (defaultValues.description ?? "").trim()
+            ))
+    );
+    const initialHasItems = defaultValues && defaultValues.items.length === 0
+        ? false
+        : defaultValues?.hasItems ?? hasInitialItemDetails;
+    const [hasItems, setHasItems] = useState(initialHasItems);
+    const initialItems = defaultValues?.items
+        ?.sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((item) => ({
+            id: item.id,
+            name: item.name,
+            description: item.description ?? "",
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            unitPriceUSD: item.unitPriceUSD ?? 0,
+            sacCode: item.sacCode ?? defaultValues?.sacCode ?? "9983",
+            unit: item.unit,
+            billingCycle: item.billingCycle,
+            sortOrder: item.sortOrder
+        })) ?? [];
+    const form = useForm<ServicePackageInput, unknown, ServicePackageSchema>({
         resolver: zodResolver(servicePackageSchema),
         defaultValues: {
             id: defaultValues?.id ?? undefined,
@@ -215,26 +246,24 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
 
             isActive: defaultValues?.isActive ?? true,
             isPopular: defaultValues?.isPopular ?? false,
+            hasItems: initialHasItems,
 
-            items:
-                defaultValues?.items
-                    ?.sort((a: any, b: any) => a.sortOrder - b.sortOrder)
-                    .map((item: any) => ({
-                        id: item.id,
-                        name: item.name,
-                        description: item.description ?? "",
-                        quantity: item.quantity,
-                        unitPrice: item.unitPrice,
-                        unitPriceUSD: item.unitPriceUSD ?? 0,
-                        unit: item.unit,
-                        billingCycle: item.billingCycle,
-                        sortOrder: item.sortOrder
-                    })) ?? [],
+            items: initialItems.length > 0 ? initialItems : [{
+                name: "",
+                description: "",
+                quantity: 1,
+                unitPrice: 0,
+                unitPriceUSD: 0,
+                sacCode: defaultValues?.sacCode ?? "9983",
+                unit: "Unit",
+                billingCycle: "MONTHLY",
+                sortOrder: 0,
+            }],
 
             features:
                 defaultValues?.features
-                    ?.sort((a: any, b: any) => a.sortOrder - b.sortOrder)
-                    .map((feature: any) => ({
+                    ?.sort((a, b) => a.sortOrder - b.sortOrder)
+                    .map((feature) => ({
                         id: feature.id,
                         name: feature.content,
                         isHeading: feature.isHeading ?? false,
@@ -281,6 +310,19 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
         })
     );
 
+    const handleHasItemsChange = (value: string) => {
+        const nextHasItems = value === "yes";
+
+        if (!nextHasItems && itemFields.length > 1) {
+            toast.error("Remove extra items before switching to a single package item.");
+            return;
+        }
+
+        form.clearErrors("items");
+        form.setValue("hasItems", nextHasItems, { shouldDirty: true });
+        setHasItems(nextHasItems);
+    };
+
     const handleDragEndItems = (event: DragEndEvent) => {
         const { active, over } = event;
         if (over && active.id !== over.id) {
@@ -305,7 +347,9 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
 
     const onSubmit = async (data: ServicePackageSchema) => {
         try {
-            const res = data.id ? await editServicePackage(data.id, data) : await createServicePackage(data)
+            const res = data.id
+                ? await editServicePackage(data.id, data)
+                : await createServicePackage(data)
 
             if (!res.success) {
                 if ('error' in res && res.error) {
@@ -450,31 +494,51 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
 
                         {/* ========== Package Items Section ========== */}
                         <div className="border rounded-lg bg-card shadow-sm p-6 space-y-6">
-                            <div className="flex items-center justify-between">
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                                 <div>
                                     <h2 className="text-xl font-semibold tracking-tight">Included Items</h2>
-                                    <p className="text-sm text-muted-foreground mt-1">Add and reorder the specific line items for this package.</p>
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                        {hasItems
+                                            ? "Add and reorder individually named items."
+                                            : "This package uses its name and description for a single item."}
+                                    </p>
                                 </div>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() =>
-                                        appendItem({
-                                            name: "",
-                                            description: "",
-                                            quantity: 1,
-                                            unitPrice: 0,
-                                            unitPriceUSD: 0,
-                                            sacCode: "9983",
-                                            unit: "",
-                                            billingCycle: "MONTHLY",
-                                            sortOrder: itemFields.length,
-                                        })
-                                    }
-                                >
-                                    <Plus className="mr-2 h-4 w-4" /> Add Item
-                                </Button>
+                                <Field className="w-full gap-1.5 sm:max-w-xs">
+                                    <FieldLabel htmlFor="has-package-items">Does this package have separate items?</FieldLabel>
+                                    <Select value={hasItems ? "yes" : "no"} onValueChange={handleHasItemsChange}>
+                                        <SelectTrigger id="has-package-items">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectGroup>
+                                                <SelectItem value="yes">Yes, list the items</SelectItem>
+                                                <SelectItem value="no">No, use package details</SelectItem>
+                                            </SelectGroup>
+                                        </SelectContent>
+                                    </Select>
+                                </Field>
+                                {hasItems && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                            appendItem({
+                                                name: "",
+                                                description: "",
+                                                quantity: 1,
+                                                unitPrice: 0,
+                                                unitPriceUSD: 0,
+                                                sacCode: "9983",
+                                                unit: "Unit",
+                                                billingCycle: "MONTHLY",
+                                                sortOrder: itemFields.length,
+                                            })
+                                        }
+                                    >
+                                        <Plus className="mr-2 h-4 w-4" /> Add Item
+                                    </Button>
+                                )}
                             </div>
                             <FieldSeparator />
 
@@ -483,7 +547,7 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                                     <div className="space-y-4">
                                         {itemFields.length === 0 && (
                                             <div className="text-center py-8 text-sm text-muted-foreground border-2 border-dashed rounded-lg">
-                                                No items added yet. Click "Add Item" to start.
+                                                No items added yet. Click Add Item to start.
                                             </div>
                                         )}
                                         {itemFields.map((item, index) => (
@@ -491,19 +555,21 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                                                 <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
 
                                                     {/* Row 1: Name & Billing Cycle */}
-                                                    <div className="md:col-span-8">
-                                                        <Controller
-                                                            name={`items.${index}.name`}
-                                                            control={control}
-                                                            render={({ field, fieldState }) => (
-                                                                <Field data-invalid={fieldState.invalid} className="gap-1.5">
-                                                                    <FieldLabel>Item Name</FieldLabel>
-                                                                    <Input {...field} placeholder="e.g. Cloud Storage, User Seats" />
-                                                                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                                                                </Field>
-                                                            )}
-                                                        />
-                                                    </div>
+                                                    {hasItems && (
+                                                        <div className="md:col-span-8">
+                                                            <Controller
+                                                                name={`items.${index}.name`}
+                                                                control={control}
+                                                                render={({ field, fieldState }) => (
+                                                                    <Field data-invalid={fieldState.invalid} className="gap-1.5">
+                                                                        <FieldLabel>Item Name</FieldLabel>
+                                                                        <Input {...field} placeholder="e.g. Cloud Storage, User Seats" />
+                                                                        {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                                                                    </Field>
+                                                                )}
+                                                            />
+                                                        </div>
+                                                    )}
 
                                                     <div className="md:col-span-4">
                                                         <Controller
@@ -537,19 +603,21 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                                                     </div>
 
                                                     {/* Row 2: Description */}
-                                                    <div className="md:col-span-12">
-                                                        <Controller
-                                                            name={`items.${index}.description`}
-                                                            control={control}
-                                                            render={({ field, fieldState }) => (
-                                                                <Field data-invalid={fieldState.invalid} className="gap-1.5">
-                                                                    <FieldLabel>Description</FieldLabel>
-                                                                    <Textarea {...field} placeholder="Details about this item..." className="h-20" />
-                                                                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                                                                </Field>
-                                                            )}
-                                                        />
-                                                    </div>
+                                                    {hasItems && (
+                                                        <div className="md:col-span-12">
+                                                            <Controller
+                                                                name={`items.${index}.description`}
+                                                                control={control}
+                                                                render={({ field, fieldState }) => (
+                                                                    <Field data-invalid={fieldState.invalid} className="gap-1.5">
+                                                                        <FieldLabel>Description</FieldLabel>
+                                                                        <Textarea {...field} placeholder="Details about this item..." className="h-20" />
+                                                                        {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                                                                    </Field>
+                                                                )}
+                                                            />
+                                                        </div>
+                                                    )}
 
                                                     {/* Row 3: Numbers & Units */}
                                                     <div className="md:col-span-3">
@@ -619,7 +687,13 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                                                             render={({ field, fieldState }) => (
                                                                 <Field data-invalid={fieldState.invalid} className="gap-1.5">
                                                                     <FieldLabel>Unit Type</FieldLabel>
-                                                                    <Input {...field} placeholder="e.g. users, GB, hrs" />
+                                                                    <UnitSelect
+                                                                        id={`package-item-${index}-unit`}
+                                                                        value={field.value ?? "Unit"}
+                                                                        onValueChange={field.onChange}
+                                                                        invalid={fieldState.invalid}
+                                                                        showManage={index === 0}
+                                                                    />
                                                                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                                                                 </Field>
                                                             )}
@@ -627,7 +701,7 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                                                     </div>
 
                                                     {/* Footer / Remove Action */}
-                                                    {itemFields.length > 1 && (
+                                                    {hasItems && itemFields.length > 1 && (
                                                         <div className="md:col-span-12 flex justify-end mt-2 pt-4 border-t border-dashed">
                                                             <Button
                                                                 type="button"
@@ -647,25 +721,27 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                                 </SortableContext>
                             </DndContext>
 
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() =>
-                                    appendItem({
-                                        name: "",
-                                        description: "",
-                                        quantity: 1,
-                                        unitPrice: 0,
-                                        unitPriceUSD: 0,
-                                        unit: "",
-                                        billingCycle: "MONTHLY",
-                                        sortOrder: itemFields.length,
-                                    })
-                                }
-                            >
-                                <Plus className="mr-2 h-4 w-4" /> Add Item
-                            </Button>
+                            {hasItems && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                        appendItem({
+                                            name: "",
+                                            description: "",
+                                            quantity: 1,
+                                            unitPrice: 0,
+                                            unitPriceUSD: 0,
+                                            unit: "Unit",
+                                            billingCycle: "MONTHLY",
+                                            sortOrder: itemFields.length,
+                                        })
+                                    }
+                                >
+                                    <Plus className="mr-2 h-4 w-4" /> Add Item
+                                </Button>
+                            )}
                         </div>
 
                         {/* ========== Package Features Section ========== */}
@@ -697,7 +773,7 @@ export function CreateEditServicePackageForm({ serviceId, defaultValues }: { ser
                                     <div className="space-y-3">
                                         {featureFields.length === 0 && (
                                             <div className="text-center py-6 text-sm text-muted-foreground border-2 border-dashed rounded-lg">
-                                                No features added. Click "Add Feature" to create a bullet point.
+                                                No features added. Click Add Feature to create a bullet point.
                                             </div>
                                         )}
                                         {featureFields.map((feature, index) => (

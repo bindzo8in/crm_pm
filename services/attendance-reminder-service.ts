@@ -1,34 +1,16 @@
-import webpush from "web-push";
 import prisma from "@/lib/prisma";
-import { env } from "@/lib/env";
 import { getAttendanceDate, formatInIST } from "@/lib/date";
 import { broadcastNotificationUpdates } from "@/lib/notification-realtime";
 import { getWeekendDays } from "@/services/attendance-settings-service";
+import { isPrismaUniqueViolation } from "@/lib/prisma-errors";
+import {
+  configureAttendanceWebPush,
+  sendAttendancePushToUser,
+} from "@/lib/attendance-web-push";
 import {
   isEligibleForAttendanceReminder,
   isWithinAttendanceReminderWindow,
 } from "@/lib/attendance-reminder-policy";
-
-function isPrismaUniqueViolation(error: unknown): error is { code: string } {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "P2002"
-  );
-}
-
-function getPushStatusCode(error: unknown) {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "statusCode" in error &&
-    typeof error.statusCode === "number"
-  ) {
-    return error.statusCode;
-  }
-  return null;
-}
 
 function dateOnlyUtc(date: Date) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
@@ -134,29 +116,9 @@ export async function sendAttendanceReminders(now = new Date()) {
     body: "Please mark your attendance before your shift starts.",
     url: "/attendance",
   });
-  const publicKey = env.VAPID_PUBLIC_KEY;
-  const privateKey = env.VAPID_PRIVATE_KEY;
-  let pushConfigured = Boolean(publicKey && privateKey);
-  if (Boolean(publicKey) !== Boolean(privateKey)) {
-    pushConfigured = false;
-    pushFailures = 1;
-    console.error("Attendance reminder VAPID configuration is incomplete.");
-  }
-  if (publicKey && privateKey) {
-    try {
-      webpush.setVapidDetails(
-        `mailto:${env.NEXT_PUBLIC_SUPPORT_EMAIL}`,
-        publicKey,
-        privateKey,
-      );
-    } catch (error: unknown) {
-      pushConfigured = false;
-      pushFailures = 1;
-      console.error("Attendance reminder VAPID configuration is invalid.", {
-        errorName: error instanceof Error ? error.name : "UnknownError",
-      });
-    }
-  }
+  const pushConfiguration = configureAttendanceWebPush();
+  const pushConfigured = pushConfiguration.configured;
+  pushFailures += pushConfiguration.failures;
 
   for (const user of users) {
     const joinedAfterToday =
@@ -214,38 +176,16 @@ export async function sendAttendanceReminders(now = new Date()) {
       continue;
     }
 
-    let sentForUser = 0;
-    await Promise.all(
-      userSubscriptions.map(async (subscription) => {
-        try {
-          await webpush.sendNotification(
-            {
-              endpoint: subscription.endpoint,
-              keys: { p256dh: subscription.p256dh, auth: subscription.auth },
-            },
-            payload,
-          );
-          sentForUser += 1;
-        } catch (error: unknown) {
-          const statusCode = getPushStatusCode(error);
-          if (statusCode === 404 || statusCode === 410) {
-            await prisma.webPushSubscription.deleteMany({
-              where: { id: subscription.id },
-            });
-            return;
-          }
-          pushFailures += 1;
-          console.error("Attendance reminder push delivery failed.", {
-            userId: user.id,
-            statusCode,
-            errorName: error instanceof Error ? error.name : "UnknownError",
-          });
-        }
-      }),
+    const delivery = await sendAttendancePushToUser(
+      user.id,
+      userSubscriptions,
+      payload,
+      "Attendance reminder",
     );
 
-    pushSent += sentForUser;
-    if (sentForUser > 0) {
+    pushSent += delivery.sent;
+    pushFailures += delivery.failures;
+    if (delivery.sent > 0) {
       await prisma.attendanceReminder.update({
         where: {
           userId_date: { userId: user.id, date: today },

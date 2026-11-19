@@ -223,6 +223,9 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
   };
 
   const handleSaveContent = async (id: string, content: Record<string, unknown>) => {
+    const currentBlock = blocks.find((block) => block.id === id);
+    if (JSON.stringify(currentBlock?.content ?? {}) === JSON.stringify(content)) return;
+
     const res = await updateProposalBlock(id, proposalId, { content });
     if (!res.success) {
       throw new Error(res.message || "Failed to save block content");
@@ -349,17 +352,19 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
     
     // Dispatch a global event so child blocks can save their dirty state
     window.dispatchEvent(new CustomEvent("composer-save-all", { detail: { promises: savePromises } }));
-    
-    const toastId = toast.loading("Saving unsaved changes...", { duration: 500 });
-    
+
+    const toastId = savePromises.length > 0
+      ? toast.loading("Saving unsaved changes...", { duration: 500 })
+      : undefined;
+
     try {
       if (savePromises.length > 0) {
         await Promise.all(savePromises);
       }
-      toast.dismiss(toastId);
+      if (toastId) toast.dismiss(toastId);
       router.push(`/dashboard/proposals/${proposalId}/preview`);
     } catch {
-      toast.dismiss(toastId);
+      if (toastId) toast.dismiss(toastId);
       toast.error("Failed to save some changes before previewing");
       setIsPreviewing(false);
     }
@@ -533,7 +538,9 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
         </DndContext>
       </div>
       <ProposalWorkflowActionBar>
-        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className={`flex w-full flex-col gap-2 sm:flex-row sm:items-center ${
+          documentValidation.success ? "sm:justify-end" : "sm:justify-between"
+        }`}>
           {!documentValidation.success && (
             <p role="status" className="text-xs text-muted-foreground">
               Show at least one document section to enable preview.
@@ -545,7 +552,7 @@ export function ProposalComposer({ proposalId }: ProposalComposerProps) {
             className="w-full gap-2 sm:w-auto"
           >
             {isPreviewing ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
-            <span>{isPreviewing ? "Saving changes…" : "Preview proposal"}</span>
+            <span>{isPreviewing ? "Preparing preview…" : "Preview proposal"}</span>
           </Button>
         </div>
       </ProposalWorkflowActionBar>

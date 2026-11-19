@@ -32,11 +32,12 @@ export function RichTextBlockEditor({ block, onSave }: RichTextBlockEditorProps)
 
   const handleContentChange = (newVal: Record<string, unknown>) => {
     setContent(newVal);
-    setIsDirty(true);
+    setIsDirty(JSON.stringify(newVal) !== JSON.stringify((block.content as Record<string, unknown>) || {}));
     setJustSaved(false);
   };
 
   const handleSave = async () => {
+    if (!isDirty || isSaving) return;
     setIsSaving(true);
     try {
       await onSave(block.id, content);

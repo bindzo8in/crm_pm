@@ -405,6 +405,7 @@ export async function DuplicateProposal(id: string) {
                     serviceName: service.serviceName,
                     packageId: service.packageId,
                     packageName: service.packageName,
+                    hasItems: service.hasItems,
                     description: service.description,
                     notes: service.notes,
                     sortOrder: service.sortOrder

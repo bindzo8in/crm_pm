@@ -15,6 +15,7 @@ export type ServicePackageSearchResult = {
   description: string | null;
   totalPrice: number;
   totalPriceUSD: number;
+  hasItems: boolean;
   sacCode?: string | null;
   items: Array<{
     id: string;
@@ -157,7 +158,10 @@ export function ServicePackageSearch({ onSelectPackage, currency = "INR" }: Serv
                         </p>
                       )}
                       <div className="mt-2 text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium">
-                        <PlusIcon className="h-3 w-3" /> Includes {pkg.items.length} line items
+                        <PlusIcon className="h-3 w-3" />
+                        {pkg.hasItems && pkg.items.length > 0
+                          ? `Includes ${pkg.items.length} line items`
+                          : "Uses package details as one line item"}
                       </div>
                     </button>
                   );

@@ -216,6 +216,7 @@ export async function getProposalComposerData(proposalId: string, options?: { fo
               type: b.type as ProposalBlockType,
               sortOrder: b.sortOrder,
               title: b.title,
+              isVisible: b.type === "TIMELINE" ? false : undefined,
               isLocked: b.isLocked,
               isSystemGenerated: b.isSystemGenerated,
               content: b.content,

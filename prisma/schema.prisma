@@ -47,6 +47,11 @@ enum TaxRegime {
   NEW
 }
 
+enum BillableItemType {
+  GOODS
+  SERVICE
+}
+
 enum Department {
   SALES
   DEVELOPMENT
@@ -85,6 +90,8 @@ model User {
   workMode                     WorkMode                    @default(OFFICE)
   includeInAttendanceReports   Boolean                     @default(true) @map("include_in_attendance_reports")
   includeInPayroll             Boolean                     @default(false) @map("include_in_payroll")
+  clockInAlarmEnabled          Boolean                     @default(false) @map("attendance_clock_in_alarm_enabled")
+  clockOutAlarmEnabled         Boolean                     @default(false) @map("attendance_clock_out_alarm_enabled")
   banned                       Boolean?                    @default(false)
   banReason                    String?
   banExpires                   DateTime?
@@ -126,6 +133,7 @@ model User {
   notifications                Notification[]
   webPushSubscriptions         WebPushSubscription[]
   attendanceReminders          AttendanceReminder[]
+  attendanceAlarms             AttendanceAlarm[]
   employmentHistory            EmployeeStatusHistory[]     @relation("EmployeeStatusHistory")
   employmentChangesMade        EmployeeStatusHistory[]     @relation("EmployeeStatusChangedBy")
   employeesReassigned          EmployeeStatusHistory[]     @relation("EmployeeStatusReassignedTo")
@@ -253,8 +261,23 @@ model Organization {
   companies          Company[]
   invoices           Invoice[]
   attendanceSettings AttendanceSettings[]
+  measurementUnits   MeasurementUnit[]
 
   @@map("organization")
+}
+
+model MeasurementUnit {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  uqcCode        String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("measurement_unit")
 }
 
 model Member {
@@ -500,6 +523,7 @@ model ServicePackage {
 
   isPopular Boolean @default(false)
   isActive  Boolean @default(true)
+  hasItems  Boolean @default(true)
 
   totalPrice    Decimal @default(0) @db.Decimal(12, 2)
   totalPriceUSD Decimal @default(0) @db.Decimal(12, 2)
@@ -747,6 +771,8 @@ model ProposalService {
 
   packageName String?
 
+  hasItems Boolean @default(true)
+
   description String?
 
   notes String?
@@ -803,6 +829,7 @@ model ProposalLineItem {
 
   taxRate Int     @default(18)
   sacCode String? @default("9983")
+  itemType BillableItemType @default(SERVICE)
 
   @@index([proposalServiceId])
 }
@@ -1397,6 +1424,8 @@ model InvoiceLineItem {
   servicePackageId String?
   servicePackage   ServicePackage? @relation(fields: [servicePackageId], references: [id], onDelete: SetNull)
 
+  packageHasItems Boolean?
+
   productId String?
   product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
@@ -1408,6 +1437,7 @@ model InvoiceLineItem {
   total        Decimal      @db.Decimal(12, 2)
   taxRate      Int          @default(18)
   sacCode      String?      @default("9983")
+  itemType     BillableItemType @default(SERVICE)
   billingCycle BillingCycle @default(ONE_TIME)
 
   sortOrder Int @default(0)
@@ -1834,6 +1864,20 @@ model AttendanceReminder {
 
   @@unique([userId, date])
   @@map("attendance_reminder")
+}
+
+model AttendanceAlarm {
+  id         String    @id @default(cuid())
+  userId     String    @map("user_id")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date       DateTime  @db.Date
+  type       String
+  pushSentAt DateTime? @map("push_sent_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@unique([userId, date, type])
+  @@index([date, type])
+  @@map("attendance_schedule_reminder")
 }
 
 model AttendanceSettings {

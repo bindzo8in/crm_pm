@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { sendAttendanceReminders } from "@/services/attendance-reminder-service";
+import { sendAttendanceScheduleReminders } from "@/services/attendance-schedule-reminder-service";
 
 export const runtime = "nodejs";
 
@@ -28,7 +29,17 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const result = await sendAttendanceReminders();
+    const morningReminders = await sendAttendanceReminders();
+    const scheduleReminders = await sendAttendanceScheduleReminders();
+    const result = {
+      notified: morningReminders.notified + scheduleReminders.notified,
+      pushSent: morningReminders.pushSent + scheduleReminders.pushSent,
+      pushSkipped: morningReminders.pushSkipped + scheduleReminders.pushSkipped,
+      pushFailures: morningReminders.pushFailures + scheduleReminders.pushFailures,
+      ...(morningReminders.skipped && scheduleReminders.skipped
+        ? { skipped: morningReminders.skipped }
+        : {}),
+    };
     return NextResponse.json({ success: true, ...result }, {
       status: result.pushFailures > 0 ? 500 : 200,
     });

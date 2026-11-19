@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { dateOnlyAtCompanyMidnight } from "@/lib/date";
+import { BillableItemType } from "@/app/generated/prisma/enums";
 
 export const InvoiceStatusEnum = z.enum([
   "DRAFT",
@@ -31,16 +32,22 @@ export const BillingCycleEnum = z.enum([
 export const invoiceLineItemSchema = z.object({
   id: z.string().optional(),
   servicePackageId: z.string().optional().nullable(),
-  name: z.string().min(1, "Item name is required"),
+  productId: z.string().optional().nullable(),
+  packageHasItems: z.boolean().nullable().optional(),
+  name: z.string().min(1, "Line item name is required"),
   description: z.string().optional().nullable(),
   quantity: z.number().int().min(1, "Quantity must be at least 1"),
-  unit: z.string().default("item"),
+  unit: z.string().trim().min(1, "Unit is required").max(40).default("item"),
   unitPrice: z.number().min(0, "Unit price must be >= 0"),
   taxRate: z.number().min(0).max(100).default(18),
   sacCode: z.string().optional().nullable().default("9983"),
+  itemType: z.enum(BillableItemType).default("SERVICE"),
   billingCycle: BillingCycleEnum.default("ONE_TIME"),
   total: z.number().min(0).optional(),
-});
+}).refine(
+  (item) => !(item.productId && item.servicePackageId),
+  { message: "An invoice item can link to a product or service package, not both", path: ["productId"] },
+);
 
 export const createInvoiceSchema = z.object({
   customerId: z.string().min(1, "Customer is required"),

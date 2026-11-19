@@ -48,6 +48,8 @@ export const organizationRoleTemplates = [
       "invoices:send",
       "invoices:record-payment",
       "invoices:mark-paid",
+      "services:read",
+      "products:read",
       "finance:read",
       "finance:create",
       "finance:update",

@@ -26,6 +26,12 @@ profile, shift schedule, and office geofence setup before using the CRM.
 Public signup is disabled after the first account is created; administrators
 can add staff from the CRM.
 
+Office-location place search is user-triggered and uses the Nominatim-compatible
+service configured by `PLACE_SEARCH_BASE_URL` (defaults to
+`https://nominatim.openstreetmap.org`). Results are cached for 24 hours, and
+provider requests are paced server-side. Do not search for personal or
+confidential information.
+
 ## OAuth sign-in
 
 Google OAuth is required; Facebook, X, Microsoft, and LinkedIn are optional.

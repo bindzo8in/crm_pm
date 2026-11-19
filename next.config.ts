@@ -3,7 +3,7 @@ import "./lib/env";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["puppeteer-core", "@sparticuz/chromium-min"],
-  allowedDevOrigins: ['192.168.1.5',"jh5lsv74-3000.inc1.devtunnels.ms",],
+  allowedDevOrigins: ['192.168.1.5', "jh5lsv74-3000.inc1.devtunnels.ms", '192.168.1.3', '172.24.128.1'],
   images: {
     remotePatterns: [
       {
@@ -15,11 +15,6 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     agentUpgrade: "security",
-    serverActions: {
-      allowedOrigins: [
-        "jh5lsv74-3000.inc1.devtunnels.ms",
-      ],
-    },
   },
   output: "standalone",
 };

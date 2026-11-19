@@ -18,6 +18,7 @@ export const env = createEnv({
     LINKEDIN_CLIENT_ID: z.string().min(1).optional(),
     LINKEDIN_CLIENT_SECRET: z.string().min(1).optional(),
     CHROMIUM_REMOTE_EXEC_PATH: z.string().nonempty(),
+    PLACE_SEARCH_BASE_URL: z.url().default("https://nominatim.openstreetmap.org"),
     CLOUDINARY_API_KEY: z.string().min(1).optional(),
     CLOUDINARY_API_SECRET: z.string().min(1).optional(),
     EXCHANGE_RATE_API_KEY: z.string().optional(),

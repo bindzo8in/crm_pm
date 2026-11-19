@@ -38,7 +38,7 @@ export function SignatureBlockEditor({ block, onSave }: SignatureBlockEditorProp
   const [justSaved, setJustSaved] = useState(false);
 
   const handleSave = async () => {
-    if (!isDirty && !justSaved) return;
+    if (!isDirty || isSaving) return;
     setIsSaving(true);
     try {
       await onSave(block.id, form);
@@ -75,7 +75,7 @@ export function SignatureBlockEditor({ block, onSave }: SignatureBlockEditorProp
           <span>Acceptance & Sign-off Card (Will display signature lines and date lines in print/PDF)</span>
         </div>
 
-        <Button onClick={handleSave} disabled={isSaving || (!isDirty && !justSaved)} size="sm" className="h-8 w-full gap-1.5 px-3 text-xs sm:w-auto">
+        <Button onClick={handleSave} disabled={isSaving || !isDirty} size="sm" className="h-8 w-full gap-1.5 px-3 text-xs sm:w-auto">
           {justSaved ? (
             <>
               <Check className="h-3.5 w-3.5 text-emerald-500" />
