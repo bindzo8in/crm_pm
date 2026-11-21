@@ -45,12 +45,6 @@ COPY --from=deps /app/node_modules ./node_modules
 # Copy application
 COPY . .
 
-# ------------------------------------------------------------
-# Prisma Client
-# ------------------------------------------------------------
-
-RUN pnpm prisma generate
-
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # ------------------------------------------------------------
@@ -62,6 +56,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN \
     --mount=type=secret,id=DATABASE_URL,env=DATABASE_URL \
+    --mount=type=secret,id=DIRECT_URL,env=DIRECT_URL \
     --mount=type=secret,id=BETTER_AUTH_SECRET,env=BETTER_AUTH_SECRET \
     --mount=type=secret,id=BETTER_AUTH_URL,env=BETTER_AUTH_URL \
     --mount=type=secret,id=RESEND_API_KEY,env=RESEND_API_KEY \
@@ -77,6 +72,10 @@ RUN \
     --mount=type=secret,id=NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,env=NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME \
     --mount=type=secret,id=NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET,env=NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET \
     --mount=type=secret,id=NEXT_PUBLIC_APP_SCHEME,env=NEXT_PUBLIC_APP_SCHEME \
+    --mount=type=secret,id=CLOUDINARY_API_KEY,env=CLOUDINARY_API_KEY \
+    --mount=type=secret,id=CLOUDINARY_API_SECRET,env=CLOUDINARY_API_SECRET \
+    --mount=type=secret,id=VAPID_PUBLIC_KEY,env=VAPID_PUBLIC_KEY \
+    --mount=type=secret,id=VAPID_PRIVATE_KEY,env=VAPID_PRIVATE_KEY \
     pnpm run build
 
 

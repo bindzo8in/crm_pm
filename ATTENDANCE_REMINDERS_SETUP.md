@@ -6,19 +6,19 @@ Each user can enable browser notifications on the device they use to access Atte
 
 At the configured shift end, employees who are still clocked in receive one in-app clock-out reminder. Each employee can independently opt in to push alarms at the configured shift start and end under Attendance settings. Clock-in alarms are skipped after the employee has clocked in and on weekends, applicable holidays, or approved leave. Push alarms require browser alerts to be enabled on the device; audible behavior is controlled by the browser and operating system.
 
-Attendance reminder scheduling runs in a Docker Compose service deployed with each app. The scheduler uses the `Asia/Kolkata` timezone and checks every five minutes; the app sends reminders only between the configured reminder time and shift start (IST), and only to eligible staff who have not checked in, taken approved leave, or reached a weekend/holiday. Outside that window, the endpoint reports that it skipped delivery.
+Attendance reminder scheduling runs in one Docker Compose service alongside the shared multi-tenant production app. The scheduler uses the `Asia/Kolkata` timezone and checks every five minutes; the app sends reminders only between the configured reminder time and shift start (IST), and only to eligible staff who have not checked in, taken approved leave, or reached a weekend/holiday. Outside that window, the endpoint reports that it skipped delivery. The shared deployment runs one scheduler; do not configure a separate schedule per tenant.
 
-The reminder endpoint reports `notified` (new in-app reminders), `pushSent` (successful browser deliveries), `pushSkipped` (eligible users without a push attempt, such as no subscription), and `pushFailures` (push delivery/configuration failures). Review a specific deployment with `docker compose logs -f attendance-reminder-scheduler` from that app's server directory. The optional GitHub Actions **Run workflow** trigger is manual only and is not needed for scheduled reminders; a manual run can notify all eligible employees for each configured environment.
+The reminder endpoint reports `notified` (new in-app reminders), `pushSent` (successful browser deliveries), `pushSkipped` (eligible users without a push attempt, such as no subscription), and `pushFailures` (push delivery/configuration failures). Review production with `docker compose logs -f attendance-reminder-scheduler` from `~/apps/crm`. The optional GitHub Actions **Run workflow** trigger is manual only and targets the shared production instance; it is not needed for scheduled reminders.
 
 ## Deployment configuration
 
-The CI/CD deployment copies `docker-compose.yml` and the scheduler image source, writes the app's `.env`, and runs `docker compose up -d --build`. This builds and starts the lightweight cron scheduler alongside the app automatically; no VPS crontab setup is needed. Each app deployment runs its own scheduler container and uses that app's `SALARY_CRON_SECRET`.
+The CI/CD deployment copies `docker-compose.yml`, writes the production `.env`, pulls the app and scheduler images, and runs `docker compose up -d`. This starts the lightweight cron scheduler alongside the app automatically; no VPS crontab setup is needed.
 
-Configure `SALARY_CRON_SECRET` in the CI/CD environment for every app, as already required by the reminder endpoint. Keep the matching value in that app's server `.env`; do not commit it. The scheduler calls the app over the Docker network using its unique container name, so it does not depend on public DNS or HTTPS.
+Configure `SALARY_CRON_SECRET` in the GitHub Actions `production` environment and keep the matching value in the server `.env`; do not commit it. The scheduler calls the app over the Docker network using the `CONTAINER_NAME` alias, so it does not depend on public DNS or HTTPS.
 
-Generate a VAPID key pair locally with `pnpm exec web-push generate-vapid-keys`. Configure the values in the app's CI/CD environment and runtime environment; never commit them. Browser push requires HTTPS and the user's browser notification permission.
+Generate a VAPID key pair locally with `pnpm exec web-push generate-vapid-keys`. Configure the values in the GitHub Actions `production` environment and server runtime environment; never commit them. Browser push requires HTTPS and the user's browser notification permission.
 
-In-app reminders do not require VAPID keys; browser push does. Deploy the updated Compose file through CI/CD to start the scheduler and stop using the GitHub Actions schedule.
+In-app reminders do not require VAPID keys; browser push does. Deploy the updated Compose file through CI/CD to start the scheduler. The GitHub Actions workflow remains available for manual production runs; scheduled reminders are handled by Compose.
 
 ## Local migration
 

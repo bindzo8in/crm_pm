@@ -6,18 +6,11 @@ on:
 jobs:
   send-reminders:
     concurrency:
-      group: attendance-reminders-${{ matrix.environment }}
+      group: attendance-reminders-production
       cancel-in-progress: false
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - environment: crm-bindzo8
-          - environment: crm-designhub
-          - environment: b8-aerooceanx-crm
 
     runs-on: ubuntu-24.04
-    environment: ${{ matrix.environment }}
+    environment: production
     steps:
       - name: Send attendance reminders
         env:

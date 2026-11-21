@@ -1,7 +1,7 @@
 services:
   web:
-    image: ghcr.io/${GHCR_IMAGE_REPO}:${IMAGE_TAG}
-    container_name: ${CONTAINER_NAME}
+    image: ghcr.io/${GHCR_IMAGE_REPO:?GHCR_IMAGE_REPO must be set}:${IMAGE_TAG:?IMAGE_TAG must be set}
+    container_name: ${CONTAINER_NAME:?CONTAINER_NAME must be set}
     restart: unless-stopped
 
     init: true
@@ -12,10 +12,10 @@ services:
     networks:
       web_network:
         aliases:
-          - ${CONTAINER_NAME}
+          - ${CONTAINER_NAME:?CONTAINER_NAME must be set}
 
   attendance-reminder-scheduler:
-    image: ghcr.io/${GHCR_IMAGE_REPO}:${IMAGE_TAG}-scheduler
+    image: ghcr.io/${GHCR_IMAGE_REPO:?GHCR_IMAGE_REPO must be set}:${IMAGE_TAG:?IMAGE_TAG must be set}-scheduler
     restart: unless-stopped
     depends_on:
       - web

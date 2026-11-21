@@ -2,9 +2,9 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowDownLeft, ArrowDownRight, Check, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Landmark, MoreHorizontal, Pencil, Plus, ReceiptText, SlidersHorizontal, Trash2, Wallet } from "lucide-react";
+import { ArrowDownLeft, ArrowDownRight, Check, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Landmark, MoreHorizontal, Pencil, Plus, ReceiptText, SlidersHorizontal, Wallet } from "lucide-react";
 
-import { deleteExpense, getFinanceReport } from "@/actions/finance";
+import { getFinanceReport } from "@/actions/finance";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,7 +12,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -28,7 +27,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRouter } from "next/navigation";
 import { formatInIST } from "@/lib/date";
-import { toast } from "sonner";
 
 type Overview = {
   receivedIncome: number;
@@ -180,13 +178,7 @@ const initialFilters: ReportFilters = {
   direction: "desc",
 };
 
-function TransactionActions({
-  row,
-  onDelete,
-}: {
-  row: ReportRow;
-  onDelete: (rowId: string) => void;
-}) {
+function TransactionActions({ row }: { row: ReportRow }) {
   const expenseId = row.type === "EXPENSE" ? row.id.slice("expense:".length) : null;
 
   return (
@@ -215,14 +207,6 @@ function TransactionActions({
                 <Pencil aria-hidden="true" />
                 Edit expense
               </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              variant="destructive"
-              onSelect={() => onDelete(row.id)}
-            >
-              <Trash2 aria-hidden="true" />
-              Delete expense
             </DropdownMenuItem>
           </>
         )}
@@ -254,23 +238,6 @@ export function FinanceReportPanel({
   });
   const [isLoading, setIsLoading] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
-
-  async function handleDeleteExpense(rowId: string) {
-    const expenseId = rowId.startsWith("expense:") ? rowId.slice("expense:".length) : "";
-    if (!expenseId || !window.confirm("Delete this expense? Its accounting effect will be removed and this action will be kept in history.")) return;
-    try {
-      const result = await deleteExpense(expenseId);
-      if (!result.success) {
-        toast.error(result.message);
-        return;
-      }
-      toast.success("Expense deleted");
-      router.refresh();
-      await runReport(filters);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not delete this expense.");
-    }
-  }
 
 
 
@@ -498,7 +465,7 @@ export function FinanceReportPanel({
                       <p className={`text-right text-sm font-semibold tabular-nums ${row.type === "INCOME" ? "text-emerald-700 dark:text-emerald-400" : ""}`}>
                         {row.type === "INCOME" ? "+" : "−"}{formatCurrency(row.amount)}
                       </p>
-                      <TransactionActions row={row} onDelete={handleDeleteExpense} />
+                      <TransactionActions row={row} />
                     </div>
                   </div>
                   <dl className="grid grid-cols-2 gap-3 rounded-md bg-muted/40 p-3 sm:grid-cols-3">
@@ -516,8 +483,8 @@ export function FinanceReportPanel({
                       <dt className="text-[10px] text-muted-foreground">Attachment</dt>
                       <dd className="text-xs font-medium">
                         {row.attachment_url ? (
-                          <a href={row.attachment_url} target="_blank" rel="noreferrer" className="text-primary underline-offset-4 hover:underline">
-                            View attachment
+                          <a href={row.detail_url} className="text-primary underline-offset-4 hover:underline">
+                            Preview receipt
                           </a>
                         ) : "—"}
                       </dd>
@@ -601,13 +568,11 @@ export function FinanceReportPanel({
                       <TableCell onClick={(event) => event.stopPropagation()}>
                         {row.attachment_url ? (
                           <a
-                            href={row.attachment_url}
-                            target="_blank"
-                            rel="noreferrer"
+                            href={row.detail_url}
                             onClick={(event) => event.stopPropagation()}
                             className="text-primary underline-offset-4 hover:underline"
                           >
-                            View
+                            Preview
                           </a>
                         ) : "—"}
                       </TableCell>
@@ -623,7 +588,7 @@ export function FinanceReportPanel({
                         {row.type === "INCOME" ? "+" : "−"}{formatCurrency(row.amount)}
                       </TableCell>
                       <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
-                        <TransactionActions row={row} onDelete={handleDeleteExpense} />
+                        <TransactionActions row={row} />
                       </TableCell>
                     </TableRow>
                   ))}

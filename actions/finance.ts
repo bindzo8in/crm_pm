@@ -1,6 +1,9 @@
 "use server";
 
-import { checkOrganizationPermission } from "@/lib/organization-authorization";
+import {
+  checkOrganizationPermission,
+  getActiveOrganizationId,
+} from "@/lib/organization-authorization";
 import { Prisma } from "@/app/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import { errorResponse, successResponse } from "@/lib/action-response";
@@ -492,7 +495,15 @@ export async function getFinanceReport(input: unknown = {}) {
       return errorResponse("Minimum amount cannot be greater than maximum amount");
     }
 
-    const company = await prisma.company.findFirst({ select: { id: true } });
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) {
+      return errorResponse("Select an organization before running finance reports");
+    }
+
+    const company = await prisma.company.findUnique({
+      where: { organizationId },
+      select: { id: true },
+    });
     if (!company) {
       return errorResponse("Create the company profile before running finance reports");
     }
@@ -650,7 +661,13 @@ export async function getFinanceOverview(period: string = "month", startDate?: s
     }
 
     const transactionRange = buildDateRange(period, startDate, endDate);
-    const company = await prisma.company.findFirst({ select: { id: true } });
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return errorResponse("Select an organization to view finance overview");
+
+    const company = await prisma.company.findUnique({
+      where: { organizationId },
+      select: { id: true },
+    });
     if (!company) {
       return errorResponse("Create the company profile before viewing finance overview");
     }
@@ -1118,7 +1135,10 @@ export async function updateExpense(id: string, input: unknown) {
     revalidatePath("/dashboard/finance");
     revalidatePath(`/dashboard/finance/expenses/${id}`);
     revalidatePath(`/dashboard/finance/expenses/${id}/edit`);
-    return successResponse("Expense updated successfully", expense);
+    return successResponse("Expense updated successfully", {
+      ...expense,
+      amount: expense.amount.toString(),
+    });
   } catch (error) {
     return errorResponse("Failed to update expense", error);
   }
@@ -1131,19 +1151,35 @@ export async function getExpense(id: string) {
       const hasPermission = await checkFinancePermission("read");
       if (!hasPermission) return errorResponse("You do not have permission to view expenses");
 
-      const company = await prisma.company.findFirst({ select: { id: true } });
+      const organizationId = await getActiveOrganizationId();
+      if (!organizationId) return errorResponse("Select an organization to view expenses");
+
+      const company = await prisma.company.findUnique({
+        where: { organizationId },
+        select: { id: true },
+      });
       if (!company) return errorResponse("Company profile not found");
 
       const expense = await prisma.expense.findFirst({
         where: { id, deletedAt: null, financialAccount: { companyId: company.id } },
         include: {
           category: { select: { id: true, name: true, isActive: true } },
-          customer: { select: { id: true, companyName: true, primaryContactName: true } },
+          customer: {
+            select: {
+              id: true,
+              displayName: true,
+              companyName: true,
+              primaryContactName: true,
+            },
+          },
           history: { include: { user: { select: { id: true, name: true } } }, orderBy: { createdAt: "desc" } },
         },
       });
       if (!expense) return errorResponse("Expense not found");
-      return successResponse("Expense loaded successfully", expense);
+      return successResponse("Expense loaded successfully", {
+        ...expense,
+        amount: expense.amount.toString(),
+      });
     } catch (error) {
       return errorResponse("Failed to load expense", error);
     }

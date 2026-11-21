@@ -240,7 +240,11 @@ export function ExpenseEntryForm({ accounts, expense }: Props) {
     url: string;
     publicId: string;
     resourceType: "image" | "raw";
-  } | null>(expense?.receiptUrl ? { url: expense.receiptUrl, publicId: "", resourceType: "image" } : null);
+  } | null>(expense?.receiptUrl ? {
+    url: expense.receiptUrl,
+    publicId: "",
+    resourceType: expense.receiptUrl.toLowerCase().includes("/raw/upload/") ? "raw" : "image",
+  } : null);
   const [expenseType, setExpenseType] = React.useState<"GOODS" | "SERVICES">(
     expense?.expenseType === "GOODS" ? "GOODS" : "SERVICES",
   );
@@ -740,6 +744,8 @@ export function ExpenseEntryForm({ accounts, expense }: Props) {
               <ExpenseAttachmentUpload
                 value={attachment}
                 onChange={setAttachment}
+                expenseId={expense?.id}
+                savedReceiptUrl={expense?.receiptUrl}
                 disabled={isSaving}
               />
             </section>

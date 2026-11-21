@@ -17,6 +17,7 @@ test-results
 *.tsbuildinfo
 next-env.d.ts
 /app/generated/prisma/
+/attendance-reminder-scheduler/
 
 # Local configuration, credentials, and logs
 .env*

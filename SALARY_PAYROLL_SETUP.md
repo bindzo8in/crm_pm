@@ -4,7 +4,7 @@
 
 The Docker Compose scheduler uses the `Asia/Kolkata` timezone for all cron entries. It calls `/api/salary/cron` at 02:30 IST on the first day of each month. The endpoint selects the previous month using the India calendar date, then generates and emails those slips after the attendance period has ended. Existing generated or paid slips are skipped; a retry can deliver an unsent scheduled slip without regenerating it.
 
-Set `SALARY_CRON_SECRET` in the Compose environment for each deployment. Use the same strong random value of at least 32 characters in the web service environment and the scheduler. Do not commit the secret. Compose also requires `CONTAINER_NAME` to route scheduler requests to the web container.
+Set `SALARY_CRON_SECRET` in the shared production Compose environment. Use the same strong random value of at least 32 characters in the web service environment and the scheduler. Do not commit the secret. Compose also requires `CONTAINER_NAME` to route scheduler requests to the web container.
 
 Start or update both services with `docker compose up -d --build`. The scheduler container runs attendance reminders every five minutes and monthly payroll at the schedule above; both run on IST.
 

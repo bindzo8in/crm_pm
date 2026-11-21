@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { ArrowDown, ArrowUp, Eye, FileText, FileUp, GripVertical, LoaderCircle, Pencil, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, Eye, FileText, FileUp, GripVertical, LoaderCircle, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { ExpensePdfViewer } from "@/components/finance/expense-pdf-viewer";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +26,8 @@ type UploadScope = "customer" | "expense" | "task";
 type AssetUploadProps = {
   scope: UploadScope;
   ownerId?: string;
+  getPreviewUrl?: (asset: UploadedAsset) => string;
+  getDownloadUrl?: (asset: UploadedAsset) => string;
   value: UploadedAsset[];
   onChange: (assets: UploadedAsset[]) => void | Promise<void>;
   multiple?: boolean;
@@ -68,6 +71,8 @@ function assetName(asset: UploadedAsset) {
 export function AssetUpload({
   scope,
   ownerId,
+  getPreviewUrl,
+  getDownloadUrl,
   value,
   onChange,
   multiple = true,
@@ -80,7 +85,17 @@ export function AssetUpload({
   const [isUploading, setIsUploading] = React.useState(false);
   const [removingId, setRemovingId] = React.useState<string | null>(null);
   const [previewAsset, setPreviewAsset] = React.useState<UploadedAsset | null>(null);
+  const [previewSrc, setPreviewSrc] = React.useState<string | null>(null);
+  const [previewDownloadUrl, setPreviewDownloadUrl] = React.useState<string | null>(null);
   const [draggedIndex, setDraggedIndex] = React.useState<number | null>(null);
+  const localPdfPreviews = React.useRef(new Map<string, string>());
+
+  React.useEffect(() => () => {
+    for (const previewUrl of localPdfPreviews.current.values()) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    localPdfPreviews.current.clear();
+  }, []);
 
   async function uploadFile(file: File, replaceAsset?: UploadedAsset) {
     const body = new FormData();
@@ -134,6 +149,20 @@ export function AssetUpload({
         const existing = targetIndex === null ? undefined : nextAssets[targetIndex];
         try {
           const uploaded = await uploadFile(file, existing);
+          const previousPreview = existing
+            ? localPdfPreviews.current.get(existing.publicId)
+            : undefined;
+          if (existing && previousPreview) {
+            URL.revokeObjectURL(previousPreview);
+            localPdfPreviews.current.delete(existing.publicId);
+          }
+          const localPdfPreview = file.type === "application/pdf"
+            || file.name.toLowerCase().endsWith(".pdf")
+            ? URL.createObjectURL(new Blob([file], { type: "application/pdf" }))
+            : null;
+          if (localPdfPreview) {
+            localPdfPreviews.current.set(uploaded.publicId, localPdfPreview);
+          }
           if (targetIndex === null || !existing) {
             nextAssets = [...nextAssets, uploaded];
           } else {
@@ -170,6 +199,11 @@ export function AssetUpload({
       if (!response.ok) throw new Error(errorMessage(payload, "Could not delete this file."));
 
       await onChange(value.filter((item) => item.publicId !== asset.publicId));
+      const localPreview = localPdfPreviews.current.get(asset.publicId);
+      if (localPreview) {
+        URL.revokeObjectURL(localPreview);
+        localPdfPreviews.current.delete(asset.publicId);
+      }
       toast.success("File deleted");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not delete this file.");
@@ -316,7 +350,20 @@ export function AssetUpload({
                 size="icon-sm"
                 aria-label={`Preview ${assetName(asset)}`}
                 disabled={disabled}
-                onClick={() => setPreviewAsset(asset)}
+                onClick={() => {
+                  const localPreview = localPdfPreviews.current.get(asset.publicId);
+                  setPreviewAsset(asset);
+                  setPreviewSrc(
+                    localPreview
+                    ?? getPreviewUrl?.(asset)
+                    ?? asset.url,
+                  );
+                  setPreviewDownloadUrl(
+                    localPreview
+                    ?? getDownloadUrl?.(asset)
+                    ?? asset.url,
+                  );
+                }}
               >
                 <Eye />
               </Button>
@@ -349,30 +396,42 @@ export function AssetUpload({
       )}
 
       <Dialog open={previewAsset !== null} onOpenChange={(open) => {
-        if (!open) setPreviewAsset(null);
+        if (!open) {
+          setPreviewAsset(null);
+          setPreviewSrc(null);
+          setPreviewDownloadUrl(null);
+        }
       }}>
-        <DialogContent className="flex h-[85dvh] max-w-5xl flex-col">
-          <DialogHeader className="shrink-0">
-            <DialogTitle className="truncate pr-8">
-              {previewAsset ? assetName(previewAsset) : "File preview"}
-            </DialogTitle>
-          </DialogHeader>
-          {previewAsset?.resourceType === "image" ? (
-            <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto rounded-md bg-muted/40 p-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={previewAsset.url} alt={assetName(previewAsset)} className="max-h-full max-w-full object-contain" />
+        <DialogContent className="flex h-[94dvh] w-[96vw] max-w-none flex-col gap-0 overflow-hidden p-2 sm:max-w-none">
+          <DialogHeader className={previewAsset?.resourceType === "raw" ? "sr-only" : "flex-row items-center justify-between border-b px-5 py-4"}>
+            <div className="min-w-0">
+              <DialogTitle className="truncate pr-8">
+                {previewAsset ? assetName(previewAsset) : "File preview"}
+              </DialogTitle>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {previewAsset?.resourceType === "raw" ? "PDF document" : "Image preview"}
+              </p>
             </div>
-          ) : previewAsset ? (
-            <iframe
-              src={previewAsset.url}
-              title={assetName(previewAsset)}
-              className="min-h-0 flex-1 rounded-md border"
-            />
+            {previewAsset?.resourceType === "image" && (
+              <Button asChild size="sm" variant="outline" className="mr-8 shrink-0">
+                <a
+                  href={previewDownloadUrl ?? previewAsset.url}
+                  download={assetName(previewAsset)}
+                >
+                  <Download />
+                  Download
+                </a>
+              </Button>
+            )}
+          </DialogHeader>
+          {previewAsset?.resourceType === "raw" && previewSrc ? (
+            <ExpensePdfViewer src={previewSrc} />
+          ) : previewAsset?.resourceType === "image" ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-muted/50 p-4 sm:p-8">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={previewSrc ?? previewAsset.url} alt={assetName(previewAsset)} className="max-h-full max-w-full rounded-md object-contain shadow-sm" />
+            </div>
           ) : null}
-          <Button type="button" variant="outline" className="self-end" onClick={() => setPreviewAsset(null)}>
-            <X />
-            Close preview
-          </Button>
         </DialogContent>
       </Dialog>
     </div>
