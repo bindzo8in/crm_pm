@@ -19,24 +19,9 @@ permissions:
 jobs:
   build-and-push:
 
-    strategy:
-      matrix:
-        include:
-          - client: crm-bindzo8
-            environment: crm-bindzo8
-            image_tag: crm-bindzo8
-
-          - client: crm-designhub
-            environment: crm-designhub
-            image_tag: crm-designhub
-
-          - client: b8-aerooceanx-crm
-            environment: b8-aerooceanx-crm
-            image_tag: b8-aerooceanx-crm
-
     runs-on: ubuntu-24.04
 
-    environment: ${{ matrix.environment }}
+    environment: production
 
     steps:
 
@@ -80,10 +65,10 @@ jobs:
           push: true
 
           tags: |
-            ghcr.io/${{ github.repository }}:${{ matrix.image_tag }}
+            ghcr.io/${{ github.repository }}:latest
 
-          cache-from: type=gha,scope=${{ matrix.client }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.client }}
+          cache-from: type=gha,scope=production
+          cache-to: type=gha,mode=max,scope=production
 
           # --------------------------------------------------
           # BuildKit secrets
@@ -124,9 +109,9 @@ jobs:
         with:
           context: ./attendance-reminder-scheduler
           push: true
-          tags: ghcr.io/${{ github.repository }}:${{ matrix.image_tag }}-scheduler
-          cache-from: type=gha,scope=${{ matrix.client }}-scheduler
-          cache-to: type=gha,mode=max,scope=${{ matrix.client }}-scheduler
+          tags: ghcr.io/${{ github.repository }}:latest-scheduler
+          cache-from: type=gha,scope=production-scheduler
+          cache-to: type=gha,mode=max,scope=production-scheduler
 
 
 # ============================================================
@@ -138,31 +123,9 @@ jobs:
     needs:
       - build-and-push
 
-    strategy:
-      max-parallel: 1
-      matrix:
-        include:
-          - client: crm-bindzo8
-            environment: crm-bindzo8
-            image_tag: crm-bindzo8
-            app_dir: crm-bindzo8
-            container_name: crm-bindzo8
-
-          - client: crm-designhub
-            environment: crm-designhub
-            image_tag: crm-designhub
-            app_dir: crm-designhub
-            container_name: crm-designhub
-
-          - client: b8-aerooceanx-crm
-            environment: b8-aerooceanx-crm
-            image_tag: b8-aerooceanx-crm
-            app_dir: b8-aerooceanx-crm
-            container_name: b8-aerooceanx-crm
-
     runs-on: ubuntu-24.04
 
-    environment: ${{ matrix.environment }}
+    environment: production
 
     steps:
 
@@ -190,7 +153,7 @@ jobs:
           script: |
             set -e
 
-            mkdir -p "$HOME/apps/${{ matrix.app_dir }}"
+            mkdir -p "$HOME/apps/crm"
 
             docker network inspect web_network >/dev/null 2>&1 || \
               docker network create web_network
@@ -210,7 +173,7 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
 
           source: "docker-compose.yml"
-          target: "apps/${{ matrix.app_dir }}"
+          target: "apps/crm"
 
 
       # ------------------------------------------------------
@@ -300,7 +263,7 @@ jobs:
 
             set -e
 
-            APP_DIR="$HOME/apps/${{ matrix.app_dir }}"
+            APP_DIR="$HOME/apps/crm"
 
             cd "$APP_DIR"
 
@@ -325,8 +288,8 @@ jobs:
             cat > .env <<EOF
 
             GHCR_IMAGE_REPO=${{ github.repository }}
-            IMAGE_TAG=${{ matrix.image_tag }}
-            CONTAINER_NAME=${{ matrix.container_name }}
+            IMAGE_TAG=latest
+            CONTAINER_NAME=crm
 
             NEXT_PUBLIC_APP_NAME=$NEXT_PUBLIC_APP_NAME
             NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL

@@ -53,6 +53,14 @@ Register the full callback URL with each provider, using
 origin in production. Keep all client secrets server-side and out of source
 control.
 
+## Production deployment
+
+The `main` branch workflow builds and deploys one shared multi-tenant CRM
+instance, plus its attendance-reminder scheduler. Configure the workflow's
+existing variables and secrets in the GitHub Actions environment named
+`production`. The deployment uses the `latest` GHCR image and stores its
+Compose configuration under `~/apps/crm` on the server.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
