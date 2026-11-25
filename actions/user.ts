@@ -741,7 +741,7 @@ export async function getEmployeeStatusHistory(userId: string) {
   }
 
   return prisma.employeeStatusHistory.findMany({
-    where: { userId: target.id },
+    where: { organizationId: actor.organizationId, userId: target.id },
     orderBy: [{ effectiveAt: "desc" }, { changedAt: "desc" }],
     take: 50,
     select: {
@@ -910,6 +910,7 @@ export async function deactivateEmployee(input: {
     });
     await tx.employeeStatusHistory.create({
       data: {
+        organizationId: actor.organizationId,
         userId: target.id,
         action: EmploymentStatusAction.DEACTIVATED,
         effectiveAt,
@@ -983,6 +984,7 @@ export async function reactivateEmployee(input: {
     });
     await tx.employeeStatusHistory.create({
       data: {
+        organizationId: actor.organizationId,
         userId: target.id,
         action: EmploymentStatusAction.REACTIVATED,
         effectiveAt,

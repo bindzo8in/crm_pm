@@ -1398,7 +1398,13 @@ export async function createManualAttendanceAction(input: CreateManualAttendance
     const date = parseDateOnly(formatInIST(clockIn, "yyyy-MM-dd"));
     const [existingRecord, employee, settings] = await Promise.all([
       prisma.attendanceRecord.findUnique({
-        where: { userId_date: { userId: validated.userId, date } },
+        where: {
+          organizationId_userId_date: {
+            organizationId,
+            userId: validated.userId,
+            date,
+          },
+        },
         select: { id: true },
       }),
       prisma.user.findUnique({

@@ -85,9 +85,7 @@ function getOrganizationMemberWhere(
 function getOrganizationSalarySlipWhere(
   organizationId: string,
 ): Prisma.SalarySlipWhereInput {
-  return {
-    user: { is: getOrganizationMemberWhere(organizationId) },
-  };
+  return { organizationId };
 }
 
 async function emailAutomaticallyGeneratedSalarySlip(slipId: string) {
@@ -195,6 +193,7 @@ export async function getSalaryStructureAction(userId: string) {
 
     const structure = await prisma.salaryStructure.findFirst({
       where: {
+        organizationId,
         userId,
         user: { is: getOrganizationMemberWhere(organizationId) },
       },
@@ -242,7 +241,12 @@ export async function saveSalaryStructureAction(input: unknown) {
     }
 
     const structure = await prisma.salaryStructure.upsert({
-      where: { userId: validated.userId },
+      where: {
+        organizationId_userId: {
+          organizationId,
+          userId: validated.userId,
+        },
+      },
       update: {
         basicSalary: validated.basicSalary,
         hra: validated.hra,
@@ -257,6 +261,7 @@ export async function saveSalaryStructureAction(input: unknown) {
           : {}),
       },
       create: {
+        organizationId,
         userId: validated.userId,
         basicSalary: validated.basicSalary,
         hra: validated.hra,
@@ -340,46 +345,39 @@ function getDaysInMonth(month: number, year: number) {
 
 export async function generateSalarySlipAction(input: unknown) {
   try {
-    const requestHeaders = await headers();
-    const session = await auth.api.getSession({ headers: requestHeaders });
-    const canManageSalary = await hasSalaryPermission("create");
-
-    if (!canManageSalary && !hasSalaryCronAuthorization(requestHeaders)) {
+    const { session, organizationId } = await getAuthenticatedUser();
+    if (!(await hasSalaryPermission("create"))) {
       return { success: false, error: "Only Admins and HR can generate salary slips." };
     }
-    if (
-      session?.user &&
-      !(await hasSalaryPermission("create"))
-    ) {
-      return { success: false, error: "Only Admins and HR can generate salary slips." };
-    }
-    if (
-      canManageSalary &&
-      session?.user &&
-      !(await isSalaryPinSessionValid(session.user.id))
-    ) {
+    if (!(await isSalaryPinSessionValid(session.user.id))) {
       return { success: false, error: "Unlock Salary Management with your PIN to continue." };
     }
 
+    return await generateSalarySlipForOrganization(input, organizationId);
+  } catch (error) {
+    console.error("Error generating salary slip:", error);
+    return { success: false, error: getErrorMessage(error) };
+  }
+}
+
+async function generateSalarySlipForOrganization(
+  input: unknown,
+  organizationId: string,
+) {
+  try {
     const parsed = generateSalarySlipSchema.safeParse(input);
     if (!parsed.success) {
       return { success: false, error: "Invalid salary slip input.", details: parsed.error.issues };
     }
     const validated = parsed.data;
     const { userId, month, year, medicalReimbursement, extraEarnings, extraDeductions } = validated;
-    const organizationId = session?.session.activeOrganizationId ?? null;
-    if (session && !organizationId) {
-      return { success: false, error: "No active organization." };
-    }
 
     const payrollEmployee = await prisma.user.findFirst({
       where: {
         id: userId,
         includeInPayroll: true,
         employmentStatus: "ACTIVE",
-        ...(organizationId
-          ? getOrganizationMemberWhere(organizationId)
-          : {}),
+        ...getOrganizationMemberWhere(organizationId),
       },
       select: { id: true },
     });
@@ -390,8 +388,13 @@ export async function generateSalarySlipAction(input: unknown) {
     // Check if slip already exists
     const existing = await prisma.salarySlip.findUnique({
       where: {
-        userId_month_year: { userId, month, year }
-      }
+        organizationId_userId_month_year: {
+          organizationId,
+          userId,
+          month,
+          year,
+        },
+      },
     });
 
     if (existing && existing.status !== "DRAFT") {
@@ -399,7 +402,9 @@ export async function generateSalarySlipAction(input: unknown) {
     }
 
     const structure = await prisma.salaryStructure.findUnique({
-      where: { userId }
+      where: {
+        organizationId_userId: { organizationId, userId },
+      },
     });
 
     if (!structure) {
@@ -414,12 +419,16 @@ export async function generateSalarySlipAction(input: unknown) {
     
     const attendances = await prisma.attendanceRecord.findMany({
       where: {
+        organizationId,
         userId,
         date: { gte: startDate, lte: endDate }
       }
     });
     const holidays = await prisma.holiday.findMany({
-      where: { date: { gte: startDate, lte: endDate } },
+      where: {
+        organizationId,
+        date: { gte: startDate, lte: endDate },
+      },
       select: { date: true },
     });
     const holidayKeys = new Set(
@@ -429,6 +438,7 @@ export async function generateSalarySlipAction(input: unknown) {
     // We fetch Leave Requests that intersect with this month and are APPROVED
     const leaveRequests = await prisma.leaveRequest.findMany({
       where: {
+        organizationId,
         userId,
         status: "APPROVED",
         startDate: { lte: endDate },
@@ -508,6 +518,7 @@ export async function generateSalarySlipAction(input: unknown) {
     });
 
     const slipData = {
+      organizationId,
       userId,
       month,
       year,
@@ -594,33 +605,46 @@ export async function autoGenerateMonthlySalarySlipsAction(input: unknown) {
       return { success: false, error: "No active organization." };
     }
 
-    const usersWithStructures = await prisma.user.findMany({
-      where: {
-        ...(organizationId
-          ? getOrganizationMemberWhere(organizationId)
-          : {}),
-        includeInPayroll: true,
-        employmentStatus: "ACTIVE",
-        salaryStructure: { isNot: null },
-      },
-      select: { id: true },
-    });
-
     const results: Array<"generated" | "emailed" | "skipped" | "error"> = [];
+    const organizationIds = organizationId
+      ? [organizationId]
+      : (
+          await prisma.organization.findMany({
+            select: { id: true },
+          })
+        ).map((organization) => organization.id);
 
-    for (const user of usersWithStructures) {
-      try {
-        const existing = await prisma.salarySlip.findUnique({
-          where: {
-            userId_month_year: { userId: user.id, month, year },
+    for (const currentOrganizationId of organizationIds) {
+      const usersWithStructures = await prisma.user.findMany({
+        where: {
+          ...getOrganizationMemberWhere(currentOrganizationId),
+          includeInPayroll: true,
+          employmentStatus: "ACTIVE",
+          salaryStructures: {
+            some: { organizationId: currentOrganizationId },
           },
-          include: {
-            adjustments: {
-              where: { removedAt: null },
-              select: { id: true },
+        },
+        select: { id: true },
+      });
+
+      for (const user of usersWithStructures) {
+        try {
+          const existing = await prisma.salarySlip.findUnique({
+            where: {
+              organizationId_userId_month_year: {
+                organizationId: currentOrganizationId,
+                userId: user.id,
+                month,
+                year,
+              },
             },
-          },
-        });
+            include: {
+              adjustments: {
+                where: { removedAt: null },
+                select: { id: true },
+              },
+            },
+          });
 
         if (
           existing &&
@@ -640,43 +664,54 @@ export async function autoGenerateMonthlySalarySlipsAction(input: unknown) {
           continue;
         }
 
-        const res = await generateSalarySlipAction({
-          userId: user.id,
-          month,
-          year,
-          medicalReimbursement: 0,
-          extraEarnings: 0,
-          extraDeductions: 0,
-        });
+          const res = await generateSalarySlipForOrganization(
+            {
+              userId: user.id,
+              month,
+              year,
+              medicalReimbursement: 0,
+              extraEarnings: 0,
+              extraDeductions: 0,
+            },
+            currentOrganizationId,
+          );
 
-        if (res.success) {
-          const generatedSlip = await prisma.salarySlip.findUnique({
-            where: { userId_month_year: { userId: user.id, month, year } },
-            select: { id: true },
-          });
-          if (!generatedSlip) {
-            throw new Error("Generated salary slip could not be reloaded.");
+          if (res.success) {
+            const generatedSlip = await prisma.salarySlip.findUnique({
+              where: {
+                organizationId_userId_month_year: {
+                  organizationId: currentOrganizationId,
+                  userId: user.id,
+                  month,
+                  year,
+                },
+              },
+              select: { id: true },
+            });
+            if (!generatedSlip) {
+              throw new Error("Generated salary slip could not be reloaded.");
+            }
+            const markedScheduled = await prisma.salarySlip.updateMany({
+              where: { id: generatedSlip.id, status: "GENERATED" },
+              data: { scheduledGeneration: true },
+            });
+            if (markedScheduled.count !== 1) {
+              throw new Error("Generated salary slip could not be marked for scheduled delivery.");
+            }
+            await emailAutomaticallyGeneratedSalarySlip(generatedSlip.id);
+            results.push("generated");
+          } else {
+            console.error("Monthly salary slip generation failed:", user.id, res.error);
+            results.push("error");
           }
-          const markedScheduled = await prisma.salarySlip.updateMany({
-            where: { id: generatedSlip.id, status: "GENERATED" },
-            data: { scheduledGeneration: true },
-          });
-          if (markedScheduled.count !== 1) {
-            throw new Error("Generated salary slip could not be marked for scheduled delivery.");
-          }
-          await emailAutomaticallyGeneratedSalarySlip(generatedSlip.id);
-          results.push("generated");
-        } else {
-          console.error("Monthly salary slip generation failed:", user.id, res.error);
+        } catch (err) {
+          console.error(
+            "Monthly salary slip generation failed:",
+            user.id,
+            err instanceof Error ? err.message : "Unexpected error.",
+          );
           results.push("error");
         }
-      } catch (err) {
-        console.error(
-          "Monthly salary slip generation failed:",
-          user.id,
-          err instanceof Error ? err.message : "Unexpected error.",
-        );
-        results.push("error");
       }
     }
 
@@ -873,7 +908,9 @@ export async function getSalaryRosterAction(input: unknown) {
             select: { role: true },
             take: 1,
           },
-          salaryStructure: {
+          salaryStructures: {
+            where: { organizationId },
+            take: 1,
             select: {
               basicSalary: true,
               hra: true,
@@ -892,8 +929,9 @@ export async function getSalaryRosterAction(input: unknown) {
     ]);
 
     const employees = users.map(
-      ({ salaryStructure, organizationMemberships, ...employee }) => {
+      ({ salaryStructures, organizationMemberships, ...employee }) => {
         const membership = organizationMemberships[0];
+        const salaryStructure = salaryStructures[0] ?? null;
         if (!membership) {
           throw new Error(
             `Organization membership is missing for payroll employee ${employee.id}.`,
@@ -987,7 +1025,9 @@ export async function getSalaryManagementSummaryAction() {
             ...getOrganizationMemberWhere(organizationId),
             employmentStatus: "ACTIVE",
             includeInPayroll: true,
-            salaryStructure: { isNot: null },
+            salaryStructures: {
+              some: { organizationId },
+            },
           },
         }),
         prisma.salarySlip.findFirst({

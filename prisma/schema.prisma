@@ -117,7 +117,7 @@ model User {
   invoiceActivities            InvoiceActivity[]
   attendanceRecords            AttendanceRecord[]
   leaveRequests                LeaveRequest[]
-  salaryStructure              SalaryStructure?
+  salaryStructures             SalaryStructure[]
   salarySlips                  SalarySlip[]
   approvedSalarySlips          SalarySlip[]                @relation("SalarySlipApprover")
   emailedSalarySlips           SalarySlip[]                @relation("SalarySlipEmailSender")
@@ -170,6 +170,8 @@ model User {
 
 model EmployeeStatusHistory {
   id                      String                 @id @default(cuid())
+  organizationId          String?
+  organization            Organization?          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   userId                  String                 @map("user_id")
   user                    User                   @relation("EmployeeStatusHistory", fields: [userId], references: [id], onDelete: Restrict)
   action                  EmploymentStatusAction
@@ -185,6 +187,7 @@ model EmployeeStatusHistory {
   reassignedTaskCount     Int                    @default(0) @map("reassigned_task_count")
   reassignedMemberCount   Int                    @default(0) @map("reassigned_member_count")
 
+  @@index([organizationId, userId, effectiveAt])
   @@index([userId, effectiveAt])
   @@index([changedById, changedAt])
   @@map("employee_status_history")
@@ -257,11 +260,28 @@ model Organization {
   customers          Customer[]
   services           Service[]
   products           Product[]
+  proposalTerms      ProposalTerm[]
+  proposalTemplates  ProposalTemplate[]
   proposals          Proposal[]
   companies          Company[]
+  tariffGrids        TariffGrid[]
+  projects           Project[]
+  taskTemplates      ProjectTaskStatusTemplate[]
   invoices           Invoice[]
+  financialAccounts  FinancialAccount[]
+  expenseCategories  ExpenseCategory[]
+  expenses           Expense[]
+  attendanceRecords  AttendanceRecord[]
+  leaveRequests      LeaveRequest[]
+  holidays           Holiday[]
+  issueReports       IssueReport[]
+  notifications      Notification[]
   attendanceSettings AttendanceSettings[]
+  salaryStructures   SalaryStructure[]
+  salarySlips        SalarySlip[]
   measurementUnits   MeasurementUnit[]
+  importedSourceRecords     ImportedSourceRecord[]
+  employeeStatusHistory EmployeeStatusHistory[]
 
   @@map("organization")
 }
@@ -288,10 +308,57 @@ model Member {
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   role           String       @default("member")
   createdAt      DateTime     @default(now())
+  employeeProfile OrganizationEmployeeProfile?
 
   @@unique([organizationId, userId])
   @@index([userId])
   @@map("member")
+}
+
+model OrganizationEmployeeProfile {
+  organizationId             String
+  userId                     String
+  membership                 Member           @relation(fields: [organizationId, userId], references: [organizationId, userId], onDelete: Cascade)
+  sourceDatabase             String?
+  sourceUserId               String?
+  sourceProfileData          Json?
+  displayName                String?
+  applicationRole            String?
+  employmentStatus           EmploymentStatus?
+  employmentEndedAt          DateTime?
+  department                 Department?
+  additionalDepartments      Department[]     @default([])
+  workMode                   WorkMode?
+  includeInAttendanceReports Boolean?
+  includeInPayroll           Boolean?
+  clockInAlarmEnabled        Boolean?
+  clockOutAlarmEnabled       Boolean?
+  employeeId                 String?
+  designation                String?
+  dateOfJoining              DateTime?
+  employmentType             EmploymentType?
+  annualCtc                  Decimal?         @db.Decimal(14, 2)
+  bankName                   String?
+  bankAccountNo              String?
+  bankIfsc                   String?
+  bankAccountType            BankAccountType?
+  panNo                      String?
+  aadhaarNo                  String?
+  costCenter                 String?
+  uanNo                      String?
+  pfNo                       String?
+  esiNo                      String?
+  pfEligible                 Boolean?
+  esiEligible                Boolean?
+  taxRegime                  TaxRegime?
+  paymentMethod              PaymentMethod?
+  createdAt                  DateTime         @default(now())
+  updatedAt                  DateTime         @updatedAt
+
+  @@id([organizationId, userId])
+  @@unique([organizationId, employeeId])
+  @@index([organizationId, department])
+  @@map("organization_employee_profile")
 }
 
 model Invitation {
@@ -376,7 +443,7 @@ model Customer {
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  customerNumber           Int     @unique @default(autoincrement())
+  customerNumber           Int     @default(autoincrement())
   displayName              String
   companyName              String?
   primaryContactSalutation String?
@@ -433,6 +500,7 @@ model Customer {
   @@index([createdById])
   @@index([deletedAt])
   @@index([organizationId, deletedAt])
+  @@unique([organizationId, customerNumber])
 }
 
 model CustomerContact {
@@ -483,8 +551,8 @@ model Service {
   deletedAt        DateTime?
   proposalServices ProposalService[]
 
-  @@index([organizationId, isActive])
   @@unique([organizationId, slug])
+  @@index([organizationId, isActive])
 }
 
 model Product {
@@ -588,6 +656,9 @@ model PackageFeature {
 model ProposalTerm {
   id String @id @default(cuid())
 
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   title String
 
   content Json
@@ -600,6 +671,8 @@ model ProposalTerm {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([organizationId, isActive])
 }
 
 model ProposalTermPackage {
@@ -626,6 +699,9 @@ enum ProposalStatus {
 model ProposalTemplate {
   id String @id @default(cuid())
 
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   name String
 
   coverEnabled       Boolean @default(true)
@@ -650,6 +726,8 @@ model ProposalTemplate {
   updatedAt DateTime @updatedAt
 
   proposals Proposal[]
+
+  @@index([organizationId])
 }
 
 model Proposal {
@@ -664,9 +742,9 @@ model Proposal {
   customer   Customer @relation(fields: [customerId], references: [id])
 
   preparedById String
-  preparedBy   User   @relation(fields: [preparedById], references: [id])
+  preparedBy   User    @relation(fields: [preparedById], references: [id])
   assignedToId String?
-  assignedTo   User?  @relation("AssignedProposals", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedTo   User?   @relation("AssignedProposals", fields: [assignedToId], references: [id], onDelete: SetNull)
 
   templateId String?
   template   ProposalTemplate? @relation(fields: [templateId], references: [id])
@@ -827,8 +905,8 @@ model ProposalLineItem {
 
   discountValue Decimal? @db.Decimal(12, 2)
 
-  taxRate Int     @default(18)
-  sacCode String? @default("9983")
+  taxRate  Int              @default(18)
+  sacCode  String?          @default("9983")
   itemType BillableItemType @default(SERVICE)
 
   @@index([proposalServiceId])
@@ -927,6 +1005,21 @@ model Company {
   updatedAt DateTime @updatedAt
 }
 
+model ImportedSourceRecord {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourceDatabase String
+  sourceTable    String
+  sourceRecordId String
+  data           Json
+  createdAt      DateTime     @default(now())
+
+  @@unique([organizationId, sourceDatabase, sourceTable, sourceRecordId])
+  @@index([organizationId, sourceTable])
+  @@map("imported_source_record")
+}
+
 model CompanyBankAccount {
   id String @id @default(cuid())
 
@@ -961,15 +1054,19 @@ model CompanyBankAccount {
 // ------------------- Tariff Models -------------------
 
 model TariffGrid {
-  id          String  @id @default(cuid())
-  name        String
-  description String?
-  isActive    Boolean @default(true)
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  isActive       Boolean       @default(true)
 
   packages TariffGridPackage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([organizationId, isActive])
 }
 
 model TariffGridPackage {
@@ -1032,7 +1129,10 @@ enum ProjectActivityType {
 
 model Project {
   id            String @id @default(cuid())
-  projectNumber Int    @unique @default(autoincrement())
+  projectNumber Int    @default(autoincrement())
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   name          String
   description   String?
@@ -1078,20 +1178,26 @@ model Project {
   @@index([status, dueDate])
   @@index([deletedAt, updatedAt])
   @@index([workflowTemplateId])
+  @@index([organizationId, deletedAt])
+  @@unique([organizationId, projectNumber])
 }
 
 model ProjectTaskStatusTemplate {
-  id          String    @id @default(cuid())
-  name        String    @unique
-  statuses    Json
-  isSystem    Boolean   @default(false)
-  createdById String?
-  createdBy   User?     @relation("TaskStatusTemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  projects    Project[]
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  statuses       Json
+  isSystem       Boolean       @default(false)
+  createdById    String?
+  createdBy      User?         @relation("TaskStatusTemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  projects       Project[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
+  @@unique([organizationId, name])
   @@index([isSystem, name])
+  @@index([organizationId, name])
 }
 
 model ProjectMember {
@@ -1372,10 +1478,10 @@ model Invoice {
   proposalId String?
   proposal   Proposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
 
-  createdById String
-  createdBy   User   @relation(fields: [createdById], references: [id])
+  createdById  String
+  createdBy    User    @relation(fields: [createdById], references: [id])
   assignedToId String?
-  assignedTo   User?  @relation("AssignedInvoices", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedTo   User?   @relation("AssignedInvoices", fields: [assignedToId], references: [id], onDelete: SetNull)
 
   customerDisplayName String
   customerCompanyName String?
@@ -1431,14 +1537,14 @@ model InvoiceLineItem {
 
   name         String
   description  String?
-  quantity     Int          @default(1)
-  unit         String       @default("item")
-  unitPrice    Decimal      @db.Decimal(12, 2)
-  total        Decimal      @db.Decimal(12, 2)
-  taxRate      Int          @default(18)
-  sacCode      String?      @default("9983")
+  quantity     Int              @default(1)
+  unit         String           @default("item")
+  unitPrice    Decimal          @db.Decimal(12, 2)
+  total        Decimal          @db.Decimal(12, 2)
+  taxRate      Int              @default(18)
+  sacCode      String?          @default("9983")
   itemType     BillableItemType @default(SERVICE)
-  billingCycle BillingCycle @default(ONE_TIME)
+  billingCycle BillingCycle     @default(ONE_TIME)
 
   sortOrder Int @default(0)
 
@@ -1473,6 +1579,9 @@ enum ExpenseStatus {
 model FinancialAccount {
   id String @id @default(cuid())
 
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   companyId String
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -1495,10 +1604,14 @@ model FinancialAccount {
   @@unique([companyId, name])
   @@unique([companyBankAccountId])
   @@index([companyId, isActive])
+  @@index([organizationId, isActive])
 }
 
 model ExpenseCategory {
   id String @id @default(cuid())
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   name        String
   description String?
@@ -1509,12 +1622,16 @@ model ExpenseCategory {
 
   expenses Expense[]
 
-  @@unique([name])
+  @@unique([organizationId, name])
   @@index([isActive])
+  @@index([organizationId, isActive])
 }
 
 model Expense {
   id String @id @default(cuid())
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   transactionNumber   String        @unique
   description         String
@@ -1560,6 +1677,8 @@ model Expense {
   @@index([customerId])
   @@index([createdById])
   @@index([deletedAt])
+  @@index([organizationId, expenseDate])
+  @@index([organizationId, status])
 }
 
 model ExpenseHistory {
@@ -1676,6 +1795,8 @@ enum WorkMode {
 
 model AttendanceRecord {
   id                   String               @id @default(cuid())
+  organizationId       String?
+  organization         Organization?        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   userId               String
   user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   date                 DateTime             @db.Date
@@ -1709,11 +1830,13 @@ model AttendanceRecord {
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 
-  @@unique([userId, date])
+  @@unique([organizationId, userId, date])
   @@index([userId])
   @@index([date])
   @@index([status])
   @@index([department])
+  @@index([organizationId, date])
+  @@index([organizationId, userId, date])
   @@map("attendance_record")
 }
 
@@ -1760,6 +1883,8 @@ enum HolidayCategory {
 
 model LeaveRequest {
   id             String              @id @default(cuid())
+  organizationId String?
+  organization   Organization?       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   userId         String
   user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   type           LeaveType
@@ -1784,59 +1909,70 @@ model LeaveRequest {
 
   @@index([userId])
   @@index([status])
+  @@index([organizationId, status])
+  @@index([organizationId, userId, startDate])
   @@map("leave_request")
 }
 
 model Holiday {
-  id          String          @id @default(cuid())
-  eventId     String?         @map("event_id")
-  name        String
-  date        DateTime        @db.Date
-  category    HolidayCategory @default(MANDATORY_GAZETTED)
-  isHalfDay   Boolean         @default(false) @map("is_half_day")
-  departments Department[]    @default([])
-  notifyStaff Boolean         @default(false) @map("notify_staff")
-  description String?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id             String          @id @default(cuid())
+  organizationId String?
+  organization   Organization?   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  eventId        String?         @map("event_id")
+  name           String
+  date           DateTime        @db.Date
+  category       HolidayCategory @default(MANDATORY_GAZETTED)
+  isHalfDay      Boolean         @default(false) @map("is_half_day")
+  departments    Department[]    @default([])
+  notifyStaff    Boolean         @default(false) @map("notify_staff")
+  description    String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
-  @@unique([date])
+  @@unique([organizationId, date])
   @@index([eventId])
+  @@index([organizationId, date])
   @@map("holiday")
 }
 
 model IssueReport {
-  id           String            @id @default(cuid())
-  type         IssueReportType
-  title        String            @db.VarChar(160)
-  description  String            @db.VarChar(5000)
-  status       IssueReportStatus @default(NEW)
-  response     String?           @db.VarChar(2000)
-  createdById  String            @map("created_by_id")
-  createdBy    User              @relation("IssueReportSubmitter", fields: [createdById], references: [id], onDelete: Restrict)
-  reviewedById String?           @map("reviewed_by_id")
-  reviewedBy   User?             @relation("IssueReportReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
-  reviewedAt   DateTime?         @map("reviewed_at")
-  createdAt    DateTime          @default(now()) @map("created_at")
-  updatedAt    DateTime          @updatedAt @map("updated_at")
+  id             String            @id @default(cuid())
+  organizationId String?
+  organization   Organization?     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  type           IssueReportType
+  title          String            @db.VarChar(160)
+  description    String            @db.VarChar(5000)
+  status         IssueReportStatus @default(NEW)
+  response       String?           @db.VarChar(2000)
+  createdById    String            @map("created_by_id")
+  createdBy      User              @relation("IssueReportSubmitter", fields: [createdById], references: [id], onDelete: Restrict)
+  reviewedById   String?           @map("reviewed_by_id")
+  reviewedBy     User?             @relation("IssueReportReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt     DateTime?         @map("reviewed_at")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
 
   @@index([createdById, createdAt])
   @@index([status, createdAt])
+  @@index([organizationId, status, createdAt])
   @@map("issue_report")
 }
 
 model Notification {
-  id        String    @id @default(cuid())
-  userId    String    @map("user_id")
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type      String    @default("GENERAL")
-  title     String
-  message   String
-  href      String
-  readAt    DateTime? @map("read_at")
-  createdAt DateTime  @default(now()) @map("created_at")
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String        @map("user_id")
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type           String        @default("GENERAL")
+  title          String
+  message        String
+  href           String
+  readAt         DateTime?     @map("read_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
 
   @@index([userId, readAt, createdAt])
+  @@index([organizationId, userId, readAt, createdAt])
   @@map("notification")
 }
 
@@ -1923,9 +2059,11 @@ model AttendanceAuditLog {
 // ------------------- Payroll / Salary Models -------------------
 
 model SalaryStructure {
-  id     String @id @default(cuid())
-  userId String @unique
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   basicSalary      Decimal @default(0) @db.Decimal(12, 2)
   hra              Decimal @default(0) @db.Decimal(12, 2) // House Rent Allowance
@@ -1942,6 +2080,8 @@ model SalaryStructure {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([organizationId, userId])
+  @@index([organizationId, userId])
   @@map("salary_structure")
 }
 
@@ -1984,9 +2124,11 @@ enum SalarySlipAdjustmentType {
 }
 
 model SalarySlip {
-  id     String @id @default(cuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   month Int // 1 to 12
   year  Int
@@ -2040,7 +2182,8 @@ model SalarySlip {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([userId, month, year])
+  @@unique([organizationId, userId, month, year])
+  @@index([organizationId, month, year])
   @@index([userId])
   @@index([month, year])
   @@index([status])

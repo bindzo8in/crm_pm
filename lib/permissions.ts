@@ -323,6 +323,8 @@ export const prismaModelPermissions = {
     Verification: "user",
     Organization: "settings",
     Member: "users",
+    OrganizationEmployeeProfile: "users",
+    ImportedSourceRecord: "company",
     Invitation: "users",
     OrganizationRole: "users",
     Team: "users",
