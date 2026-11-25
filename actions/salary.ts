@@ -4,6 +4,7 @@ import { checkOrganizationPermission } from "@/lib/organization-authorization";
 import prisma from "@/lib/prisma";
 import { calculateMonthlySalary, countWorkingDays } from "@/lib/salary-calculation";
 import { auth } from "@/lib/auth";
+import { isPlatformSuperAdmin } from "@/lib/global-role";
 import { Department } from "@/app/generated/prisma/enums";
 import type { Prisma } from "@/app/generated/prisma/client";
 import { headers } from "next/headers";
@@ -156,7 +157,11 @@ async function emailAutomaticallyGeneratedSalarySlip(slipId: string) {
 async function getAuthenticatedUser() {
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
-  if (!session || !session.user) {
+  if (
+    !session ||
+    !session.user ||
+    isPlatformSuperAdmin(session.user.role)
+  ) {
     throw new Error("Unauthorized");
   }
   const organizationId = session.session.activeOrganizationId;
@@ -576,6 +581,12 @@ export async function autoGenerateMonthlySalarySlipsAction(input: unknown) {
   try {
     const requestHeaders = await headers();
     const session = await auth.api.getSession({ headers: requestHeaders });
+    if (session?.user && isPlatformSuperAdmin(session.user.role)) {
+      return {
+        success: false,
+        error: "Platform administrators cannot access organization salary data.",
+      };
+    }
     const canManageSalary = await hasSalaryPermission("create");
 
     if (!canManageSalary && !hasSalaryCronAuthorization(requestHeaders)) {

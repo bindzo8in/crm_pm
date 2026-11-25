@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Users"
+  title: "Organization members"
 };
 
 import UsersTable from "./UsersTable";
@@ -12,7 +12,7 @@ export default async function UsersPage() {
     const managerContext = await getOrganizationManagerContext();
 
     return (
-        <DashboardContainer title="Users">
+        <DashboardContainer title="Organization members">
             <UsersTable canManageOrganization={Boolean(managerContext)} />
         </DashboardContainer>
     )

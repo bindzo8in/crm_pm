@@ -63,9 +63,9 @@ const defaultExpenseCategories = [
   "Other Expenses",
 ];
 
-async function ensureDefaultExpenseCategories() {
+async function ensureDefaultExpenseCategories(organizationId: string) {
   await prisma.expenseCategory.createMany({
-    data: defaultExpenseCategories.map((name) => ({ name })),
+    data: defaultExpenseCategories.map((name) => ({ name, organizationId })),
     skipDuplicates: true,
   });
 }
@@ -130,7 +130,11 @@ export async function getFinancialAccounts() {
       return errorResponse("You do not have permission to view financial accounts");
     }
 
-    const company = await prisma.company.findFirst({
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return errorResponse("Select an organization to view financial accounts");
+
+    const company = await prisma.company.findUnique({
+      where: { organizationId },
       select: {
         id: true,
         displayName: true,
@@ -158,6 +162,7 @@ export async function getFinancialAccounts() {
           },
           update: {},
           create: {
+            organizationId,
             companyId: company.id,
             name: "Office Cash",
             type: "CASH",
@@ -183,6 +188,7 @@ export async function getFinancialAccounts() {
             where: { companyBankAccountId: bankAccount.id },
             update: { name: accountName, isActive: true },
             create: {
+              organizationId,
               companyId: company.id,
               name: accountName,
               type: "BANK",
@@ -196,13 +202,17 @@ export async function getFinancialAccounts() {
     }
 
     const accounts = await prisma.financialAccount.findMany({
-      where: { companyId: company.id },
+      where: { organizationId, companyId: company.id },
       orderBy: [{ isActive: "desc" }, { name: "asc" }],
       include: {
         companyBankAccount: true,
         invoicePayments: {
           where: {
-            invoice: { deletedAt: null, status: { not: "VOID" } },
+            invoice: {
+              organizationId,
+              deletedAt: null,
+              status: { not: "VOID" },
+            },
             paymentDate: { lte: new Date() },
           },
           select: { amount: true, paymentDate: true },
@@ -211,6 +221,7 @@ export async function getFinancialAccounts() {
           where: {
             deletedAt: null,
             status: "COMPLETED",
+            organizationId,
             expenseDate: { lte: new Date() },
           },
           select: { amount: true, expenseDate: true },
@@ -257,7 +268,11 @@ export async function getFinanceSetupStatus() {
       return errorResponse("You do not have permission to view finance setup");
     }
 
-    const company = await prisma.company.findFirst({
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return errorResponse("Select an organization to view finance setup");
+
+    const company = await prisma.company.findUnique({
+      where: { organizationId },
       select: {
         displayName: true,
         legalName: true,
@@ -309,9 +324,12 @@ export async function getExpenseCategories() {
       return errorResponse("You do not have permission to view expense categories");
     }
 
-    await ensureDefaultExpenseCategories();
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return errorResponse("Select an organization to view expense categories");
+    await ensureDefaultExpenseCategories(organizationId);
 
     const categories = await prisma.expenseCategory.findMany({
+      where: { organizationId },
       orderBy: { name: "asc" },
     });
 
@@ -332,17 +350,20 @@ export async function getExpenseCategoryPage(input: unknown) {
     if (!hasPermission) {
       return errorResponse("You do not have permission to view expense categories");
     }
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return errorResponse("Select an organization to view expense categories");
 
     const parsed = expenseCategoryPageSchema.safeParse(input);
     if (!parsed.success) {
       return errorResponse("Invalid expense category query", parsed.error.flatten());
     }
 
-    await ensureDefaultExpenseCategories();
+    await ensureDefaultExpenseCategories(organizationId);
 
     const { search, cursor, pageSize } = parsed.data;
     const categories = await prisma.expenseCategory.findMany({
       where: {
+        organizationId,
         isActive: true,
         ...(search
           ? { name: { contains: search, mode: "insensitive" } }
@@ -379,10 +400,13 @@ export async function listRecentInvoicePayments(limit = 5) {
     if (!hasPermission) {
       return errorResponse("You do not have permission to view invoice payments");
     }
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return errorResponse("Select an organization to view invoice payments");
 
     const payments = await prisma.invoicePayment.findMany({
       where: {
         invoice: {
+          organizationId,
           deletedAt: null,
           status: { not: "VOID" },
         },
@@ -427,8 +451,11 @@ export async function getFinanceCreators() {
 
     const hasPermission = await checkFinancePermission("read");
     if (!hasPermission) return errorResponse("You do not have permission to view finance reports");
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return errorResponse("Select an organization to view finance reports");
 
     const users = await prisma.user.findMany({
+      where: { organizationMemberships: { some: { organizationId } } },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     });
@@ -562,7 +589,8 @@ export async function getFinanceReport(input: unknown = {}) {
       LEFT JOIN "FinancialAccount" fa
         ON fa."id" = p."financialAccountId" AND fa."companyId" = ${companyId}
       LEFT JOIN "user" u ON u."id" = i."createdById"
-      WHERE i."deletedAt" IS NULL AND i."status" <> 'VOID'
+      WHERE i."organizationId" = ${organizationId}
+        AND i."deletedAt" IS NULL AND i."status" <> 'VOID'
 
       UNION ALL
 
@@ -587,10 +615,13 @@ export async function getFinanceReport(input: unknown = {}) {
         ('/dashboard/finance/expenses/' || e."id") AS "detail_url"
       FROM "Expense" e
       INNER JOIN "FinancialAccount" fa ON fa."id" = e."financialAccountId"
-      INNER JOIN "ExpenseCategory" c ON c."id" = e."categoryId"
-      LEFT JOIN "Customer" cu ON cu."id" = e."customerId"
+      INNER JOIN "ExpenseCategory" c
+        ON c."id" = e."categoryId" AND c."organizationId" = ${organizationId}
+      LEFT JOIN "Customer" cu
+        ON cu."id" = e."customerId" AND cu."organizationId" = ${organizationId}
       LEFT JOIN "user" u ON u."id" = e."createdById"
-      WHERE e."deletedAt" IS NULL AND fa."companyId" = ${companyId}
+      WHERE e."organizationId" = ${organizationId}
+        AND e."deletedAt" IS NULL AND fa."companyId" = ${companyId}
     `;
     const filtered = Prisma.sql`
       WITH transactions AS (${transactionRows})
@@ -676,6 +707,7 @@ export async function getFinanceOverview(period: string = "month", startDate?: s
       prisma.invoicePayment.aggregate({
         where: {
           invoice: {
+            organizationId,
             deletedAt: null,
             status: { not: "VOID" },
           },
@@ -688,6 +720,7 @@ export async function getFinanceOverview(period: string = "month", startDate?: s
       }),
       prisma.expense.aggregate({
         where: {
+          organizationId,
           deletedAt: null,
           status: "COMPLETED",
           financialAccount: { companyId: company.id },
@@ -700,6 +733,7 @@ export async function getFinanceOverview(period: string = "month", startDate?: s
       }),
       prisma.expense.aggregate({
         where: {
+          organizationId,
           deletedAt: null,
           status: "PENDING",
           financialAccount: { companyId: company.id },
@@ -707,7 +741,7 @@ export async function getFinanceOverview(period: string = "month", startDate?: s
         _sum: { amount: true },
       }),
       prisma.financialAccount.findMany({
-        where: { companyId: company.id, isActive: true },
+        where: { organizationId, companyId: company.id, isActive: true },
         select: {
           id: true,
           name: true,
@@ -718,6 +752,7 @@ export async function getFinanceOverview(period: string = "month", startDate?: s
           invoicePayments: {
             where: {
               invoice: {
+                organizationId,
                 deletedAt: null,
                 status: { not: "VOID" },
               },
@@ -729,6 +764,7 @@ export async function getFinanceOverview(period: string = "month", startDate?: s
           },
           expenses: {
             where: {
+              organizationId,
               deletedAt: null,
               status: "COMPLETED",
               financialAccount: { companyId: company.id },
@@ -742,6 +778,7 @@ export async function getFinanceOverview(period: string = "month", startDate?: s
       }),
       prisma.invoice.findMany({
         where: {
+          organizationId,
           deletedAt: null,
           status: { notIn: ["VOID", "DRAFT"] },
         },
@@ -761,6 +798,7 @@ export async function getFinanceOverview(period: string = "month", startDate?: s
       prisma.expense.groupBy({
         by: ["categoryId"],
         where: {
+          organizationId,
           deletedAt: null,
           status: "COMPLETED",
           expenseDate: {
@@ -876,8 +914,11 @@ export async function listExpenses({
     if (!hasPermission) {
       return errorResponse("You do not have permission to view expenses");
     }
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return errorResponse("Select an organization to view expenses");
 
     const where: Prisma.ExpenseWhereInput = {
+      organizationId,
       deletedAt: null,
       ...(status ? { status: status as "PENDING" | "COMPLETED" | "CANCELLED" | "REVERSED" } : {}),
       ...(search
@@ -936,6 +977,8 @@ export async function createExpense(input: unknown) {
     if (!hasPermission) {
       return errorResponse("You do not have permission to create expenses");
     }
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return errorResponse("Select an organization before recording expenses");
 
     const parsed = expenseSchema.safeParse(input);
     if (!parsed.success) {
@@ -952,18 +995,28 @@ export async function createExpense(input: unknown) {
       return errorResponse("Total expense amount including tax exceeds the maximum allowed amount");
     }
 
-    const company = await prisma.company.findFirst({ select: { id: true } });
+    const company = await prisma.company.findUnique({
+      where: { organizationId },
+      select: { id: true },
+    });
     if (!company) {
       return errorResponse("Create the company profile before recording expenses");
     }
 
-    const category = await prisma.expenseCategory.findUnique({ where: { id: payload.categoryId } });
+    const category = await prisma.expenseCategory.findFirst({
+      where: { id: payload.categoryId, organizationId },
+    });
     if (!category || !category.isActive) {
       return errorResponse("Selected expense category is unavailable");
     }
 
     const financialAccount = await prisma.financialAccount.findFirst({
-      where: { id: payload.financialAccountId, companyId: company.id, isActive: true },
+      where: {
+        id: payload.financialAccountId,
+        organizationId,
+        companyId: company.id,
+        isActive: true,
+      },
     });
     if (!financialAccount) {
       return errorResponse("Selected financial account is unavailable");
@@ -971,7 +1024,7 @@ export async function createExpense(input: unknown) {
 
     if (payload.customerId) {
       const customer = await prisma.customer.findFirst({
-        where: { id: payload.customerId, deletedAt: null },
+        where: { id: payload.customerId, organizationId, deletedAt: null },
         select: { id: true },
       });
       if (!customer) {
@@ -985,6 +1038,7 @@ export async function createExpense(input: unknown) {
     const expense = await prisma.$transaction(async (tx) => {
       const created = await tx.expense.create({
         data: {
+        organizationId,
         transactionNumber,
         description: payload.description,
         amount: new Prisma.Decimal((totals.totalAmountCents / 100).toFixed(2)),
@@ -1003,10 +1057,10 @@ export async function createExpense(input: unknown) {
         taxRate: payload.taxRate ?? null,
         taxInclusive: payload.taxInclusive,
         vendorName: payload.vendorName,
-        customer: payload.customerId ? { connect: { id: payload.customerId } } : undefined,
-        category: { connect: { id: payload.categoryId } },
-        financialAccount: { connect: { id: payload.financialAccountId } },
-          createdBy: { connect: { id: user.id } },
+        customerId: payload.customerId ?? null,
+        categoryId: payload.categoryId,
+        financialAccountId: payload.financialAccountId,
+        createdById: user.id,
         },
       });
       await tx.expenseHistory.create({
@@ -1042,6 +1096,8 @@ export async function updateExpense(id: string, input: unknown) {
     if (!hasPermission) {
       return errorResponse("You do not have permission to update expenses");
     }
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return errorResponse("Select an organization before updating expenses");
 
     const parsed = expenseSchema.safeParse(input);
     if (!parsed.success) {
@@ -1057,13 +1113,16 @@ export async function updateExpense(id: string, input: unknown) {
     if (totals.totalAmountCents > MAX_EXPENSE_TOTAL_CENTS) {
       return errorResponse("Total expense amount including tax exceeds the maximum allowed amount");
     }
-    const company = await prisma.company.findFirst({ select: { id: true } });
+    const company = await prisma.company.findUnique({
+      where: { organizationId },
+      select: { id: true },
+    });
     if (!company) {
       return errorResponse("Company profile must exist before updating expenses");
     }
 
     const existing = await prisma.expense.findFirst({
-      where: { id, deletedAt: null, financialAccount: { companyId: company.id } },
+      where: { id, organizationId, deletedAt: null, financialAccount: { companyId: company.id } },
       select: { id: true },
     });
     if (!existing) {
@@ -1071,9 +1130,16 @@ export async function updateExpense(id: string, input: unknown) {
     }
 
     const [category, financialAccount] = await Promise.all([
-      prisma.expenseCategory.findUnique({ where: { id: payload.categoryId } }),
+      prisma.expenseCategory.findFirst({
+        where: { id: payload.categoryId, organizationId },
+      }),
       prisma.financialAccount.findFirst({
-        where: { id: payload.financialAccountId, companyId: company.id, isActive: true },
+        where: {
+          id: payload.financialAccountId,
+          organizationId,
+          companyId: company.id,
+          isActive: true,
+        },
       }),
     ]);
     if (!category || !category.isActive) {
@@ -1085,7 +1151,7 @@ export async function updateExpense(id: string, input: unknown) {
 
     if (payload.customerId) {
       const customer = await prisma.customer.findFirst({
-        where: { id: payload.customerId, deletedAt: null },
+        where: { id: payload.customerId, organizationId, deletedAt: null },
         select: { id: true },
       });
       if (!customer) {
@@ -1094,33 +1160,33 @@ export async function updateExpense(id: string, input: unknown) {
     }
 
     const expense = await prisma.$transaction(async (tx) => {
-      const updated = await tx.expense.update({
-      where: { id },
-      data: {
-        description: payload.description,
-        amount: new Prisma.Decimal((totals.totalAmountCents / 100).toFixed(2)),
-        expenseDate: new Date(payload.expenseDate),
-        paymentMethod: payload.paymentMethod,
-        status: payload.status,
-        referenceNumber: payload.referenceNumber,
-        notes: payload.notes,
-        receiptUrl: payload.receiptUrl || null,
-        vendorName: payload.vendorName,
-        customer: payload.customerId
-          ? { connect: { id: payload.customerId } }
-          : { disconnect: true },
-        category: { connect: { id: payload.categoryId } },
-        financialAccount: { connect: { id: payload.financialAccountId } },
-        expenseType: payload.expenseType,
-        sacCode: payload.sacCode || null,
-        gstTreatment: payload.gstTreatment || null,
-        sourceOfSupply: payload.sourceOfSupply,
-        destinationOfSupply: payload.destinationOfSupply,
-        reverseCharge: payload.reverseCharge,
-        taxRate: payload.taxRate ?? null,
-        taxInclusive: payload.taxInclusive,
-      },
+      const updated = await tx.expense.updateMany({
+        where: { id, organizationId },
+        data: {
+          description: payload.description,
+          amount: new Prisma.Decimal((totals.totalAmountCents / 100).toFixed(2)),
+          expenseDate: new Date(payload.expenseDate),
+          paymentMethod: payload.paymentMethod,
+          status: payload.status,
+          referenceNumber: payload.referenceNumber,
+          notes: payload.notes,
+          receiptUrl: payload.receiptUrl || null,
+          vendorName: payload.vendorName,
+          customerId: payload.customerId ?? null,
+          categoryId: payload.categoryId,
+          financialAccountId: payload.financialAccountId,
+          expenseType: payload.expenseType,
+          sacCode: payload.sacCode || null,
+          gstTreatment: payload.gstTreatment || null,
+          sourceOfSupply: payload.sourceOfSupply,
+          destinationOfSupply: payload.destinationOfSupply,
+          reverseCharge: payload.reverseCharge,
+          taxRate: payload.taxRate ?? null,
+          taxInclusive: payload.taxInclusive,
+        },
       });
+      if (updated.count === 0) return null;
+
       await tx.expenseHistory.create({
         data: {
           expenseId: id,
@@ -1129,8 +1195,9 @@ export async function updateExpense(id: string, input: unknown) {
           details: JSON.stringify({ amount: payload.amount, status: payload.status, financialAccountId: payload.financialAccountId }),
         },
       });
-      return updated;
+      return tx.expense.findFirst({ where: { id, organizationId } });
     });
+    if (!expense) return errorResponse("Expense not found");
 
     revalidatePath("/dashboard/finance");
     revalidatePath(`/dashboard/finance/expenses/${id}`);
@@ -1161,7 +1228,12 @@ export async function getExpense(id: string) {
       if (!company) return errorResponse("Company profile not found");
 
       const expense = await prisma.expense.findFirst({
-        where: { id, deletedAt: null, financialAccount: { companyId: company.id } },
+        where: {
+          id,
+          organizationId,
+          deletedAt: null,
+          financialAccount: { companyId: company.id },
+        },
         include: {
           category: { select: { id: true, name: true, isActive: true } },
           customer: {
@@ -1192,11 +1264,21 @@ export async function deleteExpense(id: string) {
       const hasPermission = await checkFinancePermission("delete");
       if (!hasPermission) return errorResponse("You do not have permission to delete expenses");
 
-      const company = await prisma.company.findFirst({ select: { id: true } });
+      const organizationId = await getActiveOrganizationId();
+      if (!organizationId) return errorResponse("Select an organization before deleting expenses");
+      const company = await prisma.company.findUnique({
+        where: { organizationId },
+        select: { id: true },
+      });
       if (!company) return errorResponse("Company profile not found");
 
       const existing = await prisma.expense.findFirst({
-        where: { id, deletedAt: null, financialAccount: { companyId: company.id } },
+        where: {
+          id,
+          organizationId,
+          deletedAt: null,
+          financialAccount: { companyId: company.id },
+        },
         include: { category: { select: { name: true } } },
       });
       if (!existing) return errorResponse("Expense not found");
@@ -1210,8 +1292,8 @@ export async function deleteExpense(id: string) {
             details: JSON.stringify({ transactionNumber: existing.transactionNumber, amount: existing.amount.toString() }),
           },
         }),
-        prisma.expense.update({
-          where: { id },
+        prisma.expense.updateMany({
+          where: { id, organizationId },
           data: { deletedAt: new Date() },
         }),
       ]);
@@ -1236,19 +1318,32 @@ export async function createFinancialAccount(input: unknown) {
     if (!hasPermission) {
       return errorResponse("You do not have permission to create financial accounts");
     }
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return errorResponse("Select an organization before creating a financial account");
 
     const parsed = financialAccountSchema.safeParse(input);
     if (!parsed.success) {
       return errorResponse("Invalid financial account payload", parsed.error.flatten());
     }
 
-    const company = await prisma.company.findFirst();
+    const company = await prisma.company.findUnique({
+      where: { organizationId },
+    });
     if (!company) {
       return errorResponse("Company profile must exist before creating a financial account");
     }
 
+    if (parsed.data.companyBankAccountId) {
+      const bankAccount = await prisma.companyBankAccount.findFirst({
+        where: { id: parsed.data.companyBankAccountId, companyId: company.id },
+        select: { id: true },
+      });
+      if (!bankAccount) return errorResponse("Selected bank account is unavailable");
+    }
+
     const account = await prisma.financialAccount.create({
       data: {
+        organizationId,
         companyId: company.id,
         name: parsed.data.name,
         type: parsed.data.type,
@@ -1276,6 +1371,8 @@ export async function createExpenseCategory(input: unknown) {
     if (!hasPermission) {
       return errorResponse("You do not have permission to create expense categories");
     }
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return errorResponse("Select an organization before creating an expense category");
 
     const parsed = expenseCategorySchema.safeParse(input);
     if (!parsed.success) {
@@ -1284,6 +1381,7 @@ export async function createExpenseCategory(input: unknown) {
 
     const category = await prisma.expenseCategory.create({
       data: {
+        organizationId,
         name: parsed.data.name,
         description: parsed.data.description ?? null,
         isActive: parsed.data.isActive,

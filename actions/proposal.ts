@@ -91,6 +91,9 @@ export async function createProposal(proposal: ProposalSchema) {
             assignedToId,
         } = validatedData.data;
         const organizationId = await getActiveOrganizationId(requestHeaders);
+        if (!organizationId) {
+            return errorResponse("Choose an organization before creating a proposal.");
+        }
         if (
             assignedToId &&
             (!organizationId ||
@@ -199,8 +202,8 @@ export async function manuallyAcceptProposal(proposalId: string) {
         });
 
         if (result.count === 0) {
-            const existingProposal = await prisma.proposal.findUnique({
-                where: { id: validatedProposalId.data },
+            const existingProposal = await prisma.proposal.findFirst({
+                where: access.where,
                 select: { id: true },
             });
             return errorResponse(
@@ -629,7 +632,11 @@ export async function sendProposalEmailAction(proposalId: string, email: string,
             return errorResponse("You don't have permission to send proposal emails");
         }
 
-        const company = await prisma.company.findFirst();
+        const organizationId = await getActiveOrganizationId();
+        if (!organizationId) return errorResponse("Choose an organization before sending a proposal.");
+        const company = await prisma.company.findUnique({
+            where: { organizationId },
+        });
         const companyName = company?.displayName || company?.legalName || "Our Company";
 
         await sendProposalLinkEmail({

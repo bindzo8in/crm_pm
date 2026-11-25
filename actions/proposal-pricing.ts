@@ -32,7 +32,7 @@ async function checkPermission(permission: "read" | "update", proposalId: string
     proposalId,
   );
   return access
-    ? { success: true as const }
+    ? { success: true as const, organizationId: access.organizationId }
     : { success: false as const, error: `You don't have permission to ${permission} proposal pricing` };
 }
 
@@ -58,15 +58,19 @@ function calculateItemFinancials(
   return { base, discount, taxable, tax, total };
 }
 
-async function recalculateAndSaveTotals(proposalId: string, tx: Prisma.TransactionClient) {
-  const proposal = await tx.proposal.findUnique({
-    where: { id: proposalId },
+async function recalculateAndSaveTotals(
+  proposalId: string,
+  organizationId: string,
+  tx: Prisma.TransactionClient,
+) {
+  const proposal = await tx.proposal.findFirst({
+    where: { id: proposalId, organizationId },
     select: { currency: true },
   });
   const isUSD = proposal?.currency === "USD";
 
   const proposalServices = await tx.proposalService.findMany({
-    where: { proposalId },
+    where: { proposalId, proposal: { organizationId } },
     include: { items: true },
   });
 
@@ -98,8 +102,8 @@ async function recalculateAndSaveTotals(proposalId: string, tx: Prisma.Transacti
   const roundedGrandTotal = cleanNum(Math.round(exactTotal));
   const roundOff = cleanNum(Number((roundedGrandTotal - exactTotal).toFixed(2)));
 
-  const updatedProposal = await tx.proposal.update({
-    where: { id: proposalId },
+  const updatedProposal = await tx.proposal.updateMany({
+    where: { id: proposalId, organizationId },
     data: {
       subtotal: new Prisma.Decimal(subtotal),
       discount: new Prisma.Decimal(totalDiscount),
@@ -168,6 +172,10 @@ export async function getProposalPricing(proposalId: string, isPublic = false) {
     if (!proposal) {
       return errorResponse("Proposal not found");
     }
+    const organizationId = proposal.organizationId;
+    if (!organizationId) {
+      return errorResponse("This proposal is not associated with an organization.");
+    }
 
     const packageItemIds = [
       ...new Set(
@@ -178,7 +186,10 @@ export async function getProposalPricing(proposalId: string, isPublic = false) {
     ];
     const packageItems = packageItemIds.length
       ? await prisma.servicePackageItem.findMany({
-          where: { id: { in: packageItemIds } },
+          where: {
+            id: { in: packageItemIds },
+            package: { service: { organizationId } },
+          },
           select: {
             id: true,
             sacCode: true,
@@ -192,13 +203,19 @@ export async function getProposalPricing(proposalId: string, isPublic = false) {
 
     // Fetch services enabled for the proposal cover's Core Services list.
     const activeServices = await prisma.service.findMany({
-      where: { isActive: true, showInProposal: true, deletedAt: null },
+      where: {
+        organizationId,
+        isActive: true,
+        showInProposal: true,
+        deletedAt: null,
+      },
       select: { name: true },
       orderBy: { name: 'asc' }
     });
     const activeServiceNames = activeServices.map(s => s.name);
 
-    const company = await prisma.company.findFirst({
+    const company = await prisma.company.findUnique({
+      where: { organizationId },
       include: { bankAccounts: true },
     });
 
@@ -256,13 +273,13 @@ export async function importServicePackageToProposal(data: ImportServicePackageS
     const draftError = await getProposalDraftError(proposalId);
     if (draftError) return errorResponse(draftError);
 
-    const service = await prisma.service.findUnique({
-      where: { id: serviceId },
+    const service = await prisma.service.findFirst({
+      where: { id: serviceId, organizationId: perm.organizationId },
     });
     if (!service) return errorResponse("Selected service not found");
 
-    const servicePackage = await prisma.servicePackage.findUnique({
-      where: { id: packageId },
+    const servicePackage = await prisma.servicePackage.findFirst({
+      where: { id: packageId, service: { organizationId: perm.organizationId } },
       include: {
         items: {
           orderBy: { sortOrder: "asc" },
@@ -273,7 +290,7 @@ export async function importServicePackageToProposal(data: ImportServicePackageS
 
     const result = await prisma.$transaction(async (tx) => {
       const maxServiceOrder = await tx.proposalService.aggregate({
-        where: { proposalId },
+        where: { proposalId, proposal: { organizationId: perm.organizationId } },
         _max: { sortOrder: true },
       });
       const nextServiceOrder = (maxServiceOrder._max.sortOrder ?? -1) + 1;
@@ -292,7 +309,7 @@ export async function importServicePackageToProposal(data: ImportServicePackageS
       });
 
       const proposal = await tx.proposal.findUnique({
-        where: { id: proposalId },
+        where: { id: proposalId, organizationId: perm.organizationId },
         select: { currency: true }
       });
       const isUSD = proposal?.currency === "USD";
@@ -345,7 +362,7 @@ export async function importServicePackageToProposal(data: ImportServicePackageS
         });
       }
 
-      await recalculateAndSaveTotals(proposalId, tx);
+      await recalculateAndSaveTotals(proposalId, perm.organizationId, tx);
 
       return createdService;
     });
@@ -393,7 +410,7 @@ export async function addCatalogLineItemToProposal(data: AddCatalogLineItemSchem
 
     const result = await prisma.$transaction(async (tx) => {
       const proposal = await tx.proposal.findUnique({
-        where: { id: proposalId },
+        where: { id: proposalId, organizationId },
         select: { currency: true, exchangeRate: true, organizationId: true },
       });
       if (!proposal) throw new Error("Proposal not found");
@@ -439,6 +456,7 @@ export async function addCatalogLineItemToProposal(data: AddCatalogLineItemSchem
         const productSection = await tx.proposalService.findFirst({
           where: {
             proposalId,
+            proposal: { organizationId },
             serviceId: null,
             packageId: null,
             serviceName: "Products",
@@ -449,7 +467,7 @@ export async function addCatalogLineItemToProposal(data: AddCatalogLineItemSchem
           proposalServiceId = productSection.id;
         } else {
           const maxServiceOrder = await tx.proposalService.aggregate({
-            where: { proposalId },
+            where: { proposalId, proposal: { organizationId } },
             _max: { sortOrder: true },
           });
           const section = await tx.proposalService.create({
@@ -500,7 +518,7 @@ export async function addCatalogLineItemToProposal(data: AddCatalogLineItemSchem
         if (!servicePackage) throw new Error("The selected service package is no longer available");
 
         const maxServiceOrder = await tx.proposalService.aggregate({
-          where: { proposalId },
+          where: { proposalId, proposal: { organizationId } },
           _max: { sortOrder: true },
         });
         const section = await tx.proposalService.create({
@@ -536,7 +554,10 @@ export async function addCatalogLineItemToProposal(data: AddCatalogLineItemSchem
       }
 
       const maxItemOrder = await tx.proposalLineItem.aggregate({
-        where: { proposalServiceId },
+        where: {
+          proposalServiceId,
+          proposalService: { proposal: { organizationId } },
+        },
         _max: { sortOrder: true },
       });
       const financials = calculateItemFinancials(quantity, unitPrice, null, null, taxRate);
@@ -561,7 +582,7 @@ export async function addCatalogLineItemToProposal(data: AddCatalogLineItemSchem
         select: { id: true },
       });
 
-      await recalculateAndSaveTotals(proposalId, tx);
+      await recalculateAndSaveTotals(proposalId, permission.organizationId, tx);
       return item;
     });
 
@@ -600,8 +621,8 @@ export async function updateProposalLineItem(data: ProposalLineItemEditSchema) {
     const draftError = await getProposalDraftError(proposalId);
     if (draftError) return errorResponse(draftError);
 
-    const proposal = await prisma.proposal.findUnique({
-      where: { id: proposalId },
+    const proposal = await prisma.proposal.findFirst({
+      where: { id: proposalId, organizationId: perm.organizationId },
       select: { currency: true },
     });
     const effectiveTaxRate = proposal?.currency === "USD" ? 0 : (taxRate ?? 18);
@@ -610,7 +631,13 @@ export async function updateProposalLineItem(data: ProposalLineItemEditSchema) {
 
     await prisma.$transaction(async (tx) => {
       const lineItem = await tx.proposalLineItem.findFirst({
-        where: { id, proposalService: { proposalId } },
+        where: {
+          id,
+          proposalService: {
+            proposalId,
+            proposal: { organizationId: perm.organizationId },
+          },
+        },
         select: {
           id: true,
           name: true,
@@ -627,8 +654,14 @@ export async function updateProposalLineItem(data: ProposalLineItemEditSchema) {
         : lineItem.isCustom
           ? itemType ?? lineItem.itemType
           : "SERVICE";
-      await tx.proposalLineItem.update({
-        where: { id },
+      await tx.proposalLineItem.updateMany({
+        where: {
+          id,
+          proposalService: {
+            proposalId,
+            proposal: { organizationId: perm.organizationId },
+          },
+        },
         data: {
           name: lineItem.proposalService.hasItems ? name : lineItem.name,
           description: lineItem.proposalService.hasItems
@@ -648,7 +681,7 @@ export async function updateProposalLineItem(data: ProposalLineItemEditSchema) {
         },
       });
 
-      await recalculateAndSaveTotals(proposalId, tx);
+      await recalculateAndSaveTotals(proposalId, perm.organizationId, tx);
     });
 
     return successResponse("Line item updated successfully");
@@ -685,8 +718,8 @@ export async function addCustomLineItem(data: CustomLineItemCreateSchema) {
     const draftError = await getProposalDraftError(proposalId);
     if (draftError) return errorResponse(draftError);
 
-    const proposal = await prisma.proposal.findUnique({
-      where: { id: proposalId },
+    const proposal = await prisma.proposal.findFirst({
+      where: { id: proposalId, organizationId: perm.organizationId },
       select: { currency: true },
     });
     const effectiveTaxRate = proposal?.currency === "USD" ? 0 : (taxRate ?? 18);
@@ -697,7 +730,11 @@ export async function addCustomLineItem(data: CustomLineItemCreateSchema) {
       let targetServiceId: string;
       if (proposalServiceId) {
         const service = await tx.proposalService.findFirst({
-          where: { id: proposalServiceId, proposalId },
+          where: {
+            id: proposalServiceId,
+            proposalId,
+            proposal: { organizationId: perm.organizationId },
+          },
           select: { id: true, hasItems: true },
         });
         if (!service) throw new Error("The selected proposal section was not found");
@@ -709,6 +746,7 @@ export async function addCustomLineItem(data: CustomLineItemCreateSchema) {
         const customSection = await tx.proposalService.findFirst({
           where: {
             proposalId,
+            proposal: { organizationId: perm.organizationId },
             serviceId: null,
             packageId: null,
             serviceName: { in: ["", "Custom items"] },
@@ -718,8 +756,12 @@ export async function addCustomLineItem(data: CustomLineItemCreateSchema) {
         if (customSection) {
           targetServiceId = customSection.id;
           if (customSection.serviceName === "Custom items" || customSection.description === "Items added directly to this proposal.") {
-            await tx.proposalService.update({
-              where: { id: customSection.id },
+            await tx.proposalService.updateMany({
+              where: {
+                id: customSection.id,
+                proposalId,
+                proposal: { organizationId: perm.organizationId },
+              },
               data: {
                 ...(customSection.serviceName === "Custom items" ? { serviceName: "" } : {}),
                 ...(customSection.description === "Items added directly to this proposal." ? { description: null } : {}),
@@ -728,7 +770,10 @@ export async function addCustomLineItem(data: CustomLineItemCreateSchema) {
           }
         } else {
           const maxServiceOrder = await tx.proposalService.aggregate({
-            where: { proposalId },
+            where: {
+              proposalId,
+              proposal: { organizationId: perm.organizationId },
+            },
             _max: { sortOrder: true },
           });
           const customSection = await tx.proposalService.create({
@@ -744,7 +789,10 @@ export async function addCustomLineItem(data: CustomLineItemCreateSchema) {
       }
 
       const maxOrder = await tx.proposalLineItem.aggregate({
-        where: { proposalServiceId: targetServiceId },
+        where: {
+          proposalServiceId: targetServiceId,
+          proposalService: { proposal: { organizationId: perm.organizationId } },
+        },
         _max: { sortOrder: true },
       });
 
@@ -769,7 +817,7 @@ export async function addCustomLineItem(data: CustomLineItemCreateSchema) {
         },
       });
 
-      await recalculateAndSaveTotals(proposalId, tx);
+      await recalculateAndSaveTotals(proposalId, perm.organizationId, tx);
       return created;
     });
 
@@ -790,13 +838,24 @@ export async function deleteProposalLineItem(itemId: string, proposalId: string)
 
     await prisma.$transaction(async (tx) => {
       const lineItem = await tx.proposalLineItem.findFirst({
-        where: { id: itemId, proposalService: { proposalId } },
+        where: {
+          id: itemId,
+          proposalService: {
+            proposalId,
+            proposal: { organizationId: perm.organizationId },
+          },
+        },
         select: { id: true },
       });
       if (!lineItem) throw new Error("The selected proposal line item was not found");
-      await tx.proposalLineItem.delete({ where: { id: lineItem.id } });
+      await tx.proposalLineItem.deleteMany({
+        where: {
+          id: lineItem.id,
+          proposalService: { proposal: { organizationId: perm.organizationId } },
+        },
+      });
 
-      await recalculateAndSaveTotals(proposalId, tx);
+      await recalculateAndSaveTotals(proposalId, perm.organizationId, tx);
     });
 
     return successResponse("Item deleted successfully");
@@ -816,13 +875,22 @@ export async function deleteProposalService(serviceId: string, proposalId: strin
 
     await prisma.$transaction(async (tx) => {
       const service = await tx.proposalService.findFirst({
-        where: { id: serviceId, proposalId },
+        where: {
+          id: serviceId,
+          proposalId,
+          proposal: { organizationId: perm.organizationId },
+        },
         select: { id: true },
       });
       if (!service) throw new Error("The selected proposal section was not found");
-      await tx.proposalService.delete({ where: { id: service.id } });
+      await tx.proposalService.deleteMany({
+        where: {
+          id: service.id,
+          proposal: { organizationId: perm.organizationId },
+        },
+      });
 
-      await recalculateAndSaveTotals(proposalId, tx);
+      await recalculateAndSaveTotals(proposalId, perm.organizationId, tx);
     });
 
     try {
@@ -858,7 +926,11 @@ export async function updateProposalService(
     if (draftError) return errorResponse(draftError);
 
     const updated = await prisma.proposalService.updateMany({
-      where: { id: serviceId, proposalId },
+      where: {
+        id: serviceId,
+        proposalId,
+        proposal: { organizationId: perm.organizationId },
+      },
       data: {
         serviceName: validated.data.serviceName.trim(),
         description: validated.data.description?.trim() ?? null,
@@ -893,12 +965,21 @@ export async function reorderProposalLineItems(
     await prisma.$transaction(async (tx) => {
       for (const item of items) {
         const lineItem = await tx.proposalLineItem.findFirst({
-          where: { id: item.id, proposalService: { proposalId } },
+          where: {
+            id: item.id,
+            proposalService: {
+              proposalId,
+              proposal: { organizationId: perm.organizationId },
+            },
+          },
           select: { id: true },
         });
         if (!lineItem) throw new Error("The selected proposal line item was not found");
-        await tx.proposalLineItem.update({
-          where: { id: lineItem.id },
+        await tx.proposalLineItem.updateMany({
+          where: {
+            id: lineItem.id,
+            proposalService: { proposal: { organizationId: perm.organizationId } },
+          },
           data: { sortOrder: item.sortOrder },
         });
       }
@@ -925,7 +1006,11 @@ export async function reorderProposalServices(
     await prisma.$transaction(async (tx) => {
       for (const svc of services) {
         const updated = await tx.proposalService.updateMany({
-          where: { id: svc.id, proposalId },
+          where: {
+            id: svc.id,
+            proposalId,
+            proposal: { organizationId: perm.organizationId },
+          },
           data: { sortOrder: svc.sortOrder },
         });
         if (updated.count === 0) throw new Error("The selected proposal section was not found");
@@ -959,15 +1044,15 @@ export async function updateProposalTotals(data: ProposalTotalsUpdateSchema) {
     if (draftError) return errorResponse(draftError);
 
     await prisma.$transaction(async (tx) => {
-      await tx.proposal.update({
-        where: { id: proposalId },
+      await tx.proposal.updateMany({
+        where: { id: proposalId, organizationId: perm.organizationId },
         data: {
           discount: new Prisma.Decimal(discount),
           tax: new Prisma.Decimal(tax),
         },
       });
 
-      await recalculateAndSaveTotals(proposalId, tx);
+      await recalculateAndSaveTotals(proposalId, perm.organizationId, tx);
     });
 
     return successResponse("Proposal totals updated successfully");

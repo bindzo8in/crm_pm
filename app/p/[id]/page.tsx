@@ -67,14 +67,20 @@ export default async function PublicProposalPage({ params, searchParams }: Publi
 
   const { proposal, blocks } = res.data;
 
-  // Fetch Company and associated Bank Account for rendering
-  const company = await prisma.company.findFirst();
+  const company = await prisma.company.findFirst({
+    where: { organizationId: proposal.organizationId },
+  });
   let bankAccount = null;
 
   if ("bankAccountId" in proposal && typeof proposal.bankAccountId === "string") {
-    bankAccount = await prisma.companyBankAccount.findUnique({
-      where: { id: proposal.bankAccountId },
-    });
+    bankAccount = company
+      ? await prisma.companyBankAccount.findFirst({
+          where: {
+            id: proposal.bankAccountId,
+            companyId: company.id,
+          },
+        })
+      : null;
   } else if (company) {
     // Fallback to default if no specific account selected
     bankAccount = await prisma.companyBankAccount.findFirst({

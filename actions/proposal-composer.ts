@@ -37,7 +37,7 @@ async function checkPermission(permission: "read" | "update", proposalId: string
     return { success: false, error: `You don't have permission to ${permission} proposal composer` };
   }
 
-  return { success: true, session };
+  return { success: true, session, organizationId: access.organizationId };
 }
 
 export async function getProposalComposerData(proposalId: string, options?: { forceRebuild?: boolean; autoSync?: boolean }) {
@@ -59,7 +59,7 @@ export async function getProposalComposerData(proposalId: string, options?: { fo
 
     // Check existing proposal blocks
     let blocks = await prisma.proposalBlock.findMany({
-      where: { proposalId },
+      where: { proposalId, proposal: { organizationId: perm.organizationId } },
       orderBy: { sortOrder: "asc" },
     });
 
@@ -226,7 +226,7 @@ export async function getProposalComposerData(proposalId: string, options?: { fo
       });
 
       blocks = await prisma.proposalBlock.findMany({
-        where: { proposalId },
+        where: { proposalId, proposal: { organizationId: perm.organizationId } },
         orderBy: { sortOrder: "asc" },
       });
     }
@@ -237,7 +237,7 @@ export async function getProposalComposerData(proposalId: string, options?: { fo
     // =========================================================================
     if (options?.forceRebuild || options?.autoSync || justInitialized) {
     const proposalServices = await prisma.proposalService.findMany({
-      where: { proposalId },
+      where: { proposalId, proposal: { organizationId: perm.organizationId } },
       select: {
         id: true,
         serviceId: true,
@@ -251,6 +251,7 @@ export async function getProposalComposerData(proposalId: string, options?: { fo
     // 1. Fetch appropriate Terms & Conditions
     const applicableTerms = await prisma.proposalTerm.findMany({
       where: {
+        organizationId: perm.organizationId,
         isActive: true,
         OR: [
           { isDefault: true },
@@ -271,11 +272,19 @@ export async function getProposalComposerData(proposalId: string, options?: { fo
 
     // 2. Fetch structured Features
     const packageFeatures = await prisma.packageFeature.findMany({
-      where: { packageId: { in: packageIds } },
+      where: {
+        packageId: { in: packageIds },
+        package: { service: { organizationId: perm.organizationId } },
+      },
       orderBy: { sortOrder: "asc" },
     });
     const proposalFeatures = await prisma.proposalFeature.findMany({
-      where: { proposalService: { proposalId } },
+      where: {
+        proposalService: {
+          proposalId,
+          proposal: { organizationId: perm.organizationId },
+        },
+      },
       orderBy: { sortOrder: "asc" },
     });
 
@@ -457,8 +466,12 @@ export async function getProposalComposerData(proposalId: string, options?: { fo
 
       if (needsUpdate) {
         const updatedContent = { type: "doc", content: newNodes } as Prisma.JsonObject;
-        await prisma.proposalBlock.update({
-          where: { id: featuresBlock.id },
+        await prisma.proposalBlock.updateMany({
+          where: {
+            id: featuresBlock.id,
+            proposalId,
+            proposal: { organizationId: perm.organizationId },
+          },
           data: { 
             content: updatedContent,
             title: "Service Features"
@@ -536,8 +549,12 @@ export async function getProposalComposerData(proposalId: string, options?: { fo
 
       if (needsUpdate) {
         const updatedContent = { type: "doc", content: newNodes } as Prisma.JsonObject;
-        await prisma.proposalBlock.update({
-          where: { id: termsBlock.id },
+        await prisma.proposalBlock.updateMany({
+          where: {
+            id: termsBlock.id,
+            proposalId,
+            proposal: { organizationId: perm.organizationId },
+          },
           data: {
             content: updatedContent,
             title: "",
@@ -593,7 +610,11 @@ export async function createProposalBlock(input: CreateProposalBlockInput) {
     // If TIMELINE, ensure only one exists
     if (validated.type === "TIMELINE") {
       const existingTimeline = await prisma.proposalBlock.findFirst({
-        where: { proposalId: validated.proposalId, type: "TIMELINE" as ProposalBlockType },
+        where: {
+          proposalId: validated.proposalId,
+          proposal: { organizationId: perm.organizationId },
+          type: "TIMELINE" as ProposalBlockType,
+        },
       });
       if (existingTimeline) {
         return errorResponse("A Timeline block already exists in this proposal. Only one is allowed.");
@@ -603,7 +624,10 @@ export async function createProposalBlock(input: CreateProposalBlockInput) {
     let sortOrder = validated.sortOrder;
     if (sortOrder === undefined) {
       const maxBlock = await prisma.proposalBlock.findFirst({
-        where: { proposalId: validated.proposalId },
+        where: {
+          proposalId: validated.proposalId,
+          proposal: { organizationId: perm.organizationId },
+        },
         orderBy: { sortOrder: "desc" },
       });
       sortOrder = maxBlock ? maxBlock.sortOrder + 1 : 0;
@@ -673,7 +697,7 @@ export async function updateProposalBlock(id: string, proposalId: string, input:
     if (draftError) return errorResponse(draftError);
 
     const existing = await prisma.proposalBlock.findFirst({
-      where: { id, proposalId },
+      where: { id, proposalId, proposal: { organizationId: perm.organizationId } },
     });
     if (!existing) {
       return errorResponse("Block not found");
@@ -684,17 +708,21 @@ export async function updateProposalBlock(id: string, proposalId: string, input:
       return errorResponse("The Pricing Table block cannot be modified in the composer. Please edit pricing in the Pricing Engine.");
     }
 
-    const updated = await prisma.proposalBlock.update({
-      where: { id },
+    const updated = await prisma.proposalBlock.updateMany({
+      where: { id, proposalId, proposal: { organizationId: perm.organizationId } },
       data: {
         ...(validated.title !== undefined && { title: validated.title }),
         ...(validated.content !== undefined && { content: validated.content }),
         ...(validated.isVisible !== undefined && { isVisible: validated.isVisible }),
       },
     });
+    if (updated.count === 0) return errorResponse("Block not found");
+    const updatedBlock = await prisma.proposalBlock.findFirst({
+      where: { id, proposalId, proposal: { organizationId: perm.organizationId } },
+    });
 
     revalidatePath(`/dashboard/proposals/${proposalId}`, "layout");
-    return successResponse("Block updated successfully", updated);
+    return successResponse("Block updated successfully", updatedBlock);
   } catch (error) {
     if (process.env.NODE_ENV === "development") console.error(error);
     return errorResponse("Failed to update block", getErrorMessage(error));
@@ -712,7 +740,11 @@ export async function reorderProposalBlocks(input: ReorderProposalBlocksInput) {
     await prisma.$transaction(
       validated.items.map((item) =>
         prisma.proposalBlock.updateMany({
-          where: { id: item.id, proposalId: validated.proposalId },
+          where: {
+            id: item.id,
+            proposalId: validated.proposalId,
+            proposal: { organizationId: perm.organizationId },
+          },
           data: { sortOrder: item.sortOrder },
         })
       )
@@ -735,7 +767,7 @@ export async function duplicateProposalBlock(id: string, proposalId: string) {
     if (draftError) return errorResponse(draftError);
 
     const existing = await prisma.proposalBlock.findFirst({
-      where: { id, proposalId },
+      where: { id, proposalId, proposal: { organizationId: perm.organizationId } },
     });
 
     if (!existing) {
@@ -751,6 +783,7 @@ export async function duplicateProposalBlock(id: string, proposalId: string) {
       await tx.proposalBlock.updateMany({
         where: {
           proposalId,
+          proposal: { organizationId: perm.organizationId },
           sortOrder: { gt: existing.sortOrder },
         },
         data: {
@@ -789,7 +822,7 @@ export async function deleteProposalBlock(id: string, proposalId: string) {
     if (draftError) return errorResponse(draftError);
 
     const existing = await prisma.proposalBlock.findFirst({
-      where: { id, proposalId },
+      where: { id, proposalId, proposal: { organizationId: perm.organizationId } },
     });
 
     if (!existing) {
@@ -801,8 +834,8 @@ export async function deleteProposalBlock(id: string, proposalId: string) {
       return errorResponse(`The ${existing.type} system block cannot be deleted.`);
     }
 
-    await prisma.proposalBlock.delete({
-      where: { id },
+    await prisma.proposalBlock.deleteMany({
+      where: { id, proposalId, proposal: { organizationId: perm.organizationId } },
     });
 
     revalidatePath(`/dashboard/proposals/${proposalId}`, "layout");
@@ -822,7 +855,7 @@ export async function toggleBlockVisibility(id: string, proposalId: string, isVi
     if (draftError) return errorResponse(draftError);
 
     const updated = await prisma.proposalBlock.updateMany({
-      where: { id, proposalId },
+      where: { id, proposalId, proposal: { organizationId: perm.organizationId } },
       data: { isVisible },
     });
 

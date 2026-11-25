@@ -1,6 +1,9 @@
 "use server";
 
-import { checkOrganizationPermission } from "@/lib/organization-authorization";
+import {
+  checkOrganizationPermission,
+  getActiveOrganizationId,
+} from "@/lib/organization-authorization";
 import { Prisma } from "@/app/generated/prisma/client";
 import { errorResponse, successResponse } from "@/lib/action-response";
 import prisma from "@/lib/prisma";
@@ -8,18 +11,35 @@ import { getErrorMessage } from "@/lib/schemas/prisma-utils";
 import { TermQuerySchema, termSchema, TermSchema } from "@/lib/schemas/term-schema";
 import { headers } from "next/headers";
 
+async function getTermsOrganizationId(
+    permission: "read" | "create" | "update" | "delete",
+) {
+    const requestHeaders = await headers();
+    const access = await checkOrganizationPermission({
+        headers: requestHeaders,
+        body: { permissions: { terms: [permission] } },
+    });
+    if (!access.success) return null;
+    return getActiveOrganizationId(requestHeaders);
+}
+
+async function hasOrganizationPackages(organizationId: string, packageIds: string[]) {
+    const uniqueIds = [...new Set(packageIds)];
+    if (uniqueIds.length === 0) return true;
+    const packages = await prisma.servicePackage.findMany({
+        where: {
+            id: { in: uniqueIds },
+            service: { organizationId },
+        },
+        select: { id: true },
+    });
+    return packages.length === uniqueIds.length;
+}
+
 export async function CreateTerm(data: TermSchema) {
     try {
-        const hasPermission = await checkOrganizationPermission({
-            headers: await headers(),
-            body: {
-                permissions: {
-                    terms: ["create"],
-                },
-            },
-        });
-
-        if (!hasPermission.success) {
+        const organizationId = await getTermsOrganizationId("create");
+        if (!organizationId) {
             return errorResponse("You don't have permission to create a term");
         }
 
@@ -32,10 +52,15 @@ export async function CreateTerm(data: TermSchema) {
         }
 
         const { title, content, isActive, isDefault, packages } = validatedData.data;
+        const packageIds = packages?.filter((p) => p.include !== false).map((p) => p.packageId) ?? [];
+        if (!(await hasOrganizationPackages(organizationId, packageIds))) {
+            return errorResponse("One or more selected packages are unavailable in this organization");
+        }
         const plainContent = JSON.parse(JSON.stringify(content));
 
         await prisma.proposalTerm.create({
             data: {
+                organizationId,
                 title,
                 content: plainContent,
                 isActive,
@@ -66,15 +91,8 @@ export async function CreateTerm(data: TermSchema) {
 
 export async function EditTerm(data: TermSchema) {
     try {
-        const hasPermission = await checkOrganizationPermission({
-            headers: await headers(),
-            body: {
-                permissions: {
-                    terms: ["update"],
-                },
-            },
-        });
-        if (!hasPermission.success) {
+        const organizationId = await getTermsOrganizationId("update");
+        if (!organizationId) {
             return errorResponse("You don't have permission to update a term");
         }
 
@@ -91,18 +109,22 @@ export async function EditTerm(data: TermSchema) {
             return errorResponse("Term ID is required for updating");
         }
 
-        const term = await prisma.proposalTerm.findUnique({
-            where: { id },
+        const term = await prisma.proposalTerm.findFirst({
+            where: { id, organizationId },
             select: { id: true },
         });
 
         if (!term) {
             return errorResponse("Term not found");
         }
+        const packageIds = packages?.filter((p) => p.include !== false).map((p) => p.packageId) ?? [];
+        if (!(await hasOrganizationPackages(organizationId, packageIds))) {
+            return errorResponse("One or more selected packages are unavailable in this organization");
+        }
 
         await prisma.$transaction(async (tx) => {
-            await tx.proposalTerm.update({
-                where: { id },
+            const updated = await tx.proposalTerm.updateMany({
+                where: { id, organizationId },
                 data: {
                     title,
                     content: content ?? {},
@@ -110,6 +132,7 @@ export async function EditTerm(data: TermSchema) {
                     isDefault,
                 },
             });
+            if (updated.count === 0) throw new Error("Term not found");
 
             if (packages) {
                 await tx.proposalTermPackage.deleteMany({
@@ -141,8 +164,10 @@ export async function EditTerm(data: TermSchema) {
 
 export async function GetTerm(id: string) {
     try {
-        const term = await prisma.proposalTerm.findUnique({
-            where: { id },
+        const organizationId = await getTermsOrganizationId("read");
+        if (!organizationId) return errorResponse("You don't have permission to view terms");
+        const term = await prisma.proposalTerm.findFirst({
+            where: { id, organizationId },
             include: {
                 packages: {
                     include: {
@@ -191,9 +216,12 @@ export async function GetTerm(id: string) {
 
 export async function GetTerms(query: TermQuerySchema) {
     try {
+        const organizationId = await getTermsOrganizationId("read");
+        if (!organizationId) return errorResponse("You don't have permission to view terms");
         const { page, pageSize, search, sortDirection, isActive, isDefault } = query;
 
         const where: Prisma.ProposalTermWhereInput = {
+            organizationId,
             ...(search && {
                 title: {
                     contains: search,
@@ -263,21 +291,13 @@ export async function GetTerms(query: TermQuerySchema) {
 
 export async function DeleteTerm(id: string) {
     try {
-        const hasPermission = await checkOrganizationPermission({
-            headers: await headers(),
-            body: {
-                permissions: {
-                    terms: ["delete"],
-                },
-            },
-        });
-
-        if (!hasPermission.success) {
+        const organizationId = await getTermsOrganizationId("delete");
+        if (!organizationId) {
             return errorResponse("You don't have permission to delete a term");
         }
 
-        const term = await prisma.proposalTerm.findUnique({
-            where: { id },
+        const term = await prisma.proposalTerm.findFirst({
+            where: { id, organizationId },
             select: { id: true },
         });
 
@@ -285,9 +305,7 @@ export async function DeleteTerm(id: string) {
             return errorResponse("Term not found");
         }
 
-        await prisma.proposalTerm.delete({
-            where: { id },
-        });
+        await prisma.proposalTerm.deleteMany({ where: { id, organizationId } });
 
         return successResponse("Term deleted successfully");
     } catch (error) {

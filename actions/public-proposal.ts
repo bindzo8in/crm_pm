@@ -26,7 +26,11 @@ export async function getPublicProposalData(proposalId: string) {
 
     // Fetch the proposal blocks for rendering
     const blocks = await prisma.proposalBlock.findMany({
-      where: { proposalId, isVisible: true }, // Only fetch visible blocks for public view
+      where: {
+        proposalId,
+        proposal: { organizationId: proposal.organizationId },
+        isVisible: true,
+      },
       orderBy: { sortOrder: "asc" },
     });
 
@@ -76,8 +80,9 @@ export async function publicAcceptProposal(
       }
     }
 
-    const proposal = await prisma.proposal.findUnique({
+    const proposal = await prisma.proposal.findFirst({
       where: { id: validatedInput.data.proposalId },
+      select: { id: true, organizationId: true, status: true },
     });
 
     if (!proposal) {
@@ -92,8 +97,16 @@ export async function publicAcceptProposal(
       return { success: false, message: "Only sent proposals can be accepted" };
     }
 
+    if (!proposal.organizationId) {
+      return { success: false, message: "Proposal not found" };
+    }
+
     const updateResult = await prisma.proposal.updateMany({
-      where: { id: validatedInput.data.proposalId, status: "SENT" },
+      where: {
+        id: validatedInput.data.proposalId,
+        organizationId: proposal.organizationId,
+        status: "SENT",
+      },
       data: {
         status: "ACCEPTED",
         acceptedAt: new Date(),

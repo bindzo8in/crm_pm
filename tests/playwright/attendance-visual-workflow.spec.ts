@@ -346,12 +346,12 @@ test.describe("Attendance full visual workflow", () => {
       await hrSession.context.close();
     }
 
-    const superAdmin = attendanceE2ERoster.find(({ key }) => key === "ceo");
-    if (!superAdmin) throw new Error("The attendance E2E SUPER_ADMIN persona is missing.");
-    const superAdminSession = await openPersona(browser, baseURL, superAdmin);
+    const owner = attendanceE2ERoster.find(({ key }) => key === "ceo");
+    if (!owner) throw new Error("The attendance E2E organization owner persona is missing.");
+    const ownerSession = await openPersona(browser, baseURL, owner);
     try {
-      const { page } = superAdminSession;
-      await test.step("SUPER_ADMIN reviews and exports the completed monthly report", async () => {
+      const { page } = ownerSession;
+      await test.step("Organization owner reviews and exports the completed monthly report", async () => {
         await selectAttendanceTab(
           page,
           "Detailed Reports & Export",
@@ -364,7 +364,7 @@ test.describe("Attendance full visual workflow", () => {
         await expect
           .poll(() => getAttendanceDailyRecordCount(page))
           .toBe(expectedMonthDays * attendanceE2ERoster.length);
-        await attachScreenshot(page, testInfo, "super-admin-monthly-report");
+        await attachScreenshot(page, testInfo, "organization-owner-monthly-report");
 
         const downloadPromise = page.waitForEvent("download");
         await page.getByRole("button", { name: "Export to Excel (.xlsx)" }).click();
@@ -383,7 +383,7 @@ test.describe("Attendance full visual workflow", () => {
         );
       });
     } finally {
-      await superAdminSession.context.close();
+      await ownerSession.context.close();
     }
   });
 });

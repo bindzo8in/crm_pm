@@ -19,9 +19,12 @@ import { toast } from "sonner";
 import { PhoneInput } from "@/components/reui/phone-input";
 import { ImageUpload } from "@/components/ui/image-upload";
 import { LocationAutocomplete } from "@/components/ui/location-autocomplete";
+import { normalizePhoneNumber } from "@/lib/phone-number";
 
 export function CompanyProfileForm({ defaultValues }: { defaultValues?: CompanyFormValues }) {
     const queryClient = useQueryClient();
+    const phone = normalizePhoneNumber(defaultValues?.phone, "IN");
+    const secondaryPhone = normalizePhoneNumber(defaultValues?.secondaryPhone, "IN");
 
     const form = useForm<CompanyFormValues>({
         resolver: zodResolver(companySchema),
@@ -36,8 +39,8 @@ export function CompanyProfileForm({ defaultValues }: { defaultValues?: CompanyF
             email: defaultValues?.email || "",
             supportEmail: defaultValues?.supportEmail || "",
             salesEmail: defaultValues?.salesEmail || "",
-            phone: defaultValues?.phone || "",
-            secondaryPhone: defaultValues?.secondaryPhone || "",
+            phone: phone.value,
+            secondaryPhone: secondaryPhone.value,
 
             gstNumber: defaultValues?.gstNumber || "",
             panNumber: defaultValues?.panNumber || "",
@@ -186,6 +189,11 @@ export function CompanyProfileForm({ defaultValues }: { defaultValues?: CompanyF
                         <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full md:col-span-3">
                             <FieldLabel htmlFor="phone">Phone</FieldLabel>
                             <PhoneInput {...field} defaultCountry="IN" placeholder="Primary Phone" aria-invalid={fieldState.invalid} />
+                            {phone.parseFailed && !field.value && (
+                                <p role="alert" className="text-sm text-destructive">
+                                    The saved phone number could not be read. Please enter it again.
+                                </p>
+                            )}
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                         </Field>
                     )}
@@ -198,6 +206,11 @@ export function CompanyProfileForm({ defaultValues }: { defaultValues?: CompanyF
                         <Field data-invalid={fieldState.invalid} className="gap-1 col-span-full md:col-span-3">
                             <FieldLabel htmlFor="secondaryPhone">Secondary Phone</FieldLabel>
                             <PhoneInput {...field} value={field.value || undefined} defaultCountry="IN" placeholder="Secondary Phone" aria-invalid={fieldState.invalid} />
+                            {secondaryPhone.parseFailed && !field.value && (
+                                <p role="alert" className="text-sm text-destructive">
+                                    The saved phone number could not be read. Please enter it again.
+                                </p>
+                            )}
                             {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                         </Field>
                     )}

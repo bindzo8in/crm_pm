@@ -105,6 +105,7 @@ async function dispatchLeaveEmail(
 }
 
 export async function createLeaveRequest(input: {
+  organizationId: string;
   userId: string;
   type: LeaveType;
   startDate: Date;
@@ -117,6 +118,7 @@ export async function createLeaveRequest(input: {
     withLeaveTransaction(async (transaction) => {
       const overlapping = await findOverlappingActiveRequests(
         transaction,
+        input.organizationId,
         input.userId,
         input.startDate,
         input.endDate,
@@ -130,11 +132,13 @@ export async function createLeaveRequest(input: {
 
       const holidayDates = await findHolidayDates(
         transaction,
+        input.organizationId,
         input.userId,
         input.startDate,
         input.endDate,
       );
       const attendanceSettings = await transaction.attendanceSettings.findFirst({
+        where: { organizationId: input.organizationId },
         select: { weekendDays: true },
       });
       const breakdown = calculateLeaveDayBreakdown(
@@ -156,12 +160,17 @@ export async function createLeaveRequest(input: {
         ...savedBreakdown,
         monthlyDayBreakdown: monthlyBreakdown,
       });
-      const recipients = await findLeaveNotificationRecipients(transaction, input.userId);
+      const recipients = await findLeaveNotificationRecipients(
+        transaction,
+        input.organizationId,
+        input.userId,
+      );
       const title = "Leave request needs review";
       const message = `${leave.user.name} requested ${leave.type.toLowerCase()} leave for ${getLeaveDateRange(leave.startDate, leave.endDate)}${leave.isHalfDay ? ` (${leave.halfDayPeriod?.toLowerCase()} half)` : ""}.`;
       await createLeaveNotifications(
         transaction,
         recipients.map(({ id }) => ({
+          organizationId: input.organizationId,
           userId: id,
           type: "LEAVE_REQUEST",
           title,
@@ -182,30 +191,36 @@ export async function createLeaveRequest(input: {
 }
 
 export function getOwnLeaveRequests(
+  organizationId: string,
   userId: string,
   page: number,
   pageSize: number,
-  filters?: Parameters<typeof listOwnLeaveRequests>[3],
+  filters?: Parameters<typeof listOwnLeaveRequests>[4],
 ) {
-  return listOwnLeaveRequests(userId, page, pageSize, filters);
+  return listOwnLeaveRequests(organizationId, userId, page, pageSize, filters);
 }
 
 export function getManagerLeaveRequests(filters: Parameters<typeof listManagerLeaveRequests>[0]) {
   return listManagerLeaveRequests(filters);
 }
 
-export function getLeaveManagementSummary(today: Date) {
-  return getManagerLeaveSummary(today);
+export function getLeaveManagementSummary(today: Date, organizationId: string) {
+  return getManagerLeaveSummary(today, organizationId);
 }
 
-export async function cancelPendingLeaveRequest(userId: string, id: string) {
-  const result = await cancelOwnPendingRequest(userId, id);
+export async function cancelPendingLeaveRequest(
+  organizationId: string,
+  userId: string,
+  id: string,
+) {
+  const result = await cancelOwnPendingRequest(organizationId, userId, id);
   if (result.count !== 1) {
     throw new ActionError("Only your own pending leave requests can be cancelled.", 409);
   }
 }
 
 export async function reviewLeaveRequest(input: {
+  organizationId: string;
   approverId: string;
   id: string;
   status: typeof LeaveStatus.APPROVED | typeof LeaveStatus.REJECTED;
@@ -213,7 +228,11 @@ export async function reviewLeaveRequest(input: {
 }) {
   const leave = await runWithConflictMessage(() =>
     withLeaveTransaction(async (transaction) => {
-      const leave = await findLeaveRequestForReview(transaction, input.id);
+      const leave = await findLeaveRequestForReview(
+        transaction,
+        input.id,
+        input.organizationId,
+      );
       if (!leave) {
         throw new ActionError("Leave request not found.", 404);
       }
@@ -237,6 +256,7 @@ export async function reviewLeaveRequest(input: {
         ));
         const priorApproved = await findApprovedAnnualBreakdowns(
           transaction,
+          input.organizationId,
           leave.userId,
           firstMonthStart,
           finalMonthEnd,
@@ -256,9 +276,13 @@ export async function reviewLeaveRequest(input: {
       const reviewedLeave = await approveOrRejectPendingRequest(
         transaction,
         input.id,
+        input.organizationId,
         input.status,
         input.managerComment,
       );
+      if (!reviewedLeave) {
+        throw new ActionError("This leave request has already been reviewed.", 409);
+      }
       const title = input.status === LeaveStatus.APPROVED
         ? "Leave request approved"
         : "Leave request rejected";
@@ -272,6 +296,7 @@ export async function reviewLeaveRequest(input: {
         : "";
       const message = `Your ${reviewedLeave.type.toLowerCase()} leave for ${dateRange}${halfDayDetail} was ${decision}.${comment}`;
       await createLeaveNotifications(transaction, [{
+        organizationId: input.organizationId,
         userId: reviewedLeave.userId,
         type: `LEAVE_${input.status}`,
         title,
@@ -305,11 +330,16 @@ export async function reviewLeaveRequest(input: {
   return leave;
 }
 
-export async function getAnnualLeaveBalance(userId: string, month: string) {
+export async function getAnnualLeaveBalance(
+  organizationId: string,
+  userId: string,
+  month: string,
+) {
   const [year, monthNumber] = month.split("-").map(Number);
   const startDate = new Date(Date.UTC(year, monthNumber - 1, 1));
   const endDate = new Date(Date.UTC(year, monthNumber, 0));
   const requests = await getApprovedAnnualBreakdownsForMonth(
+    organizationId,
     userId,
     startDate,
     endDate,

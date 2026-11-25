@@ -5,15 +5,23 @@ import { getOrganizationRoutePermissions } from "../lib/route-permissions";
 
 test("read-own limits customer queries to the signed-in creator", () => {
   assert.deepEqual(
-    customerReadFilter({ userId: "user-1", canReadAll: false }),
-    { createdById: "user-1" },
+    customerReadFilter({
+      userId: "user-1",
+      organizationId: "org-1",
+      canReadAll: false,
+    }),
+    { organizationId: "org-1", createdById: "user-1" },
   );
 });
 
 test("read grants access to customers from every creator", () => {
   assert.deepEqual(
-    customerReadFilter({ userId: "user-1", canReadAll: true }),
-    {},
+    customerReadFilter({
+      userId: "user-1",
+      organizationId: "org-1",
+      canReadAll: true,
+    }),
+    { organizationId: "org-1" },
   );
 });
 

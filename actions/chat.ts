@@ -3,7 +3,9 @@
 import { headers } from "next/headers";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
+import { isPlatformSuperAdmin } from "@/lib/global-role";
 import { getNextChatReaction } from "@/lib/chat-reaction";
+import { canAccessProjectChat } from "@/lib/project-chat-access";
 import prisma from "@/lib/prisma";
 
 const attachmentSchema = z.object({
@@ -33,21 +35,15 @@ function summarizeReactions(reactions: { emoji: string; userId: string }[], user
 async function currentUser() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) throw new Error("Sign in to use chat.");
+  if (isPlatformSuperAdmin(session.user.role)) {
+    throw new Error("Platform administrators cannot access organization chat.");
+  }
   return session.user;
 }
 
 async function requireProjectMember(projectId: string, userId: string) {
-  const membership = await prisma.projectMember.findUnique({
-    where: { projectId_userId: { projectId, userId } },
-  });
-  if (membership) return;
-
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: { projectManagerId: true, createdById: true },
-  });
-  if (!project || (project.projectManagerId !== userId && project.createdById !== userId)) {
-    throw new Error("You are not a member of this project.");
+  if (!(await canAccessProjectChat(projectId, userId, await headers()))) {
+    throw new Error("You are not allowed to access this project conversation.");
   }
 }
 

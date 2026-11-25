@@ -3,7 +3,6 @@ import type { WorkspaceActor } from "@/lib/workspace-access";
 
 export function isLeaveManager(user: WorkspaceActor): boolean {
   return (
-    user.role === UserRole.SUPER_ADMIN ||
     user.role === UserRole.ADMIN ||
     (user.role === UserRole.STAFF && user.department === Department.HR)
   );

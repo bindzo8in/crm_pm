@@ -145,7 +145,7 @@ Replace the example coordinates with the test office's configured coordinates. `
 
 The schema has one company profile for the database; it does not have multiple tenant companies. Use one disposable database to represent the test company. The fixture does not change the company profile. It creates or reuses only marked `attendance-e2e+...@bindzo8.invalid` users:
 
-- `SUPER_ADMIN` Founder / CEO
+- Organization owner, Founder / CEO
 - `ADMIN` Operations Administrator
 - `STAFF` in SALES, DEVELOPMENT, DESIGN, SEO, MARKETING, HR, and OPERATIONS
 
@@ -171,11 +171,11 @@ Start (or restart) the app against the same isolated database, then run the role
 pnpm test:e2e:attendance:month
 ```
 
-This suite signs in through the real UI. It checks SUPER_ADMIN analytics and export, ADMIN log visibility and pagination, HR STAFF report access, and STAFF-only attendance visibility. It does not perform live clock-in/out or alter application business logic. Keep test accounts and records confined to the disposable database. Run `pnpm test:e2e:attendance` separately for the existing attendance checks; authenticated tests in that suite still use the storage-state setup described above.
+This suite signs in through the real UI. It checks organization-owner analytics and export, ADMIN log visibility and pagination, HR STAFF report access, and STAFF-only attendance visibility. It does not perform live clock-in/out or alter application business logic. Keep test accounts and records confined to the disposable database. Run `pnpm test:e2e:attendance` separately for the existing attendance checks; authenticated tests in that suite still use the storage-state setup described above.
 
 ## 8. Run the full visual attendance journey
 
-The visual workflow logs into the UI as each of the seven marked STAFF personas, clocks each one in and out using mocked GPS coordinates, checks the resulting daily log as ADMIN, adjusts a seeded monthly Sales record, verifies its audit trail and report presentation as HR, and exports the completed month as SUPER_ADMIN. Each browser journey is reported as named Playwright steps, and milestone screenshots are attached to the HTML report. It does not simulate 27 days of real-time punching; the prior-month records are deterministic test fixtures, while today's check-in/out is performed through the real UI.
+The visual workflow logs into the UI as each of the seven marked STAFF personas, clocks each one in and out using mocked GPS coordinates, checks the resulting daily log as ADMIN, adjusts a seeded monthly Sales record, verifies its audit trail and report presentation as HR, and exports the completed month as an organization owner. Each browser journey is reported as named Playwright steps, and milestone screenshots are attached to the HTML report. It does not simulate 27 days of real-time punching; the prior-month records are deterministic test fixtures, while today's check-in/out is performed through the real UI.
 
 This workflow writes attendance records and is intentionally limited to a local app URL and the marked E2E accounts. Before running it:
 

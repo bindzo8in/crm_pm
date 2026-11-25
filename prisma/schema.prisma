@@ -272,6 +272,8 @@ model Organization {
   expenseCategories  ExpenseCategory[]
   expenses           Expense[]
   attendanceRecords  AttendanceRecord[]
+  attendanceReminders AttendanceReminder[]
+  attendanceAlarms   AttendanceAlarm[]
   leaveRequests      LeaveRequest[]
   holidays           Holiday[]
   issueReports       IssueReport[]
@@ -1991,28 +1993,33 @@ model WebPushSubscription {
 }
 
 model AttendanceReminder {
-  id         String    @id @default(cuid())
-  userId     String    @map("user_id")
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date       DateTime  @db.Date
-  pushSentAt DateTime? @map("push_sent_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String        @map("user_id")
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date           DateTime      @db.Date
+  pushSentAt     DateTime?     @map("push_sent_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
 
-  @@unique([userId, date])
+  @@unique([organizationId, userId, date])
+  @@index([organizationId, date])
   @@map("attendance_reminder")
 }
 
 model AttendanceAlarm {
-  id         String    @id @default(cuid())
-  userId     String    @map("user_id")
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date       DateTime  @db.Date
-  type       String
-  pushSentAt DateTime? @map("push_sent_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String        @map("user_id")
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date           DateTime      @db.Date
+  type           String
+  pushSentAt     DateTime?     @map("push_sent_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
 
-  @@unique([userId, date, type])
-  @@index([date, type])
+  @@unique([organizationId, userId, date, type])
+  @@index([organizationId, date, type])
   @@map("attendance_schedule_reminder")
 }
 

@@ -191,7 +191,8 @@ export default async function Page({
             END
           ), 0) AS "amount"
         FROM "Invoice" i
-        WHERE i."issueDate" >= ${activeChartRange.start}
+        WHERE i."organizationId" = ${activeOrganizationId}
+          AND i."issueDate" >= ${activeChartRange.start}
           AND i."issueDate" < ${activeChartRange.endExclusive}
           AND i."deletedAt" IS NULL
           AND i."status" NOT IN ('DRAFT', 'VOID')
@@ -209,7 +210,8 @@ export default async function Page({
           ), 0) AS "amount"
         FROM "InvoicePayment" p
         INNER JOIN "Invoice" i ON i."id" = p."invoiceId"
-        WHERE p."paymentDate" >= ${activeChartRange.start}
+        WHERE i."organizationId" = ${activeOrganizationId}
+          AND p."paymentDate" >= ${activeChartRange.start}
           AND p."paymentDate" < ${activeChartRange.endExclusive}
           AND i."deletedAt" IS NULL
           AND i."status" <> 'VOID'
@@ -221,7 +223,8 @@ export default async function Page({
           date_trunc('month', e."expenseDate" + INTERVAL '5 hours 30 minutes') AS "month",
           COALESCE(SUM(e."amount"), 0) AS "amount"
         FROM "Expense" e
-        WHERE e."expenseDate" >= ${activeChartRange.start}
+        WHERE e."organizationId" = ${activeOrganizationId}
+          AND e."expenseDate" >= ${activeChartRange.start}
           AND e."expenseDate" < ${activeChartRange.endExclusive}
           AND e."deletedAt" IS NULL
           AND e."status" = 'COMPLETED'
@@ -229,9 +232,15 @@ export default async function Page({
         ORDER BY "month" ASC
       `),
       prisma.customer.count({
-        where: { deletedAt: null, createdAt: { gte: currentMonthStart, lte: now } },
+        where: {
+          organizationId: activeOrganizationId,
+          deletedAt: null,
+          createdAt: { gte: currentMonthStart, lte: now },
+        },
       }),
-      prisma.customer.count({ where: { deletedAt: null } }),
+      prisma.customer.count({
+        where: { organizationId: activeOrganizationId, deletedAt: null },
+      }),
       prisma.$queryRaw<Array<{
         amount: Prisma.Decimal;
         current: Prisma.Decimal;
@@ -276,7 +285,8 @@ export default async function Page({
           END), 0) AS "over45Days",
           COUNT(*)::bigint AS "count"
         FROM "Invoice" i
-        WHERE i."deletedAt" IS NULL
+        WHERE i."organizationId" = ${activeOrganizationId}
+          AND i."deletedAt" IS NULL
           AND i."status" IN ('SENT', 'PARTIALLY_PAID', 'OVERDUE')
           AND i."amountPaid" < i."grandTotal"
       `),
@@ -297,7 +307,8 @@ export default async function Page({
             SELECT SUM(i."grandTotal" * CASE WHEN i."currency" = 'INR'
               THEN 1 ELSE COALESCE(i."exchangeRate", 83.50) END)
             FROM "Invoice" i
-            WHERE i."issueDate" >= p."startDate"
+            WHERE i."organizationId" = ${activeOrganizationId}
+              AND i."issueDate" >= p."startDate"
               AND i."issueDate" < p."endDate"
               AND i."deletedAt" IS NULL
               AND i."status" NOT IN ('DRAFT', 'VOID')
@@ -307,7 +318,8 @@ export default async function Page({
               THEN 1 ELSE COALESCE(invoice."exchangeRate", 83.50) END)
             FROM "InvoicePayment" payment
             INNER JOIN "Invoice" invoice ON invoice."id" = payment."invoiceId"
-            WHERE payment."paymentDate" >= p."startDate"
+            WHERE invoice."organizationId" = ${activeOrganizationId}
+              AND payment."paymentDate" >= p."startDate"
               AND payment."paymentDate" < p."endDate"
               AND invoice."deletedAt" IS NULL
               AND invoice."status" <> 'VOID'
@@ -316,7 +328,8 @@ export default async function Page({
             SELECT SUM(GREATEST(i."grandTotal" - i."amountPaid", 0) * CASE WHEN i."currency" = 'INR'
               THEN 1 ELSE COALESCE(i."exchangeRate", 83.50) END)
             FROM "Invoice" i
-            WHERE i."dueDate" >= p."startDate"
+            WHERE i."organizationId" = ${activeOrganizationId}
+              AND i."dueDate" >= p."startDate"
               AND i."dueDate" < p."endDate"
               AND i."deletedAt" IS NULL
               AND i."status" IN ('SENT', 'PARTIALLY_PAID', 'OVERDUE')
@@ -327,7 +340,11 @@ export default async function Page({
       `),
       prisma.invoicePayment.findMany({
         where: {
-          invoice: { deletedAt: null, status: { not: "VOID" } },
+          invoice: {
+            organizationId: activeOrganizationId,
+            deletedAt: null,
+            status: { not: "VOID" },
+          },
         },
         orderBy: { paymentDate: "desc" },
         take: 5,
@@ -347,19 +364,20 @@ export default async function Page({
         },
       }),
       prisma.customer.findMany({
-        where: { deletedAt: null },
+        where: { organizationId: activeOrganizationId, deletedAt: null },
         orderBy: { createdAt: "desc" },
         take: 5,
         select: { id: true, displayName: true, companyName: true, source: true, createdAt: true },
       }),
       prisma.customer.groupBy({
         by: ["source"],
-        where: { deletedAt: null },
+        where: { organizationId: activeOrganizationId, deletedAt: null },
         _count: { _all: true },
         orderBy: { _count: { source: "desc" } },
       }),
       prisma.invoice.findMany({
         where: {
+          organizationId: activeOrganizationId,
           deletedAt: null,
           status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
           dueDate: { not: null },

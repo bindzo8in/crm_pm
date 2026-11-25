@@ -1,5 +1,6 @@
 import { EmploymentStatus } from "@/app/generated/prisma/enums";
 import { auth } from "@/lib/auth";
+import { isPlatformSuperAdmin } from "@/lib/global-role";
 import prisma from "@/lib/prisma";
 import { headers } from "next/headers";
 
@@ -12,7 +13,7 @@ export function isOrganizationManagerRole(role: string) {
 export async function getOrganizationManagerContext() {
   const requestHeaders = await headers();
   const session = await auth.api.getSession({ headers: requestHeaders });
-  if (!session?.user) return null;
+  if (!session?.user || isPlatformSuperAdmin(session.user.role)) return null;
 
   const organizationId = session.session.activeOrganizationId;
   if (!organizationId) return null;

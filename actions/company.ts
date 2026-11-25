@@ -1,12 +1,20 @@
 "use server"
 
-import { checkOrganizationPermission } from "@/lib/organization-authorization";
+import {
+  checkOrganizationPermission,
+  getActiveOrganizationId,
+} from "@/lib/organization-authorization";
 import prisma from "@/lib/prisma"
 import { companySchema, CompanyFormValues } from "@/lib/schemas/company"
 import { headers } from "next/headers"
 
 export async function GetCompany() {
   try {
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) {
+      return { error: "Unauthorized", message: "You do not have permission to read settings" };
+    }
+
     const hasPermission = await checkOrganizationPermission({
       headers: await headers(),
       body: {
@@ -20,7 +28,9 @@ export async function GetCompany() {
       return { error: "Unauthorized", message: "You do not have permission to read settings" }
     }
 
-    const company = await prisma.company.findFirst()
+    const company = await prisma.company.findUnique({
+      where: { organizationId },
+    });
     return { success: true, company }
   } catch (error) {
     if (process.env.NODE_ENV === 'development') console.log(error)
@@ -30,6 +40,11 @@ export async function GetCompany() {
 
 export async function UpdateCompany(data: CompanyFormValues) {
   try {
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) {
+      return { error: "Unauthorized", message: "You do not have permission to update settings" };
+    }
+
     const hasPermission = await checkOrganizationPermission({
       headers: await headers(),
       body: {
@@ -49,7 +64,10 @@ export async function UpdateCompany(data: CompanyFormValues) {
       return { error: "Invalid data", message: "Invalid data provided" }
     }
 
-    const existing = await prisma.company.findFirst()
+    const existing = await prisma.company.findUnique({
+      where: { organizationId },
+      select: { id: true },
+    });
     
     // Using json conversion for logo fields if they exist
     const payload = {
@@ -68,7 +86,7 @@ export async function UpdateCompany(data: CompanyFormValues) {
       })
     } else {
       await prisma.company.create({
-        data: payload
+        data: { ...payload, organizationId }
       })
     }
 

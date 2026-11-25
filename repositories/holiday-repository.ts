@@ -6,6 +6,7 @@ import { formatHolidayDateRange, formatHolidayDepartmentScope, HOLIDAY_CATEGORY_
 import prisma from "@/lib/prisma";
 
 export type HolidayWriteData = {
+  organizationId: string;
   name: string;
   startDate: Date;
   endDate: Date;
@@ -38,10 +39,12 @@ function getEventDates(startDate: Date, endDate: Date): Date[] {
 
 async function findHolidayAudience(
   transaction: Prisma.TransactionClient,
+  organizationId: string,
   departments: Department[],
 ): Promise<HolidayRecipient[]> {
   const where: Prisma.UserWhereInput = {
     role: UserRole.STAFF,
+    organizationMemberships: { some: { organizationId } },
     AND: [
       { OR: [{ banned: false }, { banned: null }] },
       ...(departments.length
@@ -62,6 +65,7 @@ async function findHolidayAudience(
 
 async function createStaffNotifications(
   transaction: Prisma.TransactionClient,
+  organizationId: string,
   recipients: HolidayRecipient[],
   data: HolidayWriteData,
   action: "added" | "updated",
@@ -73,6 +77,7 @@ async function createStaffNotifications(
   const categoryLabel = HOLIDAY_CATEGORY_LABELS[data.category];
   await transaction.notification.createMany({
     data: recipients.map(({ id }) => ({
+      organizationId,
       userId: id,
       type: "HOLIDAY",
       title: `Holiday ${action}: ${data.name}`,
@@ -84,6 +89,7 @@ async function createStaffNotifications(
 
 function holidayRowsData(data: HolidayWriteData, eventId: string) {
   return getEventDates(data.startDate, data.endDate).map((date) => ({
+    organizationId: data.organizationId,
     eventId,
     name: data.name,
     date,
@@ -96,11 +102,13 @@ function holidayRowsData(data: HolidayWriteData, eventId: string) {
 }
 
 export function listHolidays(
+  organizationId: string,
   startDate: Date,
   endDate: Date,
   departments?: readonly Department[],
 ) {
   const where: Prisma.HolidayWhereInput = {
+    organizationId,
     date: { gte: startDate, lte: endDate },
     ...(departments
       ? {
@@ -123,7 +131,7 @@ export function listHolidays(
     if (eventIds.length === 0) return yearRows;
 
     const eventRows = await prisma.holiday.findMany({
-      where: { eventId: { in: eventIds } },
+      where: { organizationId, eventId: { in: eventIds } },
       orderBy: { date: "asc" },
     });
     return [
@@ -134,11 +142,13 @@ export function listHolidays(
 }
 
 export function listUpcomingHolidays(
+  organizationId: string,
   today: Date,
   departments?: readonly Department[],
 ) {
   return prisma.holiday.findMany({
     where: {
+      organizationId,
       date: { gte: today },
       ...(departments
         ? {
@@ -165,15 +175,21 @@ export function createHolidayEvent(
       data: holidayRowsData(data, eventId),
     });
     const holidays = await transaction.holiday.findMany({
-      where: { eventId },
+      where: { organizationId: data.organizationId, eventId },
       orderBy: { date: "asc" },
     });
 
     const recipients = data.notifyStaff
-      ? await findHolidayAudience(transaction, data.departments)
+      ? await findHolidayAudience(transaction, data.organizationId, data.departments)
       : [];
     if (data.notifyStaff) {
-      await createStaffNotifications(transaction, recipients, data, "added");
+      await createStaffNotifications(
+        transaction,
+        data.organizationId,
+        recipients,
+        data,
+        "added",
+      );
     }
 
     return {
@@ -189,17 +205,23 @@ export function updateHolidayEvent(
   data: HolidayWriteData,
 ): Promise<HolidayMutationResult> {
   return prisma.$transaction(async (transaction) => {
-    const existing = await transaction.holiday.findUnique({ where: { id } });
+    const existing = await transaction.holiday.findFirst({
+      where: { id, organizationId: data.organizationId },
+    });
     if (!existing) {
       throw new Error("Holiday not found.");
     }
 
     const oldEventWhere = existing.eventId
-      ? { eventId: existing.eventId }
-      : { id: existing.id };
+      ? { organizationId: data.organizationId, eventId: existing.eventId }
+      : { organizationId: data.organizationId, id: existing.id };
     const eventId = existing.eventId ?? randomUUID();
     const oldRecipients = data.notifyStaff
-      ? await findHolidayAudience(transaction, existing.departments)
+      ? await findHolidayAudience(
+          transaction,
+          data.organizationId,
+          existing.departments,
+        )
       : [];
     await transaction.holiday.deleteMany({ where: oldEventWhere });
     await transaction.holiday.createMany({
@@ -207,7 +229,7 @@ export function updateHolidayEvent(
     });
 
     const newRecipients = data.notifyStaff
-      ? await findHolidayAudience(transaction, data.departments)
+      ? await findHolidayAudience(transaction, data.organizationId, data.departments)
       : [];
     const recipients = [
       ...new Map(
@@ -218,11 +240,17 @@ export function updateHolidayEvent(
       ).values(),
     ];
     if (data.notifyStaff) {
-      await createStaffNotifications(transaction, recipients, data, "updated");
+      await createStaffNotifications(
+        transaction,
+        data.organizationId,
+        recipients,
+        data,
+        "updated",
+      );
     }
 
     const holidays = await transaction.holiday.findMany({
-      where: { eventId },
+      where: { organizationId: data.organizationId, eventId },
       orderBy: { date: "asc" },
     });
     return {
@@ -233,16 +261,18 @@ export function updateHolidayEvent(
   });
 }
 
-export function deleteHolidayEvent(id: string) {
+export function deleteHolidayEvent(id: string, organizationId: string) {
   return prisma.$transaction(async (transaction) => {
-    const existing = await transaction.holiday.findUnique({ where: { id } });
+    const existing = await transaction.holiday.findFirst({
+      where: { id, organizationId },
+    });
     if (!existing) {
       throw new Error("Holiday not found.");
     }
     return transaction.holiday.deleteMany({
       where: existing.eventId
-        ? { eventId: existing.eventId }
-        : { id: existing.id },
+        ? { organizationId, eventId: existing.eventId }
+        : { organizationId, id: existing.id },
     });
   });
 }

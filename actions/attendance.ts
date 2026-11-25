@@ -232,7 +232,8 @@ async function processOrphanedSessions(userId: string, settingsInput?: any) {
 
 export async function clockInAction(input: ClockInInput) {
   try {
-    const { session, reqHeaders } = await getAuthenticatedUser("clock-in");
+    const { session, reqHeaders, organizationId } =
+      await getAuthenticatedUser("clock-in");
     const validated = clockInSchema.parse(input);
 
     // Run auto-checkout check for open orphaned sessions concurrently with settings fetch
@@ -271,6 +272,7 @@ export async function clockInAction(input: ClockInInput) {
     }
 
     const dayStatus = await getAttendanceDayStatus(
+      organizationId,
       new Date(),
       getDepartmentMemberships(user),
     );
@@ -641,7 +643,8 @@ export async function endBreakAction(input: EndBreakInput) {
 
 export async function getTodayAttendanceAction() {
   try {
-    const { session, reqHeaders, canReadAll } = await getAuthenticatedUser();
+    const { session, reqHeaders, canReadAll, organizationId } =
+      await getAuthenticatedUser();
     if (!session?.user) {
       return {
         success: false,
@@ -690,6 +693,7 @@ export async function getTodayAttendanceAction() {
     ] = await Promise.all([
       getAttendanceSettings(),
       getAttendanceDayStatus(
+        organizationId,
         new Date(),
         user ? getDepartmentMemberships(user) : [],
       ),
@@ -735,15 +739,17 @@ export async function getTodayAttendanceAction() {
 }
 
 async function getAttendanceDayStatus(
+  organizationId: string,
   date: Date,
   departments: readonly Department[] = [],
 ) {
   const dateKey = formatInIST(date, "yyyy-MM-dd");
   const dateOnly = parseDateOnly(dateKey);
   const [weekendDays, holiday] = await Promise.all([
-    getWeekendDays(),
+    getWeekendDays(organizationId),
     prisma.holiday.findFirst({
       where: {
+        organizationId,
         date: dateOnly,
         OR: [
           { departments: { isEmpty: true } },
@@ -862,11 +868,15 @@ export async function getAttendanceAnalyticsAction(filters: {
   workMode?: WorkMode[];
 }) {
   try {
-    const { session, canReadAll } = await getAuthenticatedUser("analytics-scope");
+    const { session, canReadAll, organizationId } =
+      await getAuthenticatedUser("analytics-scope");
     const effectiveUser = session.user;
     const isManager = canReadAll;
 
-    const conditions: any[] = [{ user: { includeInAttendanceReports: true } }];
+    const conditions: any[] = [
+      { organizationId },
+      { user: { includeInAttendanceReports: true } },
+    ];
 
     if (!isManager) {
       conditions.push({ userId: effectiveUser.id });
@@ -925,7 +935,7 @@ export async function getAttendanceAnalyticsAction(filters: {
       },
       orderBy: { date: "asc" },
     });
-    const employeeIdPrefix = await getCompanyEmployeeIdPrefix();
+    const employeeIdPrefix = await getCompanyEmployeeIdPrefix(organizationId);
 
     const totalShifts = records.length;
     let presentCount = 0;
@@ -1648,7 +1658,7 @@ export async function getAttendanceEmployeesListAction() {
       },
       orderBy: { name: "asc" },
     });
-    const employeeIdPrefix = await getCompanyEmployeeIdPrefix();
+    const employeeIdPrefix = await getCompanyEmployeeIdPrefix(organizationId);
 
     const formattedUsers = users.map((u) => ({
       ...u,
@@ -1734,6 +1744,7 @@ async function getResolvedAttendanceTimeline(
   const [attendanceRecords, leaveRequests, holidays, weekendDays] = await Promise.all([
     prisma.attendanceRecord.findMany({
       where: {
+        organizationId: scope.organizationId,
         userId: { in: userIds },
         date: { gte: start, lte: endOfRange },
       },
@@ -1757,6 +1768,7 @@ async function getResolvedAttendanceTimeline(
     }),
     prisma.leaveRequest.findMany({
       where: {
+        organizationId: scope.organizationId,
         userId: { in: userIds },
         status: LeaveStatus.APPROVED,
         startDate: { lte: endOfRange },
@@ -1773,10 +1785,13 @@ async function getResolvedAttendanceTimeline(
       },
     }),
     prisma.holiday.findMany({
-      where: { date: { gte: start, lte: endOfRange } },
+      where: {
+        organizationId: scope.organizationId,
+        date: { gte: start, lte: endOfRange },
+      },
       select: { date: true, name: true, departments: true, isHalfDay: true },
     }),
-    getWeekendDays(),
+    getWeekendDays(scope.organizationId),
   ]);
 
   const normalizedLeaves = leaveRequests.map((leave) => ({
@@ -1799,7 +1814,7 @@ async function getResolvedAttendanceTimeline(
     getTodayDateOnly(),
     weekendDays,
   );
-  const employeeIdPrefix = await getCompanyEmployeeIdPrefix();
+  const employeeIdPrefix = await getCompanyEmployeeIdPrefix(scope.organizationId);
 
   const filteredTimeline = timeline.filter((record) => {
     const departmentFilters = parsed.department
@@ -1940,7 +1955,7 @@ export async function getDetailedAttendanceReportAction(input: Partial<AdvancedA
         userId: session.user.id,
         canReadAll,
       }),
-      getWeekendDays(),
+      getWeekendDays(organizationId),
     ]);
     const skip = (parsed.page - 1) * parsed.limit;
     const records = resolvedRecords.slice(skip, skip + parsed.limit);
@@ -2086,7 +2101,7 @@ export async function exportAttendanceToExcelAction(input: Partial<AdvancedAtten
       canReadAll,
       organizationId,
     );
-    const employeeIdPrefix = await getCompanyEmployeeIdPrefix();
+    const employeeIdPrefix = await getCompanyEmployeeIdPrefix(organizationId);
 
     // Fetch all matching records without pagination limit
     const records = parsed.includeCalendarStatus
@@ -2131,9 +2146,10 @@ export async function exportAttendanceToExcelAction(input: Partial<AdvancedAtten
       date > latest ? date : latest,
     );
     const [weekendDays, holidays] = await Promise.all([
-      getWeekendDays(),
+      getWeekendDays(organizationId),
       prisma.holiday.findMany({
         where: {
+          organizationId,
           date: {
             gte: firstRecordDate,
             lte: lastRecordDate,

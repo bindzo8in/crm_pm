@@ -34,8 +34,12 @@ function reminderKey(userId: string, date: Date, type: string) {
   return `${userId}:${date.toISOString().slice(0, 10)}:${type}`;
 }
 
-export async function sendAttendanceScheduleReminders(now = new Date()) {
-  const settings = await prisma.attendanceSettings.findFirst({
+export async function sendAttendanceScheduleReminders(
+  organizationId: string,
+  now = new Date(),
+) {
+  const settings = await prisma.attendanceSettings.findUnique({
+    where: { organizationId },
     select: { expectedClockIn: true, expectedClockOut: true },
   });
 
@@ -64,6 +68,7 @@ export async function sendAttendanceScheduleReminders(now = new Date()) {
 
   const users = await prisma.user.findMany({
     where: {
+      organizationMemberships: { some: { organizationId } },
       employmentStatus: "ACTIVE",
       OR: [{ banned: false }, { banned: null }],
     },
@@ -84,13 +89,14 @@ export async function sendAttendanceScheduleReminders(now = new Date()) {
     const shiftDate = asDateOnly(clockInDate);
     const [weekendDays, holidays, approvedLeaves, attendance] =
       await Promise.all([
-        getWeekendDays(),
+        getWeekendDays(organizationId),
         prisma.holiday.findMany({
-          where: { date: shiftDate },
+          where: { organizationId, date: shiftDate },
           select: { departments: true, isHalfDay: true },
         }),
         prisma.leaveRequest.findMany({
           where: {
+            organizationId,
             status: "APPROVED",
             startDate: { lte: shiftDate },
             endDate: { gte: shiftDate },
@@ -98,7 +104,7 @@ export async function sendAttendanceScheduleReminders(now = new Date()) {
           select: { userId: true },
         }),
         prisma.attendanceRecord.findMany({
-          where: { date: shiftDate },
+          where: { organizationId, date: shiftDate },
           select: { userId: true },
         }),
       ]);
@@ -163,6 +169,7 @@ export async function sendAttendanceScheduleReminders(now = new Date()) {
       : clockOutDate;
     const activeRecords = await prisma.attendanceRecord.findMany({
       where: {
+        organizationId,
         date: asDateOnly(shiftDate),
         clockOut: null,
         isAutoCheckedOut: false,
@@ -191,7 +198,7 @@ export async function sendAttendanceScheduleReminders(now = new Date()) {
     candidates.map((candidate) => candidate.date.toISOString().slice(0, 10)),
   )].map(asDateOnly);
   const existingReminders = await prisma.attendanceAlarm.findMany({
-    where: { date: { in: eventDates } },
+    where: { organizationId, date: { in: eventDates } },
     select: { id: true, userId: true, date: true, type: true, pushSentAt: true },
   });
   const remindersByKey = new Map(
@@ -236,6 +243,7 @@ export async function sendAttendanceScheduleReminders(now = new Date()) {
         reminder = await prisma.$transaction(async (transaction) => {
           const createdReminder = await transaction.attendanceAlarm.create({
             data: {
+              organizationId,
               userId: candidate.userId,
               date: candidate.date,
               type: candidate.type,
@@ -245,6 +253,7 @@ export async function sendAttendanceScheduleReminders(now = new Date()) {
           if (candidate.type === "CLOCK_OUT") {
             await transaction.notification.create({
               data: {
+                organizationId,
                 userId: candidate.userId,
                 type: "ATTENDANCE_REMINDER",
                 title: "Clock-out reminder",
@@ -264,7 +273,8 @@ export async function sendAttendanceScheduleReminders(now = new Date()) {
         if (!isPrismaUniqueViolation(error)) throw error;
         reminder = await prisma.attendanceAlarm.findUnique({
           where: {
-            userId_date_type: {
+            organizationId_userId_date_type: {
+              organizationId,
               userId: candidate.userId,
               date: candidate.date,
               type: candidate.type,
@@ -315,7 +325,8 @@ export async function sendAttendanceScheduleReminders(now = new Date()) {
     if (delivery.sent > 0) {
       await prisma.attendanceAlarm.update({
         where: {
-          userId_date_type: {
+          organizationId_userId_date_type: {
+            organizationId,
             userId: candidate.userId,
             date: candidate.date,
             type: candidate.type,

@@ -1,6 +1,7 @@
 import prisma from "@/lib/prisma";
 
 export async function findActiveCustomerByDisplayName(
+  organizationId: string,
   displayName: string,
   excludeCustomerId?: string
 ) {
@@ -8,7 +9,8 @@ export async function findActiveCustomerByDisplayName(
   const rows = await prisma.$queryRaw<Array<{ id: string }>>`
     SELECT "id"
     FROM "Customer"
-    WHERE "deletedAt" IS NULL
+    WHERE "organizationId" = ${organizationId}
+      AND "deletedAt" IS NULL
       AND LOWER(REGEXP_REPLACE(BTRIM("displayName"), '[[:space:]]+', ' ', 'g'))
         = LOWER(REGEXP_REPLACE(BTRIM(${displayName}), '[[:space:]]+', ' ', 'g'))
       AND (${excludedCustomerId}::text IS NULL OR "id" <> ${excludedCustomerId}::text)

@@ -30,7 +30,7 @@ export async function createIssueReportAction(input: unknown) {
   const parsed = createIssueReportSchema.parse(input);
   const user = await requireIssueReportUser();
   const report = await prisma.issueReport.create({
-    data: { ...parsed, createdById: user.id },
+    data: { ...parsed, organizationId: user.organizationId, createdById: user.id },
     select: issueReportFields,
   });
 
@@ -41,8 +41,8 @@ export async function createIssueReportAction(input: unknown) {
 export async function getIssueReportsAction() {
   const user = await requireIssueReportUser();
   const where = canViewAllReports(user)
-    ? {}
-    : { createdById: user.id };
+    ? { organizationId: user.organizationId }
+    : { organizationId: user.organizationId, createdById: user.id };
   const reports = await prisma.issueReport.findMany({
     where,
     orderBy: { createdAt: "desc" },
@@ -56,24 +56,31 @@ export async function getIssueReportsAction() {
 export async function updateIssueReportAction(input: unknown) {
   const parsed = updateIssueReportSchema.parse(input);
   const user = await requireIssueReportManager();
-  const existing = await prisma.issueReport.findUnique({
-    where: { id: parsed.id },
+  const existing = await prisma.issueReport.findFirst({
+    where: { id: parsed.id, organizationId: user.organizationId },
     select: { id: true },
   });
   if (!existing) {
     throw new ActionError("This report no longer exists.", 404);
   }
 
-  const report = await prisma.issueReport.update({
-    where: { id: parsed.id },
+  const updated = await prisma.issueReport.updateMany({
+    where: { id: parsed.id, organizationId: user.organizationId },
     data: {
       status: parsed.status,
       response: parsed.response || null,
       reviewedById: user.id,
       reviewedAt: new Date(),
     },
+  });
+  if (updated.count === 0) {
+    throw new ActionError("This report no longer exists.", 404);
+  }
+  const report = await prisma.issueReport.findFirst({
+    where: { id: parsed.id, organizationId: user.organizationId },
     select: issueReportFields,
   });
+  if (!report) throw new ActionError("This report no longer exists.", 404);
 
   revalidatePath("/dashboard/issues");
   return { success: true, report };

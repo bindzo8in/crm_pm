@@ -18,6 +18,7 @@ export type LeaveNotificationRecipient = {
 };
 
 export type LeaveRequestCreateData = {
+  organizationId: string;
   userId: string;
   type: LeaveType;
   startDate: Date;
@@ -34,6 +35,7 @@ export type LeaveRequestCreateData = {
 };
 
 export type ManagerLeaveFilters = {
+  organizationId: string;
   page: number;
   pageSize: number;
   search?: string;
@@ -69,12 +71,14 @@ export async function withLeaveTransaction<T>(
 
 export async function findOverlappingActiveRequests(
   transaction: LeaveTransaction,
+  organizationId: string,
   userId: string,
   startDate: Date,
   endDate: Date,
 ) {
   return transaction.leaveRequest.findFirst({
     where: {
+      organizationId,
       userId,
       status: { in: [LeaveStatus.PENDING, LeaveStatus.APPROVED] },
       startDate: { lte: endDate },
@@ -86,12 +90,16 @@ export async function findOverlappingActiveRequests(
 
 export async function findHolidayDates(
   transaction: LeaveTransaction,
+  organizationId: string,
   userId: string,
   startDate: Date,
   endDate: Date,
 ): Promise<Array<{ date: Date; isHalfDay: boolean }>> {
-  const user = await transaction.user.findUnique({
-    where: { id: userId },
+  const user = await transaction.user.findFirst({
+    where: {
+      id: userId,
+      organizationMemberships: { some: { organizationId } },
+    },
     select: { department: true, additionalDepartments: true },
   });
   if (!user) return [];
@@ -100,6 +108,7 @@ export async function findHolidayDates(
 
   const holidays = await transaction.holiday.findMany({
     where: {
+      organizationId,
       date: { gte: startDate, lte: endDate },
       OR: [
         { departments: { isEmpty: true } },
@@ -123,12 +132,14 @@ export function insertLeaveRequest(
 
 export function findLeaveNotificationRecipients(
   transaction: LeaveTransaction,
+  organizationId: string,
   excludeUserId: string,
 ): Promise<LeaveNotificationRecipient[]> {
   return transaction.user.findMany({
     where: {
       id: { not: excludeUserId },
       employmentStatus: EmploymentStatus.ACTIVE,
+      organizationMemberships: { some: { organizationId } },
       OR: [
         { role: { in: [UserRole.SUPER_ADMIN, UserRole.ADMIN] } },
         { department: Department.HR },
@@ -166,12 +177,14 @@ export function deleteWebPushSubscription(id: string) {
 }
 
 export async function listOwnLeaveRequests(
+  organizationId: string,
   userId: string,
   page: number,
   pageSize: number,
   filters: { search?: string; type?: LeaveType; status?: LeaveStatus } = {},
 ) {
   const where: Prisma.LeaveRequestWhereInput = {
+    organizationId,
     userId,
     ...(filters.type ? { type: filters.type } : {}),
     ...(filters.status ? { status: filters.status } : {}),
@@ -196,6 +209,7 @@ export async function listManagerLeaveRequests(
   filters: ManagerLeaveFilters,
 ): Promise<{ leaves: ManagerLeaveRequestRecord[]; totalCount: number }> {
   const where: Prisma.LeaveRequestWhereInput = {
+    organizationId: filters.organizationId,
     ...(filters.type ? { type: filters.type } : {}),
     ...(filters.status ? { status: filters.status } : {}),
     ...(filters.fromDate || filters.throughDate
@@ -248,14 +262,16 @@ export async function listManagerLeaveRequests(
   return { leaves, totalCount };
 }
 
-export async function getManagerLeaveSummary(today: Date) {
+export async function getManagerLeaveSummary(today: Date, organizationId: string) {
   const [statusCounts, employeesOnLeave] = await Promise.all([
     prisma.leaveRequest.groupBy({
       by: ["status"],
+      where: { organizationId },
       _count: { _all: true },
     }),
     prisma.leaveRequest.findMany({
       where: {
+        organizationId,
         status: LeaveStatus.APPROVED,
         startDate: { lte: today },
         endDate: { gte: today },
@@ -276,9 +292,9 @@ export async function getManagerLeaveSummary(today: Date) {
   };
 }
 
-export function cancelOwnPendingRequest(userId: string, id: string) {
+export function cancelOwnPendingRequest(organizationId: string, userId: string, id: string) {
   return prisma.leaveRequest.updateMany({
-    where: { id, userId, status: LeaveStatus.PENDING },
+    where: { id, organizationId, userId, status: LeaveStatus.PENDING },
     data: { status: LeaveStatus.CANCELLED },
   });
 }
@@ -286,9 +302,10 @@ export function cancelOwnPendingRequest(userId: string, id: string) {
 export function findLeaveRequestForReview(
   transaction: LeaveTransaction,
   id: string,
+  organizationId: string,
 ) {
-  return transaction.leaveRequest.findUnique({
-    where: { id },
+  return transaction.leaveRequest.findFirst({
+    where: { id, organizationId },
     select: {
       id: true,
       userId: true,
@@ -303,12 +320,14 @@ export function findLeaveRequestForReview(
 
 export function findApprovedAnnualBreakdowns(
   transaction: LeaveTransaction,
+  organizationId: string,
   userId: string,
   startDate: Date,
   endDate: Date,
 ) {
   return transaction.leaveRequest.findMany({
     where: {
+      organizationId,
       userId,
       type: LeaveType.ANNUAL,
       status: LeaveStatus.APPROVED,
@@ -319,30 +338,44 @@ export function findApprovedAnnualBreakdowns(
   });
 }
 
-export function approveOrRejectPendingRequest(
+export async function approveOrRejectPendingRequest(
   transaction: LeaveTransaction,
   id: string,
+  organizationId: string,
   status: typeof LeaveStatus.APPROVED | typeof LeaveStatus.REJECTED,
   managerComment: string | null,
 ) {
-  return transaction.leaveRequest.update({
-    where: { id },
+  const result = await transaction.leaveRequest.updateMany({
+    where: { id, organizationId, status: LeaveStatus.PENDING },
     data: { status, managerComment },
-    include: {
-      user: {
-        select: { id: true, name: true, email: true, department: true, role: true },
-      },
+  });
+  if (result.count !== 1) return null;
+
+  return transaction.leaveRequest.findFirst({
+    where: { id, organizationId, status },
+    select: {
+      id: true,
+      userId: true,
+      type: true,
+      status: true,
+      startDate: true,
+      endDate: true,
+      isHalfDay: true,
+      halfDayPeriod: true,
+      user: { select: { name: true, email: true } },
     },
   });
 }
 
 export async function getApprovedAnnualBreakdownsForMonth(
+  organizationId: string,
   userId: string,
   startDate: Date,
   endDate: Date,
 ) {
   return prisma.leaveRequest.findMany({
     where: {
+      organizationId,
       userId,
       type: LeaveType.ANNUAL,
       status: LeaveStatus.APPROVED,

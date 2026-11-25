@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { createAttachmentContentDisposition } from "@/lib/chat-attachment";
 import { env } from "@/lib/env";
+import { canAccessProjectChat } from "@/lib/project-chat-access";
 import prisma from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -60,17 +61,11 @@ export async function GET(
   const conversation = attachment.message.conversation;
   let hasAccess = false;
   if (conversation.projectId) {
-    const membership = await prisma.projectMember.findUnique({
-      where: { projectId_userId: { projectId: conversation.projectId, userId: session.user.id } },
-      select: { projectId: true },
-    });
-    const project = membership ? null : await prisma.project.findUnique({
-      where: { id: conversation.projectId },
-      select: { projectManagerId: true, createdById: true },
-    });
-    hasAccess = Boolean(membership || project && (
-      project.projectManagerId === session.user.id || project.createdById === session.user.id
-    ));
+    hasAccess = await canAccessProjectChat(
+      conversation.projectId,
+      session.user.id,
+      request.headers,
+    );
   } else {
     const membership = await prisma.conversationMember.findUnique({
       where: {

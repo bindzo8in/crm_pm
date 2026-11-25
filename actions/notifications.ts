@@ -12,37 +12,43 @@ import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { env } from "@/lib/env";
 import { broadcastNotificationUpdates } from "@/lib/notification-realtime";
+import { getActiveOrganizationId } from "@/lib/organization-authorization";
 
-async function requireNotificationUserId() {
-  const session = await auth.api.getSession({ headers: await headers() });
+async function requireNotificationScope() {
+  const requestHeaders = await headers();
+  const session = await auth.api.getSession({ headers: requestHeaders });
   if (!session?.user) {
     throw new ActionError("Sign in to view notifications.", 401);
   }
-  return session.user.id;
+  const organizationId = await getActiveOrganizationId(requestHeaders);
+  if (!organizationId) {
+    throw new ActionError("Choose an organization to access notifications.", 403);
+  }
+  return { userId: session.user.id, organizationId };
 }
 
 export async function getMyNotificationsAction() {
-  const userId = await requireNotificationUserId();
-  return listUserNotifications(userId);
+  const { userId, organizationId } = await requireNotificationScope();
+  return listUserNotifications(userId, organizationId);
 }
 
 export async function markNotificationReadAction(input: unknown) {
-  const userId = await requireNotificationUserId();
+  const { userId, organizationId } = await requireNotificationScope();
   const { id } = z.object({ id: z.string().trim().min(1).max(100) }).parse(input);
-  const result = await markUserNotificationRead(userId, id);
+  const result = await markUserNotificationRead(userId, organizationId, id);
   if (result.count > 0) await broadcastNotificationUpdates([userId]);
   return { success: true };
 }
 
 export async function markAllNotificationsReadAction() {
-  const userId = await requireNotificationUserId();
-  const result = await markAllUserNotificationsRead(userId);
+  const { userId, organizationId } = await requireNotificationScope();
+  const result = await markAllUserNotificationsRead(userId, organizationId);
   if (result.count > 0) await broadcastNotificationUpdates([userId]);
   return { success: true };
 }
 
 export async function getWebPushPublicKeyAction() {
-  await requireNotificationUserId();
+  await requireNotificationScope();
   return {
     publicKey: env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY
       ? env.VAPID_PUBLIC_KEY
@@ -59,7 +65,7 @@ const webPushSubscriptionSchema = z.object({
 });
 
 export async function saveWebPushSubscriptionAction(input: unknown) {
-  const userId = await requireNotificationUserId();
+  const { userId } = await requireNotificationScope();
   if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) {
     throw new ActionError("Browser reminders are not configured on this server.", 503);
   }
@@ -96,7 +102,7 @@ export async function saveWebPushSubscriptionAction(input: unknown) {
 }
 
 export async function removeWebPushSubscriptionAction(input: unknown) {
-  const userId = await requireNotificationUserId();
+  const { userId } = await requireNotificationScope();
   const { endpoint } = z.object({
     endpoint: z.string().url().max(2048).startsWith("https://"),
   }).parse(input);

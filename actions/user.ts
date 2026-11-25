@@ -138,7 +138,12 @@ async function getCurrentActor() {
       select: { id: true },
     }),
   ]);
-  if (!user || !membership || user.employmentStatus !== EmploymentStatus.ACTIVE) {
+  if (
+    !user ||
+    user.role === GlobalRole.SUPER_ADMIN ||
+    !membership ||
+    user.employmentStatus !== EmploymentStatus.ACTIVE
+  ) {
     throw new Error("Unauthorized");
   }
 
@@ -401,7 +406,11 @@ export async function changeUserRole(
   const requestHeaders = await headers();
   const session = await auth.api.getSession({ headers: requestHeaders });
   const organizationId = session?.session.activeOrganizationId;
-  if (!session?.user || !organizationId) {
+  if (
+    !session?.user ||
+    session.user.role === GlobalRole.SUPER_ADMIN ||
+    !organizationId
+  ) {
     throw new Error("Select an organization before changing member roles.");
   }
   const targetMember = await prisma.member.findUnique({

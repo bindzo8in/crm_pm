@@ -16,8 +16,12 @@ function dateOnlyUtc(date: Date) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }
 
-export async function sendAttendanceReminders(now = new Date()) {
-  const settings = await prisma.attendanceSettings.findFirst({
+export async function sendAttendanceReminders(
+  organizationId: string,
+  now = new Date(),
+) {
+  const settings = await prisma.attendanceSettings.findUnique({
+    where: { organizationId },
     select: {
       attendanceReminderTime: true,
       expectedClockIn: true,
@@ -43,11 +47,12 @@ export async function sendAttendanceReminders(now = new Date()) {
     };
   }
 
-  const weekendDays = await getWeekendDays();
+  const weekendDays = await getWeekendDays(organizationId);
   const [users, holidays, approvedLeaves, attendance, existingReminders] =
     await Promise.all([
       prisma.user.findMany({
         where: {
+          organizationMemberships: { some: { organizationId } },
           employmentStatus: "ACTIVE",
           OR: [{ banned: false }, { banned: null }],
         },
@@ -60,11 +65,12 @@ export async function sendAttendanceReminders(now = new Date()) {
         },
       }),
       prisma.holiday.findMany({
-        where: { date: today },
+        where: { organizationId, date: today },
         select: { departments: true, isHalfDay: true },
       }),
       prisma.leaveRequest.findMany({
         where: {
+          organizationId,
           status: "APPROVED",
           startDate: { lte: today },
           endDate: { gte: today },
@@ -72,11 +78,11 @@ export async function sendAttendanceReminders(now = new Date()) {
         select: { userId: true },
       }),
       prisma.attendanceRecord.findMany({
-        where: { date: today },
+        where: { organizationId, date: today },
         select: { userId: true },
       }),
       prisma.attendanceReminder.findMany({
-        where: { date: today },
+        where: { organizationId, date: today },
         select: { userId: true, pushSentAt: true },
       }),
     ]);
@@ -91,6 +97,7 @@ export async function sendAttendanceReminders(now = new Date()) {
     existingReminders.map((reminder) => [reminder.userId, reminder]),
   );
   const subscriptions = await prisma.webPushSubscription.findMany({
+    where: { userId: { in: users.map(({ id }) => id) } },
     select: {
       id: true,
       userId: true,
@@ -144,10 +151,11 @@ export async function sendAttendanceReminders(now = new Date()) {
       try {
         await prisma.$transaction(async (transaction) => {
           await transaction.attendanceReminder.create({
-            data: { userId: user.id, date: today },
+            data: { organizationId, userId: user.id, date: today },
           });
           await transaction.notification.create({
             data: {
+              organizationId,
               userId: user.id,
               type: "ATTENDANCE_REMINDER",
               title: "Attendance reminder",
@@ -188,7 +196,11 @@ export async function sendAttendanceReminders(now = new Date()) {
     if (delivery.sent > 0) {
       await prisma.attendanceReminder.update({
         where: {
-          userId_date: { userId: user.id, date: today },
+          organizationId_userId_date: {
+            organizationId,
+            userId: user.id,
+            date: today,
+          },
         },
         data: { pushSentAt: new Date() },
       });

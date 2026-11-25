@@ -9,10 +9,7 @@ export type WorkspaceActor = {
 export const BUSINESS_WORKSPACE_DEPARTMENTS = [Department.HR, Department.SALES] as const;
 
 export function hasWorkspaceAccess(user: WorkspaceActor): boolean {
-  if (
-    user.role === UserRole.SUPER_ADMIN ||
-    user.role === UserRole.ADMIN
-  ) {
+  if (user.role === UserRole.ADMIN) {
     return true;
   }
   return (
@@ -22,10 +19,7 @@ export function hasWorkspaceAccess(user: WorkspaceActor): boolean {
 }
 
 export function hasBusinessWorkspaceAccess(user: WorkspaceActor): boolean {
-  if (
-    user.role === UserRole.SUPER_ADMIN ||
-    user.role === UserRole.ADMIN
-  ) {
+  if (user.role === UserRole.ADMIN) {
     return true;
   }
 

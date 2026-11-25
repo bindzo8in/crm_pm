@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getOrganizationRoutePermissions } from "@/lib/route-permissions";
 import { EmploymentStatus } from "@/app/generated/prisma/enums";
 import prisma from "@/lib/prisma";
+import { isPlatformSuperAdmin } from "@/lib/global-role";
 
 /**
  * Ensures the user is authenticated and has permission to access the specified route.
@@ -21,6 +22,9 @@ export async function requirePageAccess(targetPath?: string) {
   if (!session) {
     redirect("/signin");
   }
+  if (isPlatformSuperAdmin(session.user.role)) {
+    redirect("/platform/organizations");
+  }
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: { employmentStatus: true },
@@ -29,7 +33,11 @@ export async function requirePageAccess(targetPath?: string) {
     redirect("/signin");
   }
 
-  const pathname = targetPath || headersList.get("x-pathname") || "/dashboard";
+  const requestPath = headersList.get("x-pathname");
+  const pathname =
+    requestPath && (!targetPath || requestPath.startsWith(targetPath))
+      ? requestPath
+      : targetPath || requestPath || "/dashboard";
   const organizationId = session.session.activeOrganizationId;
   if (!organizationId) {
     redirect("/dashboard/organizations");
@@ -62,7 +70,7 @@ export async function requirePageAccess(targetPath?: string) {
       ),
     );
     if (!permissionResults.some((result) => result.success)) {
-      redirect("/attendance");
+      redirect("/dashboard/organizations");
     }
   }
 

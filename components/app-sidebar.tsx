@@ -43,16 +43,13 @@ import {
 } from "lucide-react"
 import { env } from "@/lib/env"
 import Image from "next/image"
-import { UserRole } from "@/app/generated/prisma/enums"
-import { canReadFinance } from "@/lib/permissions"
-import { canAccessRoute } from "@/lib/route-permissions"
 import { useIsMobile } from "@/hooks/use-mobile"
 
 const data = {
   navMain: [
     {
       title: "Dashboard",
-      section: "Workspace",
+      section: "Organization",
       url: "/dashboard",
       icon: (
         <LayoutDashboardIcon
@@ -96,7 +93,7 @@ const data = {
       ),
     },
     {
-      title: "Users",
+      title: "Members",
       section: "People",
       url: "/dashboard/users",
       icon: (
@@ -114,6 +111,12 @@ const data = {
       title: "Services",
       section: "Catalog",
       url: "/dashboard/services",
+      icon: <Package />
+    },
+    {
+      title: "Service packages",
+      section: "Catalog",
+      url: "/dashboard/services/packages",
       icon: <Package />
     },
     {
@@ -212,26 +215,29 @@ const data = {
 }
 
 export function AppSidebar({
-  userRole,
   displayRole,
+  allowedRoutes,
+  organizationName,
   department,
-  canReadAttendance,
-  canManageAttendance,
   user,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
-  userRole: UserRole
   displayRole: "Owner" | "Admin" | "Staff"
+  allowedRoutes: readonly string[]
+  organizationName: string
   department?: string | null
-  canReadAttendance: boolean
-  canManageAttendance: boolean
   user: { name: string; email: string; avatar: string }
 }) {
   const isMobile = useIsMobile()
   const [isTablet, setIsTablet] = React.useState(false)
   const { setOpen } = useSidebar()
   const setOpenRef = React.useRef(setOpen)
-  const homeUrl = "/dashboard"
+  const allowedRouteSet = new Set(allowedRoutes)
+  const homeUrl = allowedRouteSet.has("/dashboard")
+    ? "/dashboard"
+    : allowedRouteSet.has("/attendance")
+      ? "/attendance"
+      : "/dashboard/organizations"
 
   React.useEffect(() => {
     setOpenRef.current = setOpen
@@ -249,35 +255,25 @@ export function AppSidebar({
     return () => tabletQuery.removeEventListener("change", syncSidebar)
   }, [])
 
-  const hasWorkspaceAccess =
-    userRole !== UserRole.STAFF || Boolean(department?.trim())
   const navMainItems = data.navMain.filter((item) => {
-    if (item.url === "/dashboard") return true
-    if (item.url === "/dashboard/organization-management") {
-      return displayRole === "Owner" || displayRole === "Admin"
+    if (item.url === "/dashboard/salary") {
+      return allowedRouteSet.has("/dashboard/salary") ||
+        allowedRouteSet.has("/dashboard/my-salary")
     }
-    if (item.url === "/attendance") return canReadAttendance
-    if (item.url === "/dashboard/attendance/schedule") return canManageAttendance
-    if (!hasWorkspaceAccess && item.url !== "/dashboard/issues") return false
-    if (item.url === "/dashboard/salary" && userRole === UserRole.STAFF && department !== "HR") {
-      return canAccessRoute("/dashboard/my-salary", userRole, department)
-    }
-    if (!canAccessRoute(item.url, userRole, department)) return false
-    if (item.url === "/dashboard/finance") return canReadFinance(userRole)
-    return true
+    return allowedRouteSet.has(item.url)
   }).map((item) => {
     if (
       item.url === "/dashboard/salary" &&
-      userRole === UserRole.STAFF &&
-      department !== "HR"
+      !allowedRouteSet.has("/dashboard/salary") &&
+      allowedRouteSet.has("/dashboard/my-salary")
     ) {
       return { ...item, title: "My salary", url: "/dashboard/my-salary" };
     }
     return item;
   })
-  const navSecondaryItems = hasWorkspaceAccess
-    ? data.navSecondary.filter((item) => canAccessRoute(item.url, userRole, department))
-    : []
+  const navSecondaryItems = data.navSecondary.filter((item) =>
+    allowedRouteSet.has(item.url),
+  )
 
   if (isMobile) {
     return (
@@ -314,7 +310,14 @@ export function AppSidebar({
             <SidebarMenuButton asChild>
               <a href="/dashboard/organizations">
                 <Building2 />
-                <span>Switch organization</span>
+                <span className="flex min-w-0 flex-col items-start">
+                  <span className="max-w-48 truncate text-sm font-medium">
+                    {organizationName}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Switch organization
+                  </span>
+                </span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -323,7 +326,7 @@ export function AppSidebar({
       <SidebarContent>
         <NavMain
           items={navMainItems}
-          showQuickActions={canAccessRoute("/dashboard/proposals", userRole, department)}
+          showQuickActions={allowedRouteSet.has("/dashboard/proposals")}
         />
         <NavSecondary items={navSecondaryItems} className="mt-auto" />
       </SidebarContent>
