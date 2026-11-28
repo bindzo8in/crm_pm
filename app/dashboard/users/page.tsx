@@ -17,7 +17,10 @@ export default async function UsersPage() {
 
     return (
         <DashboardContainer title="Organization members">
-            <UsersTable canManageOrganization={Boolean(managerContext)} />
+            <UsersTable
+                canManageOrganization={Boolean(managerContext)}
+                canAssignWorkMode={canAssignWorkMode}
+            />
         </DashboardContainer>
     )
 }
