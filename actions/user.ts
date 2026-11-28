@@ -79,6 +79,10 @@ const assignDepartmentSchema = z.object({
 }).superRefine(validateDepartmentAssignments);
 
 const userIdSchema = z.string().min(1).max(255);
+const assignUserWorkModeSchema = z.object({
+  userId: userIdSchema,
+  workMode: z.enum(WorkMode),
+});
 const employmentStatusChangeSchema = z.object({
   userId: userIdSchema,
   effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -228,6 +232,7 @@ export async function getUsers({
         emailVerified: true,
         image: true,
         createdAt: true,
+        workMode: true,
         organizationMemberships: {
           where: { organizationId: actor.organizationId },
           select: { role: true },
@@ -484,16 +489,21 @@ export async function assignUserDepartment(
 
 export async function assignUserWorkMode(
   userId: string,
-  workMode: WorkMode
+  workMode: WorkMode,
 ) {
+  const input = assignUserWorkModeSchema.safeParse({ userId, workMode });
+  if (!input.success) {
+    throw new Error("Choose a valid user and work mode.");
+  }
+
   const actor = await getCurrentActor();
   if (!(await hasOrganizationPermission("users", "update"))) {
     throw new Error("You are not allowed to assign user work mode.");
   }
 
-  await requireOrganizationMember(actor.organizationId, userId);
+  await requireOrganizationMember(actor.organizationId, input.data.userId);
   const targetUser = await prisma.user.findUnique({
-    where: { id: userId },
+    where: { id: input.data.userId },
     select: { role: true },
   });
 
@@ -506,8 +516,8 @@ export async function assignUserWorkMode(
   }
 
   await prisma.user.update({
-    where: { id: userId },
-    data: { workMode },
+    where: { id: input.data.userId },
+    data: { workMode: input.data.workMode },
   });
 
   return {

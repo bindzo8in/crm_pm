@@ -49,8 +49,10 @@ function formatRole(role: string) {
 
 export default function UsersTable({
   canManageOrganization,
+  canAssignWorkMode,
 }: {
   canManageOrganization: boolean;
+  canAssignWorkMode: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<UserFilters>(initialFilters);
@@ -61,8 +63,8 @@ export default function UsersTable({
   const debouncedSearch = useDebounce(search, 400);
   const searchTerm = debouncedSearch.trim();
   const columns = useMemo(
-    () => createUserColumns(canManageOrganization),
-    [canManageOrganization],
+    () => createUserColumns(canManageOrganization, canAssignWorkMode),
+    [canAssignWorkMode, canManageOrganization],
   );
 
   const { data, isLoading, isFetching, isError } = useQuery({

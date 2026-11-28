@@ -24,25 +24,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserWithRole } from "better-auth/plugins/admin";
-import { UserRole, WorkMode } from "@/app/generated/prisma/enums";
+import { WorkMode } from "@/app/generated/prisma/enums";
 import { useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { assignUserWorkMode } from "@/actions/user";
+import { assignUserWorkMode, type getUsers } from "@/actions/user";
 
 const schema = z.object({
   workMode: z.nativeEnum(WorkMode),
 });
 
 type FormValues = z.infer<typeof schema>;
+type UserRow = Awaited<ReturnType<typeof getUsers>>["users"][number];
 
 type ChangeWorkModeDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  user: UserWithRole & { workMode?: WorkMode };
-  currentUserRole: UserRole;
-  currentUserId: string;
+  user: Pick<UserRow, "id" | "name" | "email" | "workMode">;
 };
 
 const workModesList = Object.values(WorkMode);
@@ -51,8 +49,6 @@ export function ChangeWorkModeDialog({
   open,
   onOpenChange,
   user,
-  currentUserRole,
-  currentUserId,
 }: ChangeWorkModeDialogProps) {
   const [error, setError] = useState<string | null>(null);
 
@@ -64,6 +60,10 @@ export function ChangeWorkModeDialog({
   });
 
   const queryClient = useQueryClient();
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) setError(null);
+    onOpenChange(nextOpen);
+  };
 
   const mutation = useMutation({
     mutationFn: ({
@@ -76,18 +76,18 @@ export function ChangeWorkModeDialog({
 
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: ["users"],
+        queryKey: ["organization-users"],
       });
-      onOpenChange(false);
+      handleOpenChange(false);
     },
-    onError: (error: any) => {
-      setError(error.message || "Failed to update work mode");
+    onError: (error) => {
+      setError(error instanceof Error ? error.message : "Failed to update work mode");
     },
   });
 
   const onSubmit = async (values: FormValues) => {
     if (user.workMode === values.workMode) {
-      onOpenChange(false);
+      handleOpenChange(false);
       return;
     }
 
@@ -98,7 +98,7 @@ export function ChangeWorkModeDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md bg-background border-border p-6 rounded-3xl shadow-2xl">
         {error && (
           <Alert variant="destructive">
@@ -139,7 +139,7 @@ export function ChangeWorkModeDialog({
             <Button
               type="button"
               variant="outline"
-              onClick={() => onOpenChange(false)}
+              onClick={() => handleOpenChange(false)}
               className="rounded-xl"
             >
               Cancel

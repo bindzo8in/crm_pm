@@ -23,7 +23,10 @@ function initials(name: string) {
         .toUpperCase() || "U";
 }
 
-export function createUserColumns(canManageOrganization: boolean): ColumnDef<UserRow>[] {
+export function createUserColumns(
+    canManageOrganization: boolean,
+    canAssignWorkMode: boolean,
+): ColumnDef<UserRow>[] {
   return [
     {
         accessorKey: "name",
@@ -113,6 +116,7 @@ export function createUserColumns(canManageOrganization: boolean): ColumnDef<Use
             <UserActions
                 user={row.original}
                 canManageOrganization={canManageOrganization}
+                canAssignWorkMode={canAssignWorkMode}
             />
         )
     }
