@@ -8,12 +8,17 @@ import prisma from "@/lib/prisma";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { isOrganizationSetupOwner } from "@/lib/organization-setup-access";
+import { isPlatformSuperAdmin } from "@/lib/global-role";
 
 export async function completeInitialSetup(input: InitialSetupInput) {
   const requestHeaders = await headers();
   const session = await auth.api.getSession({ headers: requestHeaders });
   const organizationId = session?.session.activeOrganizationId;
-  if (!session?.user || !organizationId) {
+  if (
+    !session?.user ||
+    isPlatformSuperAdmin(session.user.role) ||
+    !organizationId
+  ) {
     return { success: false, error: "Select an organization before completing setup." };
   }
   const membership = await prisma.member.findUnique({

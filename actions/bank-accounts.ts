@@ -1,6 +1,9 @@
 "use server"
 
-import { checkOrganizationPermission } from "@/lib/organization-authorization";
+import {
+  checkOrganizationPermission,
+  getActiveOrganizationId,
+} from "@/lib/organization-authorization";
 import { auth } from "@/lib/auth"
 import prisma from "@/lib/prisma"
 import { bankAccountListSchema, bankAccountSchema, BankAccountFormValues } from "@/lib/schemas/bank-account"
@@ -26,15 +29,26 @@ export async function GetBankAccounts(input: unknown = {}) {
       return { error: "Invalid filters", message: "Invalid bank account filters" };
     }
 
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return { error: "Organization required", message: "Choose an organization first" };
+    const company = await prisma.company.findUnique({
+      where: { organizationId },
+      select: { id: true },
+    });
+    if (!company) return { error: "Not found", message: "Company profile must be created first" };
+
     const { page, pageSize, search } = parsed.data;
-    const where = search
+    const where = {
+      companyId: company.id,
+      ...(search
       ? {
           OR: [
             { accountName: { contains: search, mode: "insensitive" as const } },
             { bankName: { contains: search, mode: "insensitive" as const } },
           ],
         }
-      : {};
+      : {}),
+    };
     const [accounts, totalCount] = await Promise.all([
       prisma.companyBankAccount.findMany({
         where,
@@ -80,7 +94,9 @@ export async function CreateBankAccount(data: BankAccountFormValues) {
       return { error: "Invalid data", message: "Invalid data provided" }
     }
 
-    const company = await prisma.company.findFirst()
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return { error: "Organization required", message: "Choose an organization first" };
+    const company = await prisma.company.findUnique({ where: { organizationId } })
     if (!company) {
        return { error: "Bad Request", message: "Company profile must be created first" }
     }
@@ -144,7 +160,9 @@ export async function UpdateBankAccount(id: string, data: BankAccountFormValues)
       return { error: "Invalid data", message: "Invalid data provided" }
     }
 
-    const company = await prisma.company.findFirst()
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return { error: "Organization required", message: "Choose an organization first" };
+    const company = await prisma.company.findUnique({ where: { organizationId } })
     if (!company) {
        return { error: "Bad Request", message: "Company profile must be created first" }
     }
@@ -161,10 +179,11 @@ export async function UpdateBankAccount(id: string, data: BankAccountFormValues)
         qrCodeImage: validatedData.data.qrCodeImage ? JSON.parse(JSON.stringify(validatedData.data.qrCodeImage)) : null,
     }
 
-    await prisma.companyBankAccount.update({
-      where: { id },
+    const updated = await prisma.companyBankAccount.updateMany({
+      where: { id, companyId: company.id },
       data: payload
     })
+    if (updated.count === 0) return { error: "Not found", message: "Bank account not found" };
 
     return { success: true, message: "Bank account updated successfully" }
   } catch (error) {
@@ -188,13 +207,21 @@ export async function DeleteBankAccount(id: string) {
       return { error: "Unauthorized", message: "You do not have permission to update settings" }
     }
 
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return { error: "Organization required", message: "Choose an organization first" };
+    const company = await prisma.company.findUnique({
+      where: { organizationId },
+      select: { id: true },
+    });
+    if (!company) return { error: "Not found", message: "Company profile not found" };
+
     await prisma.$transaction(async (tx) => {
       await tx.financialAccount.updateMany({
-        where: { companyBankAccountId: id },
+        where: { organizationId, companyId: company.id, companyBankAccountId: id },
         data: { isActive: false },
       });
-      await tx.companyBankAccount.delete({
-        where: { id },
+      await tx.companyBankAccount.deleteMany({
+        where: { id, companyId: company.id },
       });
     })
 
@@ -220,7 +247,9 @@ export async function SetDefaultBankAccount(id: string) {
       return { error: "Unauthorized", message: "You do not have permission to update settings" }
     }
 
-    const company = await prisma.company.findFirst()
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return { error: "Organization required", message: "Choose an organization first" };
+    const company = await prisma.company.findUnique({ where: { organizationId } })
     if (!company) {
        return { error: "Bad Request", message: "Company profile must be created first" }
     }
@@ -230,8 +259,8 @@ export async function SetDefaultBankAccount(id: string) {
         where: { companyId: company.id },
         data: { isDefault: false }
       }),
-      prisma.companyBankAccount.update({
-        where: { id },
+      prisma.companyBankAccount.updateMany({
+        where: { id, companyId: company.id },
         data: { isDefault: true }
       })
     ])

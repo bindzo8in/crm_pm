@@ -1,10 +1,14 @@
-import { checkOrganizationPermission } from "@/lib/organization-authorization";
+import {
+  checkOrganizationPermission,
+  getActiveOrganizationId,
+} from "@/lib/organization-authorization";
 import { auth } from "@/lib/auth";
 import { ActionError } from "@/lib/action-error";
 import { headers } from "next/headers";
 
 type Session = typeof auth.$Infer.Session;
 export type LeaveUser = Session["user"];
+export type LeaveOrganizationUser = LeaveUser & { organizationId: string };
 
 type LeaveSelfPermission = "create" | "read-own" | "cancel-own";
 type LeaveManagerPermission = "read-all" | "review";
@@ -43,17 +47,22 @@ export async function canManageHolidays(): Promise<boolean> {
   return permissions.every(Boolean);
 }
 
-async function requireSignedInUser(): Promise<LeaveUser> {
-  const session = await auth.api.getSession({ headers: await headers() });
+async function requireSignedInUser(): Promise<LeaveOrganizationUser> {
+  const requestHeaders = await headers();
+  const session = await auth.api.getSession({ headers: requestHeaders });
   if (!session?.user) {
     throw new ActionError("Sign in to access leave and holiday information.", 401);
   }
-  return session.user;
+  const organizationId = await getActiveOrganizationId(requestHeaders);
+  if (!organizationId) {
+    throw new ActionError("Choose an organization to access leave and holiday information.", 403);
+  }
+  return { ...session.user, organizationId };
 }
 
 export async function requireLeaveUser(
   permission: LeaveSelfPermission = "read-own",
-): Promise<LeaveUser> {
+): Promise<LeaveOrganizationUser> {
   const user = await requireSignedInUser();
   if (!(await hasLeavePermission(permission))) {
     throw new ActionError("You do not have permission to access this leave operation.", 403);
@@ -64,7 +73,7 @@ export async function requireLeaveUser(
 
 export async function requireLeaveManager(
   permission: LeaveManagerPermission = "read-all",
-): Promise<LeaveUser> {
+): Promise<LeaveOrganizationUser> {
   const user = await requireSignedInUser();
   if (!(await hasLeavePermission(permission))) {
     throw new ActionError("You do not have permission to manage leave requests.", 403);
@@ -72,7 +81,7 @@ export async function requireLeaveManager(
   return user;
 }
 
-export async function requireHolidayUser(): Promise<LeaveUser> {
+export async function requireHolidayUser(): Promise<LeaveOrganizationUser> {
   const user = await requireSignedInUser();
   if (!(await hasHolidayPermission("read"))) {
     throw new ActionError("You do not have permission to view company holidays.", 403);
@@ -82,7 +91,7 @@ export async function requireHolidayUser(): Promise<LeaveUser> {
 
 export async function requireHolidayManager(
   permission: HolidayManagerPermission,
-): Promise<LeaveUser> {
+): Promise<LeaveOrganizationUser> {
   const user = await requireSignedInUser();
   if (!(await hasHolidayPermission(permission))) {
     throw new ActionError("You do not have permission to manage holidays.", 403);

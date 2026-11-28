@@ -19,10 +19,10 @@ export default async function HolidaysPage({
 }: {
   searchParams: Promise<{ year?: string | string[] }>;
 }) {
-  await requireHolidayUser();
+  const user = await requireHolidayUser();
   const isManager = await canManageHolidays();
   const year = getYear((await searchParams).year) ?? Number(formatInIST(new Date(), "yyyy"));
-  const holidays = await getHolidaysForYear(year);
+  const holidays = await getHolidaysForYear(user.organizationId, year);
 
   return (
     <DashboardContainer title="Holidays">

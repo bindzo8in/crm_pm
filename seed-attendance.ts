@@ -4,8 +4,16 @@ import { AttendanceStatus, EmploymentStatus } from "./app/generated/prisma/enums
 
 
 async function main() {
+  const organizationId = process.env.ORGANIZATION_ID?.trim();
+  if (!organizationId) {
+    throw new Error("Set ORGANIZATION_ID to the organization being seeded.");
+  }
+
   const users = await prisma.user.findMany({
-    where: { employmentStatus: EmploymentStatus.ACTIVE },
+    where: {
+      employmentStatus: EmploymentStatus.ACTIVE,
+      organizationMemberships: { some: { organizationId } },
+    },
     select: { id: true, name: true, email: true },
   });
   if (!users.length) {
@@ -25,7 +33,13 @@ async function main() {
       if (date.getDay() === 0 || date.getDay() === 6) continue;
 
       const existing = await prisma.attendanceRecord.findUnique({
-        where: { userId_date: { userId: user.id, date } },
+        where: {
+          organizationId_userId_date: {
+            organizationId,
+            userId: user.id,
+            date,
+          },
+        },
       });
       if (existing) continue;
 
@@ -40,6 +54,7 @@ async function main() {
 
       await prisma.attendanceRecord.create({
         data: {
+          organizationId,
           userId: user.id,
           date,
           clockIn,

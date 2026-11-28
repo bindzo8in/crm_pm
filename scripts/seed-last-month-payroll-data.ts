@@ -14,6 +14,11 @@ function utcDate(year: number, month: number, day: number) {
 }
 
 async function main() {
+  const organizationId = process.env.ORGANIZATION_ID?.trim();
+  if (!organizationId) {
+    throw new Error("Set ORGANIZATION_ID to the organization being seeded.");
+  }
+
   const now = new Date();
   const previousMonthDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
   const year = previousMonthDate.getUTCFullYear();
@@ -21,7 +26,10 @@ async function main() {
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
 
   const users = await prisma.user.findMany({
-    where: { employmentStatus: EmploymentStatus.ACTIVE },
+    where: {
+      employmentStatus: EmploymentStatus.ACTIVE,
+      organizationMemberships: { some: { organizationId } },
+    },
     select: { id: true, department: true },
     orderBy: { employeeId: "asc" },
   });
@@ -40,10 +48,13 @@ async function main() {
   let holidaysCreated = 0;
   for (const [name, day] of holidayRecords) {
     const date = utcDate(year, month, day);
-    const existing = await prisma.holiday.findUnique({ where: { date } });
+    const existing = await prisma.holiday.findFirst({
+      where: { organizationId, date },
+    });
     if (!existing) {
       await prisma.holiday.create({
         data: {
+          organizationId,
           name,
           date,
           category: HolidayCategory.COMPANY_SPECIAL,
@@ -70,8 +81,8 @@ async function main() {
         (day >= 21 && day <= 22)
       ) continue;
 
-      const existing = await prisma.attendanceRecord.findUnique({
-        where: { userId_date: { userId: user.id, date } },
+      const existing = await prisma.attendanceRecord.findFirst({
+        where: { organizationId, userId: user.id, date },
       });
       if (existing) continue;
 
@@ -109,6 +120,7 @@ async function main() {
 
       await prisma.attendanceRecord.create({
         data: {
+          organizationId,
           userId: user.id,
           date,
           clockIn,
@@ -133,12 +145,13 @@ async function main() {
         holidayDays.has(day)
       ) continue;
 
-      const existing = await prisma.attendanceRecord.findUnique({
-        where: { userId_date: { userId: user.id, date } },
+      const existing = await prisma.attendanceRecord.findFirst({
+        where: { organizationId, userId: user.id, date },
       });
       if (!existing) {
         await prisma.attendanceRecord.create({
           data: {
+            organizationId,
             userId: user.id,
             date,
             clockIn: new Date(Date.UTC(year, month - 1, day)),
@@ -157,6 +170,7 @@ async function main() {
     const approvedEnd = utcDate(year, month, 22);
     const approvedExists = await prisma.leaveRequest.findFirst({
       where: {
+        organizationId,
         userId: user.id,
         reason: "Payroll test approved leave",
         startDate: approvedStart,
@@ -165,6 +179,7 @@ async function main() {
     if (!approvedExists) {
       await prisma.leaveRequest.create({
         data: {
+          organizationId,
           userId: user.id,
           type: userIndex % 2 === 0 ? LeaveType.CASUAL : LeaveType.SICK,
           startDate: approvedStart,
@@ -183,6 +198,7 @@ async function main() {
     const pendingStart = utcDate(year, month, Math.min(23, daysInMonth));
     const pendingExists = await prisma.leaveRequest.findFirst({
       where: {
+        organizationId,
         userId: user.id,
         reason: "Payroll test pending leave",
         startDate: pendingStart,
@@ -191,6 +207,7 @@ async function main() {
     if (!pendingExists) {
       await prisma.leaveRequest.create({
         data: {
+          organizationId,
           userId: user.id,
           type: LeaveType.ANNUAL,
           startDate: pendingStart,

@@ -142,7 +142,12 @@ async function getCurrentActor() {
       select: { id: true },
     }),
   ]);
-  if (!user || !membership || user.employmentStatus !== EmploymentStatus.ACTIVE) {
+  if (
+    !user ||
+    user.role === GlobalRole.SUPER_ADMIN ||
+    !membership ||
+    user.employmentStatus !== EmploymentStatus.ACTIVE
+  ) {
     throw new Error("Unauthorized");
   }
 
@@ -406,7 +411,11 @@ export async function changeUserRole(
   const requestHeaders = await headers();
   const session = await auth.api.getSession({ headers: requestHeaders });
   const organizationId = session?.session.activeOrganizationId;
-  if (!session?.user || !organizationId) {
+  if (
+    !session?.user ||
+    session.user.role === GlobalRole.SUPER_ADMIN ||
+    !organizationId
+  ) {
     throw new Error("Select an organization before changing member roles.");
   }
   const targetMember = await prisma.member.findUnique({
@@ -751,7 +760,7 @@ export async function getEmployeeStatusHistory(userId: string) {
   }
 
   return prisma.employeeStatusHistory.findMany({
-    where: { userId: target.id },
+    where: { organizationId: actor.organizationId, userId: target.id },
     orderBy: [{ effectiveAt: "desc" }, { changedAt: "desc" }],
     take: 50,
     select: {
@@ -920,6 +929,7 @@ export async function deactivateEmployee(input: {
     });
     await tx.employeeStatusHistory.create({
       data: {
+        organizationId: actor.organizationId,
         userId: target.id,
         action: EmploymentStatusAction.DEACTIVATED,
         effectiveAt,
@@ -993,6 +1003,7 @@ export async function reactivateEmployee(input: {
     });
     await tx.employeeStatusHistory.create({
       data: {
+        organizationId: actor.organizationId,
         userId: target.id,
         action: EmploymentStatusAction.REACTIVATED,
         effectiveAt,

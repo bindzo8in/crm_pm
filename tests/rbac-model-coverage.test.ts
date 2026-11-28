@@ -21,6 +21,7 @@ import {
 } from "../lib/organization-permissions";
 import { organizationRoleTemplates } from "../lib/organization-role-templates";
 import { hasBusinessWorkspaceAccess } from "../lib/workspace-access";
+import { canAccessProjectChatWithPermissions } from "../lib/project-chat-policy";
 
 test("every Prisma model maps to a declared RBAC resource", () => {
   for (const [model, resource] of Object.entries(prismaModelPermissions)) {
@@ -31,6 +32,13 @@ test("every Prisma model maps to a declared RBAC resource", () => {
 test("organization route permissions support tenant roles and nested routes", () => {
   assert.deepEqual(
     getOrganizationRoutePermissions("/dashboard/projects/project-id/edit"),
+    [
+      { resource: "projects", permission: "update" },
+      { resource: "projects", permission: "update-own" },
+    ],
+  );
+  assert.deepEqual(
+    getOrganizationRoutePermissions("/dashboard/projects/project-id"),
     [
       { resource: "projects", permission: "read-all" },
       { resource: "projects", permission: "read-assigned" },
@@ -123,11 +131,102 @@ test("own-record permission can enter proposal, invoice, and task routes", () =>
   );
 });
 
+test("page routes require action permissions for create and edit screens", () => {
+  assert.deepEqual(
+    getOrganizationRoutePermissions("/dashboard/customers/create"),
+    [{ resource: "customers", permission: "create" }],
+  );
+  assert.deepEqual(
+    getOrganizationRoutePermissions("/dashboard/proposals/proposal-id/edit"),
+    [
+      { resource: "proposals", permission: "update" },
+      { resource: "proposals", permission: "update-own" },
+    ],
+  );
+  assert.deepEqual(
+    getOrganizationRoutePermissions("/dashboard/invoices/invoice-id/edit"),
+    [
+      { resource: "invoices", permission: "update" },
+      { resource: "invoices", permission: "update-own" },
+    ],
+  );
+  assert.deepEqual(
+    getOrganizationRoutePermissions("/dashboard/projects/project-id/team"),
+    [{ resource: "projects", permission: "manage-team" }],
+  );
+  assert.deepEqual(
+    getOrganizationRoutePermissions("/dashboard/settings/business/banks"),
+    [{ resource: "bankAccounts", permission: "read" }],
+  );
+  assert.deepEqual(
+    getOrganizationRoutePermissions("/dashboard/tariffs/create"),
+    [{ resource: "tariffs", permission: "create" }],
+  );
+});
+
+test("project chat access requires organization permission and project scope", () => {
+  assert.equal(
+    canAccessProjectChatWithPermissions({
+      canReadAll: false,
+      canReadAssigned: true,
+      canReadOwn: false,
+      isAssigned: true,
+      isOwner: false,
+    }),
+    true,
+  );
+  assert.equal(
+    canAccessProjectChatWithPermissions({
+      canReadAll: false,
+      canReadAssigned: true,
+      canReadOwn: false,
+      isAssigned: false,
+      isOwner: false,
+    }),
+    false,
+  );
+  assert.equal(
+    canAccessProjectChatWithPermissions({
+      canReadAll: false,
+      canReadAssigned: false,
+      canReadOwn: true,
+      isAssigned: false,
+      isOwner: true,
+    }),
+    true,
+  );
+  assert.equal(
+    canAccessProjectChatWithPermissions({
+      canReadAll: true,
+      canReadAssigned: false,
+      canReadOwn: false,
+      isAssigned: false,
+      isOwner: false,
+    }),
+    true,
+  );
+});
+
 test("dashboard selection uses organization roles instead of global user roles", () => {
   assert.equal(canReadDashboard("owner"), true);
   assert.equal(canReadDashboard("admin"), true);
   assert.equal(canReadDashboard("member"), false);
   assert.equal(canReadDashboard("USER"), false);
+  assert.equal(canReadDashboard(UserRole.SUPER_ADMIN), false);
+});
+
+test("platform administrators are excluded from organization workspace routes", () => {
+  for (const path of [
+    "/dashboard",
+    "/dashboard/organization-management",
+    "/dashboard/attendance",
+    "/dashboard/services/packages",
+    "/dashboard/users",
+    "/dashboard/issues",
+    "/dashboard/unlisted-module",
+  ]) {
+    assert.equal(canAccessRoute(path, UserRole.SUPER_ADMIN), false, path);
+  }
 });
 
 test("staff model permissions remain limited to self-service and read-only data", () => {
@@ -157,37 +256,62 @@ test("measurement unit management is limited to organization administrators", ()
 });
 
 test("project management stays scoped between staff and administrators", () => {
-  for (const role of [adminRole, superAdminRole]) {
-    assert.ok(role.statements.projects?.includes("read-all"));
-    assert.ok(role.statements.projects?.includes("manage-team"));
-    assert.ok(role.statements.projects?.includes("view-budget"));
-    assert.ok(role.statements.tasks?.includes("delete"));
-  }
+  assert.ok(adminRole.statements.projects?.includes("read-all"));
+  assert.ok(adminRole.statements.projects?.includes("manage-team"));
+  assert.ok(adminRole.statements.projects?.includes("view-budget"));
+  assert.ok(adminRole.statements.tasks?.includes("delete"));
+  assert.equal("projects" in superAdminRole.statements, false);
+  assert.equal("tasks" in superAdminRole.statements, false);
   assert.equal(new Set<string>(staffRole.statements.projects).has("read-all"), false);
   assert.equal(new Set<string>(staffRole.statements.projects).has("view-budget"), false);
   assert.equal(new Set<string>(staffRole.statements.tasks).has("delete"), false);
 });
 
-test("admins and super admins receive management permissions for operational models", () => {
-  for (const role of [adminRole, superAdminRole]) {
-    assert.deepEqual(role.statements.leave, ["create", "read-own", "cancel-own", "read-all", "review"]);
-    assert.deepEqual(role.statements.holidays, ["read", "create", "update", "delete"]);
-    assert.deepEqual(role.statements.salary, ["read-own", "read-all", "create", "update", "mark-paid"]);
-    assert.deepEqual(role.statements.tariffs, ["create", "read", "update", "delete"]);
-  }
+test("organization admins receive management permissions for operational models", () => {
+  assert.deepEqual(adminRole.statements.leave, ["create", "read-own", "cancel-own", "read-all", "review"]);
+  assert.deepEqual(adminRole.statements.holidays, ["read", "create", "update", "delete"]);
+  assert.deepEqual(adminRole.statements.salary, ["read-own", "read-all", "create", "update", "mark-paid"]);
+  assert.deepEqual(adminRole.statements.tariffs, ["create", "read", "update", "delete"]);
+  assert.equal("leave" in superAdminRole.statements, false);
+  assert.equal("attendance" in superAdminRole.statements, false);
+  assert.equal("salary" in superAdminRole.statements, false);
+  assert.equal("tariffs" in superAdminRole.statements, false);
 });
 
-test("company and bank account administration remains super-admin-only", () => {
-  assert.deepEqual(superAdminRole.statements.company, ["read", "update"]);
-  assert.deepEqual(superAdminRole.statements.bankAccounts, ["read", "create", "update", "delete"]);
+test("global admin role does not receive organization CRM permissions", () => {
+  assert.equal("company" in superAdminRole.statements, false);
+  assert.equal("bankAccounts" in superAdminRole.statements, false);
+  assert.equal("customers" in superAdminRole.statements, false);
+  assert.equal("dashboard" in superAdminRole.statements, false);
   assert.equal("company" in adminRole.statements, false);
   assert.equal("bankAccounts" in adminRole.statements, false);
+});
+
+test("organization admins can navigate to company profile settings only", () => {
+  assert.equal(
+    canAccessRoute("/dashboard/settings/business/company", UserRole.ADMIN),
+    true,
+  );
+  assert.equal(
+    canAccessRoute("/dashboard/settings/business/company", UserRole.STAFF, "HR"),
+    false,
+  );
+  assert.equal(
+    canAccessRoute("/dashboard/settings/business/banks", UserRole.ADMIN),
+    false,
+  );
+});
+
+test("organization admin role has company and bank account permissions", () => {
+  assert.ok(organizationAdminRole.statements.company?.includes("read"));
+  assert.ok(organizationAdminRole.statements.company?.includes("update"));
+  assert.ok(organizationAdminRole.statements.bankAccounts?.includes("read"));
 });
 
 test("tariff routes align with tariff resource permissions", () => {
   assert.equal(canAccessRoute("/dashboard/tariffs", UserRole.STAFF), false);
   assert.equal(canAccessRoute("/dashboard/tariffs", UserRole.ADMIN), true);
-  assert.equal(canAccessRoute("/dashboard/tariffs", UserRole.SUPER_ADMIN), true);
+  assert.equal(canAccessRoute("/dashboard/tariffs", UserRole.SUPER_ADMIN), false);
 });
 
 test("salary management route excludes non-HR staff", () => {
@@ -196,7 +320,7 @@ test("salary management route excludes non-HR staff", () => {
   assert.equal(canAccessRoute("/dashboard/salary", UserRole.STAFF, null), false);
   assert.equal(canAccessRoute("/dashboard/salary", UserRole.STAFF, "HR"), true);
   assert.equal(canAccessRoute("/dashboard/salary", UserRole.ADMIN), true);
-  assert.equal(canAccessRoute("/dashboard/salary", UserRole.SUPER_ADMIN), true);
+  assert.equal(canAccessRoute("/dashboard/salary", UserRole.SUPER_ADMIN), false);
 });
 
 test("work schedule access is controlled by organization attendance permissions", () => {
@@ -216,7 +340,7 @@ test("customer, proposal, and invoice routes are limited to admins and HR/Sales 
     "/dashboard/invoices/create",
   ]) {
     assert.equal(canAccessRoute(path, UserRole.ADMIN), true, `${path} should allow admins`);
-    assert.equal(canAccessRoute(path, UserRole.SUPER_ADMIN), true, `${path} should allow super admins`);
+    assert.equal(canAccessRoute(path, UserRole.SUPER_ADMIN), false, `${path} should deny platform admins`);
     assert.equal(canAccessRoute(path, UserRole.STAFF, "HR"), true, `${path} should allow HR staff`);
     assert.equal(canAccessRoute(path, UserRole.STAFF, "SALES"), true, `${path} should allow Sales staff`);
     assert.equal(canAccessRoute(path, UserRole.STAFF, "DEVELOPMENT"), false, `${path} should deny Development staff`);
@@ -226,7 +350,7 @@ test("customer, proposal, and invoice routes are limited to admins and HR/Sales 
 
 test("business workspace access matches the customer, proposal, and invoice route policy", () => {
   assert.equal(hasBusinessWorkspaceAccess({ role: UserRole.ADMIN }), true);
-  assert.equal(hasBusinessWorkspaceAccess({ role: UserRole.SUPER_ADMIN }), true);
+  assert.equal(hasBusinessWorkspaceAccess({ role: UserRole.SUPER_ADMIN }), false);
   assert.equal(hasBusinessWorkspaceAccess({ role: UserRole.STAFF, department: "HR" }), true);
   assert.equal(hasBusinessWorkspaceAccess({ role: UserRole.STAFF, department: "SALES" }), true);
   assert.equal(hasBusinessWorkspaceAccess({ role: UserRole.STAFF, department: "DEVELOPMENT" }), false);

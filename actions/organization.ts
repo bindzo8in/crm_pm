@@ -128,6 +128,9 @@ export async function setActiveOrganization(formData: FormData) {
   if (!session?.user) {
     throw new Error("Unauthorized");
   }
+  if (isPlatformSuperAdmin(session.user.role)) {
+    throw new Error("Platform administrators cannot switch into organization workspaces.");
+  }
 
   const membership = await prisma.member.findUnique({
     where: {

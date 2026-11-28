@@ -1,6 +1,7 @@
 "use server";
 
 import { auth } from "@/lib/auth";
+import { isPlatformSuperAdmin } from "@/lib/global-role";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import {
@@ -62,6 +63,10 @@ import {
 import { canTransitionProject } from "@/lib/project-policy";
 import { getProposalPermissionScope } from "@/lib/proposal-permissions";
 import {
+  checkOrganizationPermission,
+  getActiveOrganizationId,
+} from "@/lib/organization-authorization";
+import {
   formatProjectCode,
   getCustomerForProject,
   getProjectById,
@@ -109,6 +114,7 @@ type InvoicePermission = "read";
 
 type ProjectActor = {
   id: string;
+  organizationId: string;
   canReadAll: boolean;
   canViewBudget: boolean;
   canManageProjects: boolean;
@@ -120,17 +126,19 @@ async function hasPermission(
 ) {
   const requestHeaders = await headers();
   const session = await auth.api.getSession({ headers: requestHeaders });
-  const organizationId = session?.session.activeOrganizationId;
-  if (!session?.user || !organizationId) return null;
+  if (!session?.user || isPlatformSuperAdmin(session.user.role)) {
+    return null;
+  }
+  const organizationId = await getActiveOrganizationId(requestHeaders);
+  if (!organizationId) return null;
 
-  const result = await auth.api.hasPermission({
+  const result = await checkOrganizationPermission({
     headers: requestHeaders,
-    body: {
-      organizationId,
-      permissions: { [resource]: [permission] },
-    },
+    body: { permissions: { [resource]: [permission] } },
   });
-  return result.success ? { id: session.user.id } : null;
+  return result.success
+    ? { id: session.user.id, organizationId }
+    : null;
 }
 
 async function canAccessProjectForTaskAction(projectId: string, userId: string) {
@@ -141,31 +149,39 @@ async function canAccessProjectForTaskAction(projectId: string, userId: string) 
 async function getProjectReadActor(): Promise<ProjectActor | null> {
   const requestHeaders = await headers();
   const session = await auth.api.getSession({ headers: requestHeaders });
-  const organizationId = session?.session.activeOrganizationId;
-  if (!session?.user || !organizationId) return null;
-  const readAll = await auth.api.hasPermission({
-    headers: requestHeaders,
-    body: { organizationId, permissions: { projects: ["read-all"] } },
-  });
-  const readAssigned = await auth.api.hasPermission({
-    headers: requestHeaders,
-    body: { organizationId, permissions: { projects: ["read-assigned"] } },
-  });
-  const readOwn = await auth.api.hasPermission({
-    headers: requestHeaders,
-    body: { organizationId, permissions: { projects: ["read-own"] } },
-  });
+  if (!session?.user || isPlatformSuperAdmin(session.user.role)) {
+    return null;
+  }
+  const organizationId = await getActiveOrganizationId(requestHeaders);
+  if (!organizationId) return null;
+  const [readAll, readAssigned, readOwn] = await Promise.all([
+    checkOrganizationPermission({
+      headers: requestHeaders,
+      body: { permissions: { projects: ["read-all"] } },
+    }),
+    checkOrganizationPermission({
+      headers: requestHeaders,
+      body: { permissions: { projects: ["read-assigned"] } },
+    }),
+    checkOrganizationPermission({
+      headers: requestHeaders,
+      body: { permissions: { projects: ["read-own"] } },
+    }),
+  ]);
   if (!readAll.success && !readAssigned.success && !readOwn.success) return null;
-  const viewBudget = await auth.api.hasPermission({
-    headers: requestHeaders,
-    body: { organizationId, permissions: { projects: ["view-budget"] } },
-  });
-  const manageProjects = await auth.api.hasPermission({
-    headers: requestHeaders,
-    body: { organizationId, permissions: { projects: ["update"] } },
-  });
+  const [viewBudget, manageProjects] = await Promise.all([
+    checkOrganizationPermission({
+      headers: requestHeaders,
+      body: { permissions: { projects: ["view-budget"] } },
+    }),
+    checkOrganizationPermission({
+      headers: requestHeaders,
+      body: { permissions: { projects: ["update"] } },
+    }),
+  ]);
   return {
     id: session.user.id,
+    organizationId,
     canReadAll: readAll.success,
     canViewBudget: viewBudget.success,
     canManageProjects: manageProjects.success,
@@ -207,15 +223,20 @@ export async function getProjectTaskWorkspace(input: unknown) {
   if (!session?.user) {
     return errorResponse("You do not have permission to view tasks.");
   }
+  if (isPlatformSuperAdmin(session.user.role)) {
+    return errorResponse("Platform administrators cannot access organization tasks.");
+  }
   const user = session.user;
+  const organizationId = await getActiveOrganizationId(requestHeaders);
+  if (!organizationId) {
+    return errorResponse("Choose an organization to access project tasks.");
+  }
   const checkRolePermission = (
     resource: "projects" | "tasks",
     permission: ProjectPermission | TaskPermission,
-  ) => auth.api.hasPermission({
+  ) => checkOrganizationPermission({
     headers: requestHeaders,
-    body: {
-      permissions: { [resource]: [permission] },
-    },
+    body: { permissions: { [resource]: [permission] } },
   });
   const [
     readAllUser,
@@ -247,13 +268,18 @@ export async function getProjectTaskWorkspace(input: unknown) {
     const [page, creationProjects] = await Promise.all([
       getProjectTaskWorkspacePage(parsed.data, {
         id: user.id,
+        organizationId,
         canReadAll: readAllUser.success,
         canReadAssigned: readAssignedUser.success,
         canReadOwn: readOwnUser.success,
       }),
       createUser.success &&
       (readAllProjectsUser.success || readAssignedProjectsUser.success || readOwnProjectsUser.success)
-        ? getTaskCreationProjectOptions(user.id, readAllProjectsUser.success)
+        ? getTaskCreationProjectOptions(
+            organizationId,
+            user.id,
+            readAllProjectsUser.success,
+          )
         : Promise.resolve({ items: [], hasMore: false }),
     ]);
     return successResponse("Tasks loaded.", {
@@ -286,10 +312,13 @@ export async function getTaskStatusTemplatesAction(projectId: string) {
   }
 
   try {
-    if (!(await getProjectTaskWorkflow(projectId))) {
+    if (!(await getProjectTaskWorkflow(projectId, actor.organizationId))) {
       return errorResponse("Project not found or you do not have access.");
     }
-    return successResponse("Task status templates loaded.", await getTaskStatusTemplates());
+    return successResponse(
+      "Task status templates loaded.",
+      await getTaskStatusTemplates(actor.organizationId),
+    );
   } catch (error) {
     return actionError(error, "Unable to load task status templates.");
   }
@@ -308,7 +337,11 @@ export async function updateProjectTaskWorkflowAction(input: unknown) {
   }
 
   try {
-    await updateProjectTaskWorkflow({ ...parsed.data, actorId: user.id });
+    await updateProjectTaskWorkflow({
+      ...parsed.data,
+      organizationId: actor.organizationId,
+      actorId: user.id,
+    });
     revalidatePath(`/dashboard/projects/${parsed.data.projectId}`);
     revalidatePath("/dashboard/tasks");
     return successResponse("Task workflow updated.");
@@ -330,10 +363,14 @@ export async function saveTaskStatusTemplateAction(input: unknown) {
   }
 
   try {
-    if (!(await getProjectTaskWorkflow(parsed.data.projectId))) {
+    if (!(await getProjectTaskWorkflow(parsed.data.projectId, actor.organizationId))) {
       return errorResponse("Project not found or you do not have access.");
     }
-    await saveTaskStatusTemplate({ ...parsed.data, actorId: user.id });
+    await saveTaskStatusTemplate({
+      ...parsed.data,
+      organizationId: actor.organizationId,
+      actorId: user.id,
+    });
     revalidatePath(`/dashboard/projects/${parsed.data.projectId}`);
     return successResponse("Task status template saved.");
   } catch (error) {
@@ -383,7 +420,11 @@ export async function getProject(projectId: string) {
     const canArchiveThisProject = Boolean(canArchive) ||
       (Boolean(canDeleteOwnProject) && assignedToProject);
     const relatedInvoices = canReadInvoices
-      ? await getRelatedInvoicesForProject(project.customerId, project.proposalId)
+      ? await getRelatedInvoicesForProject(
+          actor.organizationId,
+          project.customerId,
+          project.proposalId,
+        )
       : [];
     const statusOptions = (["PLANNING", "NOT_STARTED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "CANCELLED"] as const)
       .filter((status) => canTransitionProject(project.status, status));
@@ -428,17 +469,23 @@ export async function getProjectCreationContext(input: unknown) {
   try {
     const canManageTeam = await hasPermission("projects", "manage-team");
     const [options, customer, proposal, existingProject] = await Promise.all([
-      getProjectFormOptions(canManageTeam ? [user.id] : []),
-      parsed.data.customerId ? getCustomerForProject(parsed.data.customerId) : Promise.resolve(null),
-      parsed.data.proposalId ? getProposalForConversion(parsed.data.proposalId) : Promise.resolve(null),
-      parsed.data.proposalId ? getProjectByProposalId(parsed.data.proposalId) : Promise.resolve(null),
+      getProjectFormOptions(user.organizationId, canManageTeam ? [user.id] : []),
+      parsed.data.customerId
+        ? getCustomerForProject(parsed.data.customerId, user.organizationId)
+        : Promise.resolve(null),
+      parsed.data.proposalId
+        ? getProposalForConversion(parsed.data.proposalId, user.organizationId)
+        : Promise.resolve(null),
+      parsed.data.proposalId
+        ? getProjectByProposalId(parsed.data.proposalId, user.organizationId)
+        : Promise.resolve(null),
     ]);
     if (parsed.data.customerId && !customer) return errorResponse("Customer not found.");
     if (parsed.data.proposalId && !proposal && !existingProject) {
       return errorResponse("Only an accepted proposal can be converted to a project.");
     }
     const proposalCustomer = proposal && !existingProject
-      ? await getCustomerForProject(proposal.customerId)
+      ? await getCustomerForProject(proposal.customerId, user.organizationId)
       : null;
     if (proposal && !existingProject && !proposalCustomer) {
       return errorResponse("The customer linked to this proposal is unavailable.");
@@ -505,7 +552,7 @@ export async function getProjectEditContext(projectId: string) {
     const project = await getProjectById(projectId, actor);
     if (!project) return errorResponse("Project not found or you do not have access.");
     const [options, canManageBudget] = await Promise.all([
-      getProjectFormOptions([
+      getProjectFormOptions(actor.organizationId, [
         ...(project.projectManagerId ? [project.projectManagerId] : []),
         ...project.members.map(({ user }) => user.id),
       ]),
@@ -536,7 +583,7 @@ export async function getProjectTeamContext(projectId: string) {
   }
 
   try {
-    const project = await getProjectTeamById(projectId);
+    const project = await getProjectTeamById(projectId, actor.organizationId);
     if (!project) return errorResponse("Project not found or you do not have access.");
     return successResponse("Project team loaded.", {
       ...project,
@@ -560,7 +607,11 @@ export async function updateProjectTeamAction(input: unknown) {
   }
 
   try {
-    const project = await updateProjectTeam(parsed.data, user.id);
+    const project = await updateProjectTeam(
+      parsed.data,
+      user.id,
+      actor.organizationId,
+    );
     revalidatePath("/dashboard/projects");
     revalidatePath(`/dashboard/projects/${parsed.data.projectId}`);
     revalidatePath(`/dashboard/projects/${parsed.data.projectId}/team`);
@@ -577,7 +628,11 @@ export async function searchProjectUsers(input: unknown) {
   if (!parsed.success) return errorResponse("User search is invalid.", parsed.error.issues);
 
   try {
-    const result = await getProjectUserPage(parsed.data.search, parsed.data.page);
+    const result = await getProjectUserPage(
+      user.organizationId,
+      parsed.data.search,
+      parsed.data.page,
+    );
     return successResponse("Project users loaded.", result);
   } catch (error) {
     return actionError(error, "Unable to search project users.");
@@ -605,7 +660,11 @@ export async function createProjectAction(input: unknown) {
       ...(canManageBudget ? {} : { budgetAmount: undefined }),
       ...(canManageProjects ? {} : { internalNotes: undefined }),
     };
-    const project = await createProject(projectInput, user.id);
+    const project = await createProject(
+      projectInput,
+      user.id,
+      user.organizationId,
+    );
     revalidatePath("/dashboard/projects");
     revalidatePath("/dashboard/customers");
     return successResponse("Project created.", project);
@@ -641,7 +700,12 @@ export async function convertProposalToProjectAction(
       ...(canManageBudget ? {} : { budgetAmount: undefined }),
       ...(canManageProjects ? {} : { internalNotes: undefined }),
     };
-    const project = await convertAcceptedProposalToProject(proposalId, projectInput, user.id);
+    const project = await convertAcceptedProposalToProject(
+      proposalId,
+      projectInput,
+      user.id,
+      user.organizationId,
+    );
     const actor = await getProjectReadActor();
     if (
       !actor ||
@@ -703,7 +767,11 @@ export async function updateProjectAction(input: unknown) {
       parsed.data.customerId === current.customerId
       ? { ...parsed.data, customerId: undefined }
       : parsed.data;
-    const project = await updateProject(projectInput, user.id);
+    const project = await updateProject(
+      projectInput,
+      user.id,
+      user.organizationId,
+    );
     revalidatePath("/dashboard/projects");
     revalidatePath(`/dashboard/projects/${project.id}`);
     return successResponse("Project details updated.", project);
@@ -728,7 +796,12 @@ export async function updateProjectStatusAction(input: unknown) {
   }
 
   try {
-    const result = await updateProjectStatus(parsed.data.projectId, parsed.data.status, user.id);
+    const result = await updateProjectStatus(
+      parsed.data.projectId,
+      parsed.data.status,
+      user.id,
+      user.organizationId,
+    );
     revalidatePath("/dashboard/projects");
     revalidatePath(`/dashboard/projects/${parsed.data.projectId}`);
     return successResponse("Project status updated.", result);
@@ -752,7 +825,7 @@ export async function archiveProjectAction(projectId: string) {
   }
 
   try {
-    await archiveProject(projectId, user.id);
+    await archiveProject(projectId, user.id, user.organizationId);
     revalidatePath("/dashboard/projects");
     revalidatePath(`/dashboard/projects/${projectId}`);
     return successResponse("Project archived.");
@@ -771,7 +844,11 @@ export async function createProjectTaskAction(input: unknown) {
   }
 
   try {
-    const task = await createProjectTask(parsed.data, user.id);
+    const task = await createProjectTask(
+      parsed.data,
+      user.id,
+      user.organizationId,
+    );
     revalidatePath(`/dashboard/projects/${parsed.data.projectId}`);
     revalidatePath("/dashboard/tasks");
     return successResponse("Task created.", task);
@@ -858,7 +935,12 @@ export async function updateProjectTaskAction(input: unknown) {
   }
 
   try {
-    const task = await updateProjectTask(parsed.data, user.id, isAdmin);
+    const task = await updateProjectTask(
+      parsed.data,
+      user.id,
+      isAdmin,
+      user.organizationId,
+    );
     revalidatePath(`/dashboard/projects/${task.projectId}`);
     revalidatePath("/dashboard/tasks");
     return successResponse("Task updated.", task);
@@ -868,7 +950,11 @@ export async function updateProjectTaskAction(input: unknown) {
 }
 
 async function revalidateTaskViews(taskId: string) {
-  const task = await findTaskForProject(taskId);
+  const organizationId = await getActiveOrganizationId(await headers());
+  if (!organizationId) {
+    throw new Error("Choose an organization to access project tasks.");
+  }
+  const task = await findTaskForProject(taskId, organizationId);
   if (task) revalidatePath(`/dashboard/projects/${task.projectId}`);
   revalidatePath("/dashboard/tasks");
 }
@@ -880,7 +966,7 @@ async function authorizeTaskUpdate(taskId: string) {
   ]);
   const user = updateUser ?? ownUser;
   if (!user) return null;
-  const task = await findTaskForProject(taskId);
+  const task = await findTaskForProject(taskId, user.organizationId);
   if (!task || (!updateUser && !(await canUpdateOwnedTask(taskId, user.id)))) return null;
   return { user, task };
 }
@@ -892,7 +978,7 @@ async function authorizeTaskTimer(taskId: string) {
   ]);
   const user = updateUser ?? ownUser;
   if (!user) return null;
-  const task = await findTaskForProject(taskId);
+  const task = await findTaskForProject(taskId, user.organizationId);
   if (!task || (!updateUser && !(await canUpdateOwnedTask(taskId, user.id)))) return null;
   return { user, task };
 }
@@ -918,7 +1004,10 @@ export async function getProjectTaskPreviewAction(input: unknown) {
   if (!user) return errorResponse("You do not have permission to view tasks.");
 
   try {
-    const task = await findTaskForProject(parsed.data.taskId);
+    const task = await findTaskForProject(
+      parsed.data.taskId,
+      user.organizationId,
+    );
     if (!task) {
       return errorResponse("Task not found or you do not have access.");
     }
@@ -931,6 +1020,7 @@ export async function getProjectTaskPreviewAction(input: unknown) {
     if (!canReadTask) return errorResponse("Task not found or you do not have access.");
     const preview = await getProjectTaskPreview(task.id, {
       id: user.id,
+      organizationId: user.organizationId,
       canReadAll: Boolean(readAllUser || canReadThroughProject),
       canReadAssigned: Boolean(readAssignedUser),
       canReadOwn: Boolean(readOwnUser),
@@ -938,7 +1028,12 @@ export async function getProjectTaskPreviewAction(input: unknown) {
     if (!preview) return errorResponse("Task not found or you do not have access.");
     const canReadAllProjects = Boolean(await hasPermission("projects", "read-all"));
     const canCreateSubtasks = Boolean(createUser) &&
-      (canReadAllProjects || Boolean(await getProjectAssignment(task.projectId, user.id)));
+      (canReadAllProjects ||
+        Boolean(await getProjectAssignment(
+          task.projectId,
+          user.id,
+          user.organizationId,
+        )));
     return successResponse("Task details loaded.", {
       ...preview,
       actorId: user.id,
@@ -1121,6 +1216,7 @@ export async function deleteProjectTaskAction(taskId: string) {
 
   try {
     const result = await deleteProjectTask(taskId, user.id);
+    if (!result) return errorResponse("Task not found or you do not have access.");
     revalidatePath("/dashboard/projects");
     revalidatePath(`/dashboard/projects/${result.projectId}`);
     revalidatePath("/dashboard/tasks");

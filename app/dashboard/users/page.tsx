@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Users"
+  title: "Organization members"
 };
 
 import UsersTable from "./UsersTable";
@@ -16,11 +16,8 @@ export default async function UsersPage() {
     ]);
 
     return (
-        <DashboardContainer title="Users">
-            <UsersTable
-                canManageOrganization={Boolean(managerContext)}
-                canAssignWorkMode={canAssignWorkMode}
-            />
+        <DashboardContainer title="Organization members">
+            <UsersTable canManageOrganization={Boolean(managerContext)} />
         </DashboardContainer>
     )
 }

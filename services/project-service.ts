@@ -47,8 +47,18 @@ import type {
   ProjectTeamUpdateInput,
   ProjectUpdateInput,
 } from "@/lib/schemas/project-schema";
+import { getActiveOrganizationId } from "@/lib/organization-authorization";
+import { headers } from "next/headers";
 
 export class ProjectServiceError extends Error {}
+
+async function getCurrentOrganizationId() {
+  const organizationId = await getActiveOrganizationId(await headers());
+  if (!organizationId) {
+    throw new ProjectServiceError("Choose an organization to access project data.");
+  }
+  return organizationId;
+}
 
 function dateOrNull(value?: string | null) {
   if (!value) return null;
@@ -56,26 +66,31 @@ function dateOrNull(value?: string | null) {
 }
 
 async function validatePeople(
+  organizationId: string,
   managerId: string | null | undefined,
   memberIds: string[],
 ) {
   const ids = [...new Set([...(managerId ? [managerId] : []), ...memberIds])];
   if (!ids.length) return;
-  const users = await getUsersByIds(ids);
+  const users = await getUsersByIds(ids, organizationId);
   if (users.length !== ids.length) {
     throw new ProjectServiceError("One or more selected team members are unavailable.");
   }
 }
 
-async function validateCustomer(customerId?: string | null) {
+async function validateCustomer(
+  organizationId: string,
+  customerId?: string | null,
+) {
   if (!customerId) return;
-  if (!(await getCustomerForProject(customerId))) {
+  if (!(await getCustomerForProject(customerId, organizationId))) {
     throw new ProjectServiceError("The selected customer is unavailable.");
   }
 }
 
-function toNewProjectData(input: ProjectInput) {
+function toNewProjectData(input: ProjectInput, organizationId: string) {
   return {
+    organizationId,
     name: input.name,
     customerId: input.customerId || null,
     description: input.description || null,
@@ -95,10 +110,17 @@ function toNewProjectData(input: ProjectInput) {
   };
 }
 
-export async function createProject(input: ProjectInput, actorId: string) {
-  await validateCustomer(input.customerId);
-  await validatePeople(input.projectManagerId, input.teamMemberIds);
-  const project = await createProjectRecord(toNewProjectData(input), actorId);
+export async function createProject(
+  input: ProjectInput,
+  actorId: string,
+  organizationId: string,
+) {
+  await validateCustomer(organizationId, input.customerId);
+  await validatePeople(organizationId, input.projectManagerId, input.teamMemberIds);
+  const project = await createProjectRecord(
+    toNewProjectData(input, organizationId),
+    actorId,
+  );
   return { ...project, projectCode: formatProjectCode(project.projectNumber) };
 }
 
@@ -153,8 +175,9 @@ export async function convertAcceptedProposalToProject(
   proposalId: string,
   input: ProjectInput,
   actorId: string,
+  organizationId: string,
 ) {
-  const existing = await getProjectByProposalId(proposalId);
+  const existing = await getProjectByProposalId(proposalId, organizationId);
   if (existing) {
     return {
       ...existing,
@@ -163,11 +186,11 @@ export async function convertAcceptedProposalToProject(
     };
   }
 
-  const proposal = await getProposalForConversion(proposalId);
+  const proposal = await getProposalForConversion(proposalId, organizationId);
   if (!proposal) {
     throw new ProjectServiceError("Only accepted proposals can be converted to projects.");
   }
-  await validatePeople(input.projectManagerId, input.teamMemberIds);
+  await validatePeople(organizationId, input.projectManagerId, input.teamMemberIds);
 
   const projectInput: ProjectInput = {
     ...input,
@@ -180,7 +203,7 @@ export async function convertAcceptedProposalToProject(
   try {
     const result = await createConvertedProjectRecord(
       proposalId,
-      toNewProjectData(projectInput),
+      toNewProjectData(projectInput, organizationId),
       actorId,
       proposalSnapshot(proposal),
     );
@@ -197,7 +220,7 @@ export async function convertAcceptedProposalToProject(
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
     ) {
-      const converted = await getProjectByProposalId(proposalId);
+      const converted = await getProjectByProposalId(proposalId, organizationId);
       if (converted) {
         return {
           ...converted,
@@ -210,12 +233,18 @@ export async function convertAcceptedProposalToProject(
   }
 }
 
-export async function updateProject(input: ProjectUpdateInput, actorId: string) {
-  if (input.customerId !== undefined) await validateCustomer(input.customerId);
+export async function updateProject(
+  input: ProjectUpdateInput,
+  actorId: string,
+  organizationId: string,
+) {
+  if (input.customerId !== undefined) {
+    await validateCustomer(organizationId, input.customerId);
+  }
   if (input.teamMemberIds !== undefined) {
-    await validatePeople(input.projectManagerId, input.teamMemberIds);
+    await validatePeople(organizationId, input.projectManagerId, input.teamMemberIds);
   } else if (input.projectManagerId) {
-    await validatePeople(input.projectManagerId, []);
+    await validatePeople(organizationId, input.projectManagerId, []);
   }
 
   const { projectId, startDate, dueDate, ...rest } = input;
@@ -227,6 +256,7 @@ export async function updateProject(input: ProjectUpdateInput, actorId: string) 
       ...(dueDate !== undefined ? { dueDate: dateOrNull(dueDate) } : {}),
     },
     actorId,
+    organizationId,
   );
   return { ...project, projectCode: formatProjectCode(project.projectNumber) };
 }
@@ -234,8 +264,13 @@ export async function updateProject(input: ProjectUpdateInput, actorId: string) 
 export async function updateProjectTeam(
   input: ProjectTeamUpdateInput,
   actorId: string,
+  organizationId: string,
 ) {
-  await validatePeople(input.projectManagerId, input.teamMemberIds);
+  await validatePeople(
+    organizationId,
+    input.projectManagerId,
+    input.teamMemberIds,
+  );
   const project = await updateProjectRecord(
     input.projectId,
     {
@@ -243,6 +278,7 @@ export async function updateProjectTeam(
       teamMemberIds: input.teamMemberIds,
     },
     actorId,
+    organizationId,
   );
   return { ...project, projectCode: formatProjectCode(project.projectNumber) };
 }
@@ -251,8 +287,9 @@ export async function updateProjectStatus(
   projectId: string,
   status: ProjectStatus,
   actorId: string,
+  organizationId: string,
 ) {
-  const current = await getProjectStatus(projectId);
+  const current = await getProjectStatus(projectId, organizationId);
   if (!current) throw new ProjectServiceError("Project not found.");
   if (!canTransitionProject(current.status, status)) {
     throw new ProjectServiceError(
@@ -260,22 +297,43 @@ export async function updateProjectStatus(
     );
   }
   if (current.status === status) return { id: projectId, status };
-  const updated = await updateProjectStatusRecord(projectId, status, actorId);
+  const updated = await updateProjectStatusRecord(
+    projectId,
+    status,
+    actorId,
+    organizationId,
+  );
   if (!updated) throw new ProjectServiceError("Project not found.");
   return updated;
 }
 
-export async function archiveProject(projectId: string, actorId: string) {
-  await archiveProjectRecord(projectId, actorId);
+export async function archiveProject(
+  projectId: string,
+  actorId: string,
+  organizationId: string,
+) {
+  const archived = await archiveProjectRecord(
+    projectId,
+    actorId,
+    organizationId,
+  );
+  if (!archived) throw new ProjectServiceError("Project not found.");
 }
 
-export async function createProjectTask(input: ProjectTaskInput, actorId: string) {
-  const workflow = await getProjectTaskWorkflow(input.projectId);
+export async function createProjectTask(
+  input: ProjectTaskInput,
+  actorId: string,
+  organizationId: string,
+) {
+  const workflow = await getProjectTaskWorkflow(input.projectId, organizationId);
   if (!workflow) throw new ProjectServiceError("Project not found.");
-  const taskFolders = await getProjectTaskFolders(input.projectId);
+  const taskFolders = await getProjectTaskFolders(
+    input.projectId,
+    organizationId,
+  );
   let parentTask: Awaited<ReturnType<typeof findTaskForProject>> = null;
   if (input.parentTaskId) {
-    parentTask = await findTaskForProject(input.parentTaskId);
+    parentTask = await findTaskForProject(input.parentTaskId, organizationId);
     if (
       !parentTask ||
       parentTask.projectId !== input.projectId ||
@@ -291,7 +349,10 @@ export async function createProjectTask(input: ProjectTaskInput, actorId: string
       : taskFolders.find(({ name, parentId }) => name === "General" && parentId === null)
         ?? taskFolders.find(({ parentId }) => parentId === null);
   if (!folder) throw new ProjectServiceError("Choose a folder from this project.");
-  if (input.assigneeId && !(await getProjectAssignment(input.projectId, input.assigneeId))) {
+  if (
+    input.assigneeId &&
+    !(await getProjectAssignment(input.projectId, input.assigneeId, organizationId))
+  ) {
     throw new ProjectServiceError("Tasks can only be assigned to this project’s manager or team members.");
   }
   const initialStatus = workflow.taskStatuses.find(({ group }) => group === "NOT_STARTED");
@@ -315,6 +376,7 @@ export async function createProjectTask(input: ProjectTaskInput, actorId: string
       parentTaskId: input.parentTaskId || null,
     },
     actorId,
+    organizationId,
   );
   return task;
 }
@@ -325,7 +387,8 @@ export async function saveProjectTaskFolder(input: {
   name: string;
   parentId: string | null;
 }) {
-  const folders = await getProjectTaskFolders(input.projectId);
+  const organizationId = await getCurrentOrganizationId();
+  const folders = await getProjectTaskFolders(input.projectId, organizationId);
   const current = input.folderId
     ? folders.find(({ id }) => id === input.folderId)
     : null;
@@ -358,12 +421,15 @@ export async function saveProjectTaskFolder(input: {
   }
   if (current) {
     return updateProjectTaskFolderRecord({
+      organizationId,
+      projectId: input.projectId,
       folderId: current.id,
       name: input.name.trim(),
       parentId: input.parentId,
     });
   }
   return createProjectTaskFolderRecord({
+    organizationId,
     projectId: input.projectId,
     name: input.name.trim(),
     parentId: input.parentId,
@@ -371,17 +437,20 @@ export async function saveProjectTaskFolder(input: {
 }
 
 export async function removeProjectTaskFolder(projectId: string, folderId: string) {
-  const folder = (await getProjectTaskFolders(projectId)).find(({ id }) => id === folderId);
+  const organizationId = await getCurrentOrganizationId();
+  const folder = (await getProjectTaskFolders(projectId, organizationId))
+    .find(({ id }) => id === folderId);
   if (!folder) throw new ProjectServiceError("Folder not found in this project.");
-  await deleteProjectTaskFolderRecord(projectId, folderId);
+  await deleteProjectTaskFolderRecord(projectId, folderId, organizationId);
 }
 
 export async function updateProjectTask(
   input: ProjectTaskUpdateInput,
   actorId: string,
   isAdmin: boolean,
+  organizationId: string,
 ) {
-  const current = await findTaskForProject(input.taskId);
+  const current = await findTaskForProject(input.taskId, organizationId);
   if (!current) throw new ProjectServiceError("Task not found.");
   if (!isAdmin && current.assigneeId !== actorId && current.createdById !== actorId) {
     throw new ProjectServiceError("You can only update tasks you created or are assigned to.");
@@ -412,19 +481,22 @@ export async function updateProjectTask(
   if (
     input.assigneeId &&
     input.assigneeId !== current.assigneeId &&
-    !(await getProjectAssignment(current.projectId, input.assigneeId))
+    !(await getProjectAssignment(current.projectId, input.assigneeId, organizationId))
   ) {
     throw new ProjectServiceError("Tasks can only be assigned to this project’s manager or team members.");
   }
   if (input.folderId) {
-    const folders = await getProjectTaskFolders(current.projectId);
+    const folders = await getProjectTaskFolders(
+      current.projectId,
+      organizationId,
+    );
     if (!folders.some(({ id }) => id === input.folderId)) {
       throw new ProjectServiceError("Choose a folder from this project.");
     }
   }
   const workflow = input.status === undefined
     ? null
-    : await getProjectTaskWorkflow(current.projectId);
+    : await getProjectTaskWorkflow(current.projectId, organizationId);
   const nextStatus = input.status === undefined
     ? undefined
     : workflow?.taskStatuses.find(({ id }) => id === input.status);
@@ -448,19 +520,21 @@ export async function updateProjectTask(
       ...(startDate !== undefined ? { startDate: dateOrNull(startDate) } : {}),
     },
     actorId,
+    organizationId,
   );
   return task;
 }
 
 async function requireTask(taskId: string) {
-  const task = await findTaskForProject(taskId);
+  const organizationId = await getCurrentOrganizationId();
+  const task = await findTaskForProject(taskId, organizationId);
   if (!task) throw new ProjectServiceError("Task not found.");
-  return task;
+  return { ...task, organizationId };
 }
 
 export async function createProjectTaskChecklistItem(taskId: string, title: string) {
-  await requireTask(taskId);
-  return createTaskChecklistItem(taskId, title);
+  const task = await requireTask(taskId);
+  return createTaskChecklistItem(taskId, title, task.organizationId);
 }
 
 export async function updateProjectTaskChecklistItem(
@@ -468,15 +542,20 @@ export async function updateProjectTaskChecklistItem(
   itemId: string,
   isComplete: boolean,
 ) {
-  await requireTask(taskId);
-  if (!(await updateTaskChecklistItem(taskId, itemId, isComplete))) {
+  const task = await requireTask(taskId);
+  if (!(await updateTaskChecklistItem(
+    taskId,
+    itemId,
+    isComplete,
+    task.organizationId,
+  ))) {
     throw new ProjectServiceError("Checklist item not found.");
   }
 }
 
 export async function removeProjectTaskChecklistItem(taskId: string, itemId: string) {
-  await requireTask(taskId);
-  if (!(await deleteTaskChecklistItem(taskId, itemId))) {
+  const task = await requireTask(taskId);
+  if (!(await deleteTaskChecklistItem(taskId, itemId, task.organizationId))) {
     throw new ProjectServiceError("Checklist item not found.");
   }
 }
@@ -497,7 +576,10 @@ export async function createProjectTaskDependency(
     throw new ProjectServiceError("Dependencies must be in the same project.");
   }
   if (relationType === "BLOCKED_BY") {
-    const graph = await getTaskDependencyGraph(task.projectId);
+    const graph = await getTaskDependencyGraph(
+      task.projectId,
+      task.organizationId,
+    );
     const dependencies = new Map(
       graph.map((item) => [
         item.id,
@@ -519,7 +601,12 @@ export async function createProjectTaskDependency(
     }
   }
   try {
-    await createTaskDependency(taskId, dependsOnTaskId, relationType);
+    await createTaskDependency(
+      taskId,
+      dependsOnTaskId,
+      relationType,
+      task.organizationId,
+    );
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -532,8 +619,12 @@ export async function createProjectTaskDependency(
 }
 
 export async function removeProjectTaskDependency(taskId: string, dependencyId: string) {
-  await requireTask(taskId);
-  if (!(await deleteTaskDependency(taskId, dependencyId))) {
+  const task = await requireTask(taskId);
+  if (!(await deleteTaskDependency(
+    taskId,
+    dependencyId,
+    task.organizationId,
+  ))) {
     throw new ProjectServiceError("Dependency not found.");
   }
 }
@@ -549,7 +640,7 @@ export async function createProjectTaskAttachment(
   },
   actorId: string,
 ) {
-  await requireTask(input.taskId);
+  const task = await requireTask(input.taskId);
   let uploadedUrl: URL;
   try {
     uploadedUrl = new URL(input.url);
@@ -566,7 +657,7 @@ export async function createProjectTaskAttachment(
     throw new ProjectServiceError("The uploaded file does not belong to this task.");
   }
   try {
-    return await createTaskAttachment(input, actorId);
+    return await createTaskAttachment(input, actorId, task.organizationId);
   } catch (error) {
     if (error instanceof Error && error.message === "A task can have up to 20 attachments.") {
       throw new ProjectServiceError(error.message);
@@ -582,8 +673,8 @@ export async function createProjectTaskAttachment(
 }
 
 export async function removeProjectTaskAttachment(taskId: string, attachmentId: string) {
-  await requireTask(taskId);
-  if (!(await deleteTaskAttachment(taskId, attachmentId))) {
+  const task = await requireTask(taskId);
+  if (!(await deleteTaskAttachment(taskId, attachmentId, task.organizationId))) {
     throw new ProjectServiceError("Attachment not found.");
   }
 }
@@ -593,14 +684,19 @@ export async function createProjectTaskComment(
   authorId: string,
   content: string,
 ) {
-  await requireTask(taskId);
-  return createTaskComment(taskId, authorId, content);
+  const task = await requireTask(taskId);
+  return createTaskComment(
+    taskId,
+    authorId,
+    content,
+    task.organizationId,
+  );
 }
 
 export async function startProjectTaskTimer(taskId: string, userId: string) {
-  await requireTask(taskId);
+  const task = await requireTask(taskId);
   try {
-    await startTaskTimeEntry(taskId, userId);
+    await startTaskTimeEntry(taskId, userId, task.organizationId);
   } catch (error) {
     if (
       error instanceof Error &&
@@ -619,29 +715,34 @@ export async function startProjectTaskTimer(taskId: string, userId: string) {
 }
 
 export async function stopProjectTaskTimer(taskId: string, userId: string) {
-  await requireTask(taskId);
-  if (!(await stopTaskTimeEntry(taskId, userId))) {
+  const task = await requireTask(taskId);
+  if (!(await stopTaskTimeEntry(taskId, userId, task.organizationId))) {
     throw new ProjectServiceError("No running timer was found for this task.");
   }
 }
 
 export async function deleteProjectTask(taskId: string, actorId: string) {
-  return archiveTaskRecord(taskId, actorId);
+  const organizationId = await getCurrentOrganizationId();
+  return archiveTaskRecord(taskId, actorId, organizationId);
 }
 
 export async function canViewProject(projectId: string, userId: string) {
-  return Boolean(await getProjectAssignment(projectId, userId));
+  const organizationId = await getCurrentOrganizationId();
+  return Boolean(await getProjectAssignment(projectId, userId, organizationId));
 }
 
 export async function canUpdateAssignedTask(taskId: string, userId: string) {
-  return Boolean(await getTaskProjectAssignment(taskId, userId));
+  const organizationId = await getCurrentOrganizationId();
+  return Boolean(await getTaskProjectAssignment(taskId, userId, organizationId));
 }
 
 export async function canUpdateOwnedTask(taskId: string, userId: string) {
-  return Boolean(await getTaskOwnerAssignment(taskId, userId));
+  const organizationId = await getCurrentOrganizationId();
+  return Boolean(await getTaskOwnerAssignment(taskId, userId, organizationId));
 }
 
 export async function updateProjectTaskWorkflow(input: {
+  organizationId: string;
   projectId: string;
   templateId: string | null;
   statuses: TaskWorkflowStatus[];
@@ -660,11 +761,13 @@ export async function updateProjectTaskWorkflow(input: {
 }
 
 export async function saveTaskStatusTemplate(input: {
+  organizationId: string;
   name: string;
   statuses: TaskWorkflowStatus[];
   actorId: string;
 }) {
   const saved = await createTaskStatusTemplateRecord({
+    organizationId: input.organizationId,
     name: input.name,
     statuses: input.statuses,
     createdById: input.actorId,

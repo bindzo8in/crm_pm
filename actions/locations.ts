@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { ActionResponse, errorResponse, successResponse } from "@/lib/action-response";
 import { env } from "@/lib/env";
 import { isOrganizationSetupOwner } from "@/lib/organization-setup-access";
+import { isPlatformSuperAdmin } from "@/lib/global-role";
 import prisma from "@/lib/prisma";
 import { headers } from "next/headers";
 import { z } from "zod";
@@ -73,7 +74,11 @@ export async function searchMapPlaces(
   const requestHeaders = await headers();
   const session = await auth.api.getSession({ headers: requestHeaders });
   const organizationId = session?.session.activeOrganizationId;
-  if (!session?.user || !organizationId) {
+  if (
+    !session?.user ||
+    isPlatformSuperAdmin(session.user.role) ||
+    !organizationId
+  ) {
     return errorResponse("Sign in and select an organization to search places.");
   }
 

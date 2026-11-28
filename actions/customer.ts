@@ -1,6 +1,9 @@
 'use server'
 
-import { checkOrganizationPermission } from "@/lib/organization-authorization";
+import {
+  checkOrganizationPermission,
+  getActiveOrganizationId,
+} from "@/lib/organization-authorization";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@/app/generated/prisma/client";
@@ -32,9 +35,12 @@ async function getCustomerReadScope(): Promise<CustomerReadScope | null> {
     }),
   ]);
   if (!readAll.success && !readOwn.success) return null;
+  const organizationId = await getActiveOrganizationId(requestHeaders);
+  if (!organizationId) return null;
 
   return {
     userId: session.user.id,
+    organizationId,
     canReadAll: readAll.success,
   };
 }
@@ -80,7 +86,12 @@ export async function CheckCustomerDisplayName(input: unknown) {
   }
 
   try {
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) {
+      return { success: false, duplicate: false, message: "Choose an organization first." };
+    }
     const duplicate = await findActiveCustomerByDisplayName(
+      organizationId,
       validatedInput.data.displayName,
       validatedInput.data.customerId
     );
@@ -103,6 +114,10 @@ export async function CreateCustomer(data: CustomerSchema) {
     if (!session?.user) {
       return { error: "Unauthorized", message: "Sign in before creating a customer" };
     }
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) {
+      return { error: "Organization required", message: "Choose an organization before creating a customer" };
+    }
 
     // Validate the input data
     const validatedData = customerSchema.safeParse(data);
@@ -111,7 +126,10 @@ export async function CreateCustomer(data: CustomerSchema) {
       return { error: "Invalid data", message: "Invalid data provided" }
     }
     attemptedDisplayName = validatedData.data.displayName;
-    const duplicate = await findActiveCustomerByDisplayName(validatedData.data.displayName);
+    const duplicate = await findActiveCustomerByDisplayName(
+      organizationId,
+      validatedData.data.displayName,
+    );
     if (duplicate) {
       return duplicateDisplayNameResponse(validatedData.data.displayName);
     }
@@ -120,6 +138,7 @@ export async function CreateCustomer(data: CustomerSchema) {
     const customer = await prisma.customer.create({
       data: {
         ...customerData,
+        organizationId,
         documents: documents as Prisma.InputJsonValue,
         createdById: session.user.id,
       },
@@ -158,8 +177,13 @@ export async function UpdateCustomer(data: CustomerSchema) {
     if (!validatedData.success) {
       return { error: "Invalid data", message: "Invalid data provided" }
     }
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) {
+      return { error: "Organization required", message: "Choose an organization before updating a customer" };
+    }
     attemptedDisplayName = validatedData.data.displayName;
     const duplicate = await findActiveCustomerByDisplayName(
+      organizationId,
       validatedData.data.displayName,
       validatedData.data.id
     );
@@ -168,15 +192,16 @@ export async function UpdateCustomer(data: CustomerSchema) {
     }
 
     const { documents, ...customerData } = validatedData.data;
-    await prisma.customer.update({
-      where: {
-        id: validatedData.data.id
-      },
+    const updated = await prisma.customer.updateMany({
+      where: { id: validatedData.data.id, organizationId },
       data: {
         ...customerData,
         documents: documents as Prisma.InputJsonValue,
       },
     })
+    if (updated.count === 0) {
+      return { error: "Not found", message: "Customer not found" };
+    }
 
     return { success: true, message: "Customer updated successfully" }
   } catch (error) {
@@ -333,15 +358,20 @@ export async function DeleteCustomer(id: string) {
     if (!(await hasCustomerPermission("delete"))) {
       return { error: "Unauthorized", message: "You do not have permission to delete a customer" }
     }
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) {
+      return { error: "Organization required", message: "Choose an organization before deleting a customer" };
+    }
 
-    await prisma.customer.update({
-      where: {
-        id
-      },
+    const deleted = await prisma.customer.updateMany({
+      where: { id, organizationId },
       data: {
         deletedAt: new Date()
       }
     })
+    if (deleted.count === 0) {
+      return { error: "Not found", message: "Customer not found" };
+    }
 
     return { success: true, message: "Customer deleted successfully" }
   } catch (error) {

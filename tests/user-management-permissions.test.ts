@@ -10,10 +10,10 @@ import {
 import { isLeaveManager } from "@/lib/leave-permissions";
 import { canAccessRoute } from "@/lib/route-permissions";
 
-test("user directory access is limited to privileged users and HR staff", () => {
+test("organization member directory access is limited to organization managers and HR staff", () => {
   assert.equal(
     canManageUserDirectory(UserRole.SUPER_ADMIN, null),
-    true,
+    false,
   );
   assert.equal(canManageUserDirectory(UserRole.ADMIN, null), true);
   assert.equal(
@@ -77,7 +77,7 @@ test("HR may assign only staff departments, and users routing excludes other sta
       null,
       UserRole.STAFF,
     ),
-    true,
+    false,
   );
   assert.equal(
     canAccessRoute("/dashboard/users", UserRole.STAFF, Department.HR),
@@ -120,14 +120,14 @@ test("employment status management preserves HR and role boundaries", () => {
   );
 });
 
-test("attendance report inclusion lets super admins manage every role", () => {
+test("attendance report inclusion remains organization-scoped", () => {
   assert.equal(
     canManageAttendanceReportInclusion(
       UserRole.SUPER_ADMIN,
       null,
       UserRole.SUPER_ADMIN,
     ),
-    true,
+    false,
   );
   assert.equal(
     canManageAttendanceReportInclusion(
@@ -135,7 +135,7 @@ test("attendance report inclusion lets super admins manage every role", () => {
       null,
       UserRole.ADMIN,
     ),
-    true,
+    false,
   );
   assert.equal(
     canManageAttendanceReportInclusion(

@@ -134,12 +134,21 @@ function projectFilters(query: ProjectQuery): Prisma.ProjectWhereInput {
 
 export async function getProjectPage(
   query: ProjectQuery,
-  actor: { id: string; canReadAll: boolean; canViewBudget: boolean },
+  actor: {
+    id: string;
+    organizationId: string;
+    canReadAll: boolean;
+    canViewBudget: boolean;
+  },
 ) {
   const filters = projectFilters(query);
-  const accessFilter = actor.canReadAll ? {} : assignedProjectFilter(actor.id);
+  const accessFilter: Prisma.ProjectWhereInput = {
+    organizationId: actor.organizationId,
+    ...(!actor.canReadAll ? assignedProjectFilter(actor.id) : {}),
+  };
   const today = new Date(`${getAttendanceDate()}T00:00:00.000Z`);
   const baseWhere: Prisma.ProjectWhereInput = {
+    organizationId: actor.organizationId,
     deletedAt: null,
     AND: [filters, accessFilter],
   };
@@ -203,7 +212,7 @@ export async function getProjectPage(
       const projectManagers = await tx.user.findMany({
         where: {
           managedProjects: {
-            some: { deletedAt: null, ...accessFilter },
+            some: { deletedAt: null, organizationId: actor.organizationId },
           },
         },
         select: { id: true, name: true },
@@ -213,7 +222,9 @@ export async function getProjectPage(
       const teamMembers = await tx.user.findMany({
         where: {
           projectMemberships: {
-            some: { project: { deletedAt: null, ...accessFilter } },
+            some: {
+              project: { deletedAt: null, organizationId: actor.organizationId },
+            },
           },
         },
         select: { id: true, name: true },
@@ -284,6 +295,7 @@ export async function getProjectTaskWorkspacePage(
   query: ProjectTaskWorkspaceQuery,
   actor: {
     id: string;
+    organizationId: string;
     canReadAll: boolean;
     canReadAssigned: boolean;
     canReadOwn: boolean;
@@ -292,7 +304,7 @@ export async function getProjectTaskWorkspacePage(
   const today = new Date(`${getAttendanceDate()}T00:00:00.000Z`);
   const nextWeek = new Date(today.getTime() + 8 * 24 * 60 * 60 * 1000);
   const accessWhere: Prisma.ProjectTaskWhereInput = {
-    project: { deletedAt: null },
+    project: { deletedAt: null, organizationId: actor.organizationId },
     ...taskAccessFilter(actor),
   };
   const filters: Prisma.ProjectTaskWhereInput[] = [];
@@ -339,7 +351,13 @@ export async function getProjectTaskWorkspacePage(
   };
   const taskListWhere: Prisma.ProjectTaskWhereInput = {
     AND: [
-      { project: { deletedAt: null }, parentTaskId: null },
+      {
+        project: {
+          deletedAt: null,
+          organizationId: actor.organizationId,
+        },
+        parentTaskId: null,
+      },
       {
         OR: [
           where,
@@ -458,11 +476,13 @@ export async function getProjectTaskWorkspacePage(
 }
 
 export async function getTaskCreationProjectOptions(
+  organizationId: string,
   userId: string,
   canReadAllProjects: boolean,
 ) {
   const projects = await prisma.project.findMany({
     where: {
+      organizationId,
       deletedAt: null,
       ...(!canReadAllProjects ? assignedProjectFilter(userId) : {}),
     },
@@ -507,6 +527,7 @@ export async function getProjectById(
   projectId: string,
   actor: {
     id: string;
+    organizationId: string;
     canReadAll: boolean;
     canViewBudget: boolean;
     canManageProjects: boolean;
@@ -515,6 +536,7 @@ export async function getProjectById(
   const project = await prisma.project.findFirst({
     where: {
       id: projectId,
+      organizationId: actor.organizationId,
       deletedAt: null,
       ...(actor.canReadAll ? {} : assignedProjectFilter(actor.id)),
     },
@@ -574,10 +596,14 @@ export async function getProjectById(
   };
 }
 
-export async function getProjectFormOptions(userIds: string[] = []) {
+export async function getProjectFormOptions(
+  organizationId: string,
+  userIds: string[] = [],
+) {
   const users = await prisma.user.findMany({
     where: {
       id: { in: userIds },
+      organizationMemberships: { some: { organizationId } },
       banned: { not: true },
       employmentStatus: EmploymentStatus.ACTIVE,
     },
@@ -592,9 +618,9 @@ export async function getProjectFormOptions(userIds: string[] = []) {
   return { users };
 }
 
-export async function getProjectTeamById(projectId: string) {
+export async function getProjectTeamById(projectId: string, organizationId: string) {
   return prisma.project.findFirst({
-    where: { id: projectId, deletedAt: null },
+    where: { id: projectId, organizationId, deletedAt: null },
     select: {
       id: true,
       projectNumber: true,
@@ -628,8 +654,13 @@ export async function getProjectTeamById(projectId: string) {
 
 const projectUserPageSize = 20;
 
-export async function getProjectUserPage(search: string, page: number) {
+export async function getProjectUserPage(
+  organizationId: string,
+  search: string,
+  page: number,
+) {
   const where: Prisma.UserWhereInput = {
+    organizationMemberships: { some: { organizationId } },
     banned: { not: true },
     employmentStatus: EmploymentStatus.ACTIVE,
     ...(search
@@ -663,9 +694,12 @@ export async function getProjectUserPage(search: string, page: number) {
   };
 }
 
-export async function getProposalForConversion(proposalId: string) {
+export async function getProposalForConversion(
+  proposalId: string,
+  organizationId: string,
+) {
   return prisma.proposal.findFirst({
-    where: { id: proposalId, status: "ACCEPTED" },
+    where: { id: proposalId, organizationId, status: "ACCEPTED" },
     select: {
       id: true,
       proposalNumber: true,
@@ -717,16 +751,19 @@ export async function getProposalForConversion(proposalId: string) {
   });
 }
 
-export async function getProjectByProposalId(proposalId: string) {
-  return prisma.project.findUnique({
-    where: { proposalId },
+export async function getProjectByProposalId(proposalId: string, organizationId: string) {
+  return prisma.project.findFirst({
+    where: { proposalId, organizationId },
     select: { id: true, projectNumber: true, proposalId: true },
   });
 }
 
-export async function getCustomerForProject(customerId: string) {
+export async function getCustomerForProject(
+  customerId: string,
+  organizationId: string,
+) {
   return prisma.customer.findFirst({
-    where: { id: customerId, deletedAt: null },
+    where: { id: customerId, organizationId, deletedAt: null },
     select: {
       id: true,
       customerNumber: true,
@@ -740,6 +777,7 @@ export async function getCustomerForProject(customerId: string) {
 }
 
 export async function getRelatedInvoicesForProject(
+  organizationId: string,
   customerId: string | null,
   proposalId: string | null,
 ) {
@@ -749,7 +787,7 @@ export async function getRelatedInvoicesForProject(
   if (!relatedRecords.length) return [];
 
   const invoices = await prisma.invoice.findMany({
-    where: { deletedAt: null, OR: relatedRecords },
+    where: { organizationId, deletedAt: null, OR: relatedRecords },
     select: {
       id: true,
       invoiceNumber: true,
@@ -767,10 +805,11 @@ export async function getRelatedInvoicesForProject(
   }));
 }
 
-export async function getUsersByIds(userIds: string[]) {
+export async function getUsersByIds(userIds: string[], organizationId: string) {
   return prisma.user.findMany({
     where: {
       id: { in: userIds },
+      organizationMemberships: { some: { organizationId } },
       banned: { not: true },
       employmentStatus: EmploymentStatus.ACTIVE,
     },
@@ -779,6 +818,7 @@ export async function getUsersByIds(userIds: string[]) {
 }
 
 export type NewProjectData = {
+  organizationId: string;
   name: string;
   customerId?: string | null;
   description?: string | null;
@@ -810,6 +850,7 @@ export async function createProjectRecord(
     ])];
     const project = await tx.project.create({
       data: {
+        organizationId: input.organizationId,
         name: input.name,
         customerId: input.customerId || null,
         proposalId: proposal?.id ?? null,
@@ -854,14 +895,14 @@ export async function createConvertedProjectRecord(
   snapshot: Prisma.InputJsonValue,
 ) {
   return prisma.$transaction(async (tx) => {
-    const existing = await tx.project.findUnique({
-      where: { proposalId },
+    const existing = await tx.project.findFirst({
+      where: { proposalId, organizationId: input.organizationId },
       select: { id: true, projectNumber: true, proposalId: true },
     });
     if (existing) return { project: existing, created: false };
 
-    const proposal = await tx.proposal.findUnique({
-      where: { id: proposalId },
+    const proposal = await tx.proposal.findFirst({
+      where: { id: proposalId, organizationId: input.organizationId },
       select: { status: true },
     });
     if (!proposal || proposal.status !== "ACCEPTED") {
@@ -869,6 +910,7 @@ export async function createConvertedProjectRecord(
     }
     const project = await tx.project.create({
       data: {
+        organizationId: input.organizationId,
         name: input.name,
         customerId: input.customerId || null,
         proposalId,
@@ -918,18 +960,19 @@ export async function updateProjectRecord(
   projectId: string,
   changes: ProjectChanges,
   actorId: string,
+  organizationId: string,
 ) {
   return prisma.$transaction(async (tx) => {
     const currentProjectManager = changes.projectManagerId === undefined
       ? null
       : await tx.project.findFirst({
-        where: { id: projectId, deletedAt: null },
+        where: { id: projectId, organizationId, deletedAt: null },
         select: { projectManagerId: true },
       });
     const currentMembers = changes.teamMemberIds === undefined
       ? []
       : await tx.projectMember.findMany({
-        where: { projectId },
+        where: { projectId, project: { organizationId } },
         select: { userId: true },
       });
     const currentIds = new Set(currentMembers.map(({ userId }) => userId));
@@ -937,8 +980,8 @@ export async function updateProjectRecord(
     const toRemove = [...currentIds].filter((userId) => !desiredIds.has(userId));
     const toAdd = [...desiredIds].filter((userId) => !currentIds.has(userId));
 
-    await tx.project.update({
-      where: { id: projectId, deletedAt: null },
+    const updated = await tx.project.updateMany({
+      where: { id: projectId, organizationId, deletedAt: null },
       data: {
         ...(changes.name !== undefined ? { name: changes.name } : {}),
         ...(changes.customerId !== undefined ? { customerId: changes.customerId || null } : {}),
@@ -956,8 +999,15 @@ export async function updateProjectRecord(
           : {}),
       },
     });
+    if (updated.count !== 1) throw new Error("Project not found.");
     if (toRemove.length) {
-      await tx.projectMember.deleteMany({ where: { projectId, userId: { in: toRemove } } });
+      await tx.projectMember.deleteMany({
+        where: {
+          projectId,
+          project: { organizationId },
+          userId: { in: toRemove },
+        },
+      });
     }
     if (toAdd.length) {
       await tx.projectMember.createMany({
@@ -992,10 +1042,12 @@ export async function updateProjectRecord(
         },
       },
     });
-    return tx.project.findUniqueOrThrow({
-      where: { id: projectId },
+    const project = await tx.project.findFirst({
+      where: { id: projectId, organizationId },
       select: { id: true, projectNumber: true },
     });
+    if (!project) throw new Error("Project not found.");
+    return project;
   });
 }
 
@@ -1003,20 +1055,22 @@ export async function updateProjectStatusRecord(
   projectId: string,
   status: ProjectStatus,
   actorId: string,
+  organizationId: string,
 ) {
   return prisma.$transaction(async (tx) => {
     const current = await tx.project.findFirst({
-      where: { id: projectId, deletedAt: null },
+      where: { id: projectId, organizationId, deletedAt: null },
       select: { status: true },
     });
     if (!current) return null;
-    await tx.project.update({
-      where: { id: projectId },
+    const updated = await tx.project.updateMany({
+      where: { id: projectId, organizationId },
       data: {
         status,
         completedAt: status === "COMPLETED" ? new Date() : null,
       },
     });
+    if (updated.count !== 1) return null;
     await tx.projectActivity.create({
       data: {
         projectId,
@@ -1030,19 +1084,24 @@ export async function updateProjectStatusRecord(
   });
 }
 
-export async function getProjectStatus(projectId: string) {
+export async function getProjectStatus(projectId: string, organizationId: string) {
   return prisma.project.findFirst({
-    where: { id: projectId, deletedAt: null },
+    where: { id: projectId, organizationId, deletedAt: null },
     select: { status: true },
   });
 }
 
-export async function archiveProjectRecord(projectId: string, actorId: string) {
+export async function archiveProjectRecord(
+  projectId: string,
+  actorId: string,
+  organizationId: string,
+) {
   return prisma.$transaction(async (tx) => {
-    await tx.project.update({
-      where: { id: projectId, deletedAt: null },
+    const result = await tx.project.updateMany({
+      where: { id: projectId, organizationId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
+    if (result.count !== 1) return false;
     await tx.projectActivity.create({
       data: {
         projectId,
@@ -1051,6 +1110,7 @@ export async function archiveProjectRecord(projectId: string, actorId: string) {
         message: "Project archived",
       },
     });
+    return true;
   });
 }
 
@@ -1071,8 +1131,19 @@ export async function createProjectTaskRecord(
     folderId: string;
   },
   actorId: string,
+  organizationId: string,
 ) {
   return prisma.$transaction(async (tx) => {
+    const project = await tx.project.findFirst({
+      where: {
+        id: input.projectId,
+        organizationId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (!project) throw new Error("Project not found.");
+
     const task = await tx.projectTask.create({
       data: {
         ...input,
@@ -1101,48 +1172,116 @@ export async function createProjectTaskRecord(
   });
 }
 
-export async function getProjectTaskFolders(projectId: string) {
+export async function getProjectTaskFolders(
+  projectId: string,
+  organizationId: string,
+) {
   return prisma.projectTaskFolder.findMany({
-    where: { projectId },
+    where: { projectId, project: { organizationId } },
     select: { id: true, projectId: true, name: true, parentId: true },
     orderBy: [{ parentId: "asc" }, { name: "asc" }],
   });
 }
 
-export async function getProjectTaskFolder(folderId: string) {
-  return prisma.projectTaskFolder.findUnique({
-    where: { id: folderId },
+export async function getProjectTaskFolder(
+  folderId: string,
+  organizationId: string,
+) {
+  return prisma.projectTaskFolder.findFirst({
+    where: { id: folderId, project: { organizationId } },
     select: { id: true, projectId: true, name: true, parentId: true },
   });
 }
 
 export async function createProjectTaskFolderRecord(input: {
+  organizationId: string;
   projectId: string;
   name: string;
   parentId: string | null;
 }) {
-  return prisma.projectTaskFolder.create({
-    data: input,
-    select: { id: true, name: true, parentId: true },
+  return prisma.$transaction(async (tx) => {
+    const project = await tx.project.findFirst({
+      where: {
+        id: input.projectId,
+        organizationId: input.organizationId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (!project) throw new Error("Project not found.");
+    if (input.parentId) {
+      const parent = await tx.projectTaskFolder.findFirst({
+        where: {
+          id: input.parentId,
+          projectId: input.projectId,
+          project: { organizationId: input.organizationId },
+        },
+        select: { id: true },
+      });
+      if (!parent) throw new Error("Parent folder not found.");
+    }
+    return tx.projectTaskFolder.create({
+      data: {
+        projectId: input.projectId,
+        name: input.name,
+        parentId: input.parentId,
+      },
+      select: { id: true, name: true, parentId: true },
+    });
   });
 }
 
 export async function updateProjectTaskFolderRecord(input: {
+  organizationId: string;
+  projectId: string;
   folderId: string;
   name: string;
   parentId: string | null;
 }) {
-  return prisma.projectTaskFolder.update({
-    where: { id: input.folderId },
-    data: { name: input.name, parentId: input.parentId },
+  const result = await prisma.$transaction(async (tx) => {
+    if (input.parentId) {
+      const parent = await tx.projectTaskFolder.findFirst({
+        where: {
+          id: input.parentId,
+          projectId: input.projectId,
+          project: { organizationId: input.organizationId },
+        },
+        select: { id: true },
+      });
+      if (!parent) throw new Error("Parent folder not found.");
+    }
+    return tx.projectTaskFolder.updateMany({
+      where: {
+        id: input.folderId,
+        projectId: input.projectId,
+        project: { organizationId: input.organizationId },
+      },
+      data: { name: input.name, parentId: input.parentId },
+    });
+  });
+  if (result.count !== 1) throw new Error("Folder not found.");
+  return prisma.projectTaskFolder.findFirstOrThrow({
+    where: {
+      id: input.folderId,
+      projectId: input.projectId,
+      project: { organizationId: input.organizationId },
+    },
     select: { id: true, name: true, parentId: true },
   });
 }
 
-export async function deleteProjectTaskFolderRecord(projectId: string, folderId: string) {
+export async function deleteProjectTaskFolderRecord(
+  projectId: string,
+  folderId: string,
+  organizationId: string,
+) {
   return prisma.$transaction(async (tx) => {
     const folder = await tx.projectTaskFolder.findFirst({
-      where: { id: folderId, projectId },
+      where: {
+        id: folderId,
+        projectId,
+        project: { organizationId },
+      },
       select: { id: true, name: true, parentId: true },
     });
     if (!folder) return false;
@@ -1150,7 +1289,12 @@ export async function deleteProjectTaskFolderRecord(projectId: string, folderId:
     let destinationId = folder.parentId;
     if (!destinationId) {
       const sibling = await tx.projectTaskFolder.findFirst({
-        where: { projectId, parentId: null, id: { not: folderId } },
+        where: {
+          projectId,
+          parentId: null,
+          id: { not: folderId },
+          project: { organizationId },
+        },
         select: { id: true },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       });
@@ -1166,21 +1310,34 @@ export async function deleteProjectTaskFolderRecord(projectId: string, folderId:
     }
 
     await tx.projectTask.updateMany({
-      where: { projectId, folderId },
+      where: { projectId, folderId, project: { organizationId } },
       data: { folderId: destinationId },
     });
     await tx.projectTaskFolder.updateMany({
-      where: { projectId, parentId: folderId },
+      where: {
+        projectId,
+        parentId: folderId,
+        project: { organizationId },
+      },
       data: { parentId: destinationId },
     });
-    await tx.projectTaskFolder.delete({ where: { id: folderId } });
+    await tx.projectTaskFolder.deleteMany({
+      where: {
+        id: folderId,
+        projectId,
+        project: { organizationId },
+      },
+    });
     return true;
   });
 }
 
-export async function findTaskForProject(taskId: string) {
+export async function findTaskForProject(taskId: string, organizationId: string) {
   return prisma.projectTask.findFirst({
-    where: { id: taskId, project: { deletedAt: null } },
+    where: {
+      id: taskId,
+      project: { organizationId, deletedAt: null },
+    },
     select: {
       id: true,
       projectId: true,
@@ -1213,15 +1370,17 @@ export async function updateProjectTaskRecord(
     sprintPoints?: number | null;
   },
   actorId: string,
+  organizationId: string,
 ) {
   return prisma.$transaction(async (tx) => {
-    const current = await tx.projectTask.findUniqueOrThrow({
-      where: { id: taskId },
+    const current = await tx.projectTask.findFirst({
+      where: { id: taskId, project: { organizationId } },
       select: { projectId: true, status: true, statusGroup: true, title: true },
     });
+    if (!current) throw new Error("Task not found.");
     const { statusLabel, ...taskChanges } = changes;
-    const updated = await tx.projectTask.update({
-      where: { id: taskId },
+    const updateResult = await tx.projectTask.updateMany({
+      where: { id: taskId, project: { organizationId } },
       data: {
         ...taskChanges,
         ...(changes.statusGroup !== undefined && changes.statusGroup !== current.statusGroup
@@ -1229,6 +1388,7 @@ export async function updateProjectTaskRecord(
           : {}),
       },
     });
+    if (updateResult.count !== 1) throw new Error("Task not found.");
     await tx.projectActivity.create({
       data: {
         projectId: current.projectId,
@@ -1240,13 +1400,20 @@ export async function updateProjectTaskRecord(
         metadata: { taskId, from: current.status, to: changes.status ?? current.status },
       },
     });
-    return updated;
+    const updatedTask = await tx.projectTask.findFirst({
+      where: { id: taskId, project: { organizationId } },
+    });
+    if (!updatedTask) throw new Error("Task not found.");
+    return updatedTask;
   });
 }
 
-export async function getProjectTaskWorkflow(projectId: string) {
+export async function getProjectTaskWorkflow(
+  projectId: string,
+  organizationId: string,
+) {
   const project = await prisma.project.findFirst({
-    where: { id: projectId, deletedAt: null },
+    where: { id: projectId, organizationId, deletedAt: null },
     select: { id: true, taskStatuses: true, workflowTemplateId: true },
   });
   if (!project) return null;
@@ -1260,6 +1427,7 @@ export async function getProjectTaskPreview(
   taskId: string,
   actor: {
     id: string;
+    organizationId: string;
     canReadAll: boolean;
     canReadAssigned?: boolean;
     canReadOwn?: boolean;
@@ -1268,7 +1436,10 @@ export async function getProjectTaskPreview(
   const task = await prisma.projectTask.findFirst({
     where: {
       id: taskId,
-      project: { deletedAt: null },
+      project: {
+        organizationId: actor.organizationId,
+        deletedAt: null,
+      },
       ...taskAccessFilter(actor),
     },
     select: {
@@ -1335,9 +1506,14 @@ export async function getProjectTaskPreview(
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       },
       dependencies: {
-        where: actor.canReadAll
-          ? {}
-          : { dependsOnTask: taskAccessFilter(actor) },
+        where: {
+          dependsOnTask: {
+            project: { organizationId: actor.organizationId },
+            ...(!actor.canReadAll
+              ? taskAccessFilter(actor)
+              : {}),
+          },
+        },
         select: {
           id: true,
           relationType: true,
@@ -1350,7 +1526,10 @@ export async function getProjectTaskPreview(
       blockedTasks: {
         where: {
           relationType: "BLOCKED_BY",
-          ...(actor.canReadAll ? {} : { task: taskAccessFilter(actor) }),
+          task: {
+            project: { organizationId: actor.organizationId },
+            ...(!actor.canReadAll ? taskAccessFilter(actor) : {}),
+          },
         },
         select: {
           id: true,
@@ -1399,7 +1578,7 @@ export async function getProjectTaskPreview(
       },
     },
   });
-  if (!task) return null;
+  if (!task) throw new Error("Task not found.");
   const { tasks: availableDependencies, ...project } = task.project;
   return {
     ...task,
@@ -1412,10 +1591,19 @@ export async function getProjectTaskPreview(
   };
 }
 
-export async function createTaskChecklistItem(taskId: string, title: string) {
+export async function createTaskChecklistItem(
+  taskId: string,
+  title: string,
+  organizationId: string,
+) {
   return prisma.$transaction(async (tx) => {
+    const task = await tx.projectTask.findFirst({
+      where: { id: taskId, project: { organizationId } },
+      select: { id: true },
+    });
+    if (!task) throw new Error("Task not found.");
     const lastItem = await tx.projectTaskChecklistItem.findFirst({
-      where: { taskId },
+      where: { taskId, task: { project: { organizationId } } },
       select: { sortOrder: true },
       orderBy: { sortOrder: "desc" },
     });
@@ -1430,24 +1618,32 @@ export async function updateTaskChecklistItem(
   taskId: string,
   itemId: string,
   isComplete: boolean,
+  organizationId: string,
 ) {
   const result = await prisma.projectTaskChecklistItem.updateMany({
-    where: { id: itemId, taskId },
+    where: { id: itemId, taskId, task: { project: { organizationId } } },
     data: { isComplete },
   });
   return result.count > 0;
 }
 
-export async function deleteTaskChecklistItem(taskId: string, itemId: string) {
+export async function deleteTaskChecklistItem(
+  taskId: string,
+  itemId: string,
+  organizationId: string,
+) {
   const result = await prisma.projectTaskChecklistItem.deleteMany({
-    where: { id: itemId, taskId },
+    where: { id: itemId, taskId, task: { project: { organizationId } } },
   });
   return result.count > 0;
 }
 
-export async function getTaskDependencyGraph(projectId: string) {
+export async function getTaskDependencyGraph(
+  projectId: string,
+  organizationId: string,
+) {
   return prisma.projectTask.findMany({
-    where: { projectId },
+    where: { projectId, project: { organizationId } },
     select: {
       id: true,
       dependencies: { select: { dependsOnTaskId: true, relationType: true } },
@@ -1459,16 +1655,42 @@ export async function createTaskDependency(
   taskId: string,
   dependsOnTaskId: string,
   relationType: "BLOCKED_BY" | "RELATED_TO",
+  organizationId: string,
 ) {
+  const foundTasks = await prisma.projectTask.findMany({
+    where: {
+      id: { in: [taskId, dependsOnTaskId] },
+      project: { organizationId },
+    },
+    select: { id: true, projectId: true },
+  });
+  const task = foundTasks.find(({ id }) => id === taskId);
+  const dependency = foundTasks.find(({ id }) => id === dependsOnTaskId);
+  if (
+    !task ||
+    !dependency ||
+    task.id === dependency.id ||
+    task.projectId !== dependency.projectId
+  ) {
+    throw new Error("Task not found in this organization.");
+  }
   return prisma.projectTaskDependency.create({
     data: { taskId, dependsOnTaskId, relationType },
     select: { id: true },
   });
 }
 
-export async function deleteTaskDependency(taskId: string, dependencyId: string) {
+export async function deleteTaskDependency(
+  taskId: string,
+  dependencyId: string,
+  organizationId: string,
+) {
   const result = await prisma.projectTaskDependency.deleteMany({
-    where: { id: dependencyId, taskId },
+    where: {
+      id: dependencyId,
+      taskId,
+      task: { project: { organizationId } },
+    },
   });
   return result.count > 0;
 }
@@ -1483,9 +1705,23 @@ export async function createTaskAttachment(
     fileSize: number;
   },
   uploadedById: string,
+  organizationId: string,
 ) {
   return prisma.$transaction(async (tx) => {
-    const count = await tx.projectTaskAttachment.count({ where: { taskId: input.taskId } });
+    const task = await tx.projectTask.findFirst({
+      where: {
+        id: input.taskId,
+        project: { organizationId },
+      },
+      select: { id: true },
+    });
+    if (!task) throw new Error("Task not found.");
+    const count = await tx.projectTaskAttachment.count({
+      where: {
+        taskId: input.taskId,
+        task: { project: { organizationId } },
+      },
+    });
     if (count >= 20) throw new Error("A task can have up to 20 attachments.");
     return tx.projectTaskAttachment.create({
       data: { ...input, uploadedById },
@@ -1494,21 +1730,47 @@ export async function createTaskAttachment(
   });
 }
 
-export async function getTaskAttachment(taskId: string, attachmentId: string) {
+export async function getTaskAttachment(
+  taskId: string,
+  attachmentId: string,
+  organizationId: string,
+) {
   return prisma.projectTaskAttachment.findFirst({
-    where: { id: attachmentId, taskId },
+    where: {
+      id: attachmentId,
+      taskId,
+      task: { project: { organizationId } },
+    },
     select: { id: true, publicId: true, resourceType: true },
   });
 }
 
-export async function deleteTaskAttachment(taskId: string, attachmentId: string) {
+export async function deleteTaskAttachment(
+  taskId: string,
+  attachmentId: string,
+  organizationId: string,
+) {
   const result = await prisma.projectTaskAttachment.deleteMany({
-    where: { id: attachmentId, taskId },
+    where: {
+      id: attachmentId,
+      taskId,
+      task: { project: { organizationId } },
+    },
   });
   return result.count > 0;
 }
 
-export async function createTaskComment(taskId: string, authorId: string, content: string) {
+export async function createTaskComment(
+  taskId: string,
+  authorId: string,
+  content: string,
+  organizationId: string,
+) {
+  const task = await prisma.projectTask.findFirst({
+    where: { id: taskId, project: { organizationId } },
+    select: { id: true },
+  });
+  if (!task) throw new Error("Task not found.");
   return prisma.projectTaskComment.create({
     data: { taskId, authorId, content },
     select: {
@@ -1520,10 +1782,23 @@ export async function createTaskComment(taskId: string, authorId: string, conten
   });
 }
 
-export async function startTaskTimeEntry(taskId: string, userId: string) {
+export async function startTaskTimeEntry(
+  taskId: string,
+  userId: string,
+  organizationId: string,
+) {
   return prisma.$transaction(async (tx) => {
+    const task = await tx.projectTask.findFirst({
+      where: { id: taskId, project: { organizationId } },
+      select: { id: true },
+    });
+    if (!task) throw new Error("Task not found.");
     const running = await tx.projectTaskTimeEntry.findFirst({
-      where: { userId, endedAt: null },
+      where: {
+        userId,
+        endedAt: null,
+        task: { project: { organizationId } },
+      },
       select: { id: true, taskId: true },
     });
     if (running) {
@@ -1539,10 +1814,19 @@ export async function startTaskTimeEntry(taskId: string, userId: string) {
   });
 }
 
-export async function stopTaskTimeEntry(taskId: string, userId: string) {
+export async function stopTaskTimeEntry(
+  taskId: string,
+  userId: string,
+  organizationId: string,
+) {
   return prisma.$transaction(async (tx) => {
     const running = await tx.projectTaskTimeEntry.findFirst({
-      where: { taskId, userId, endedAt: null },
+      where: {
+        taskId,
+        userId,
+        endedAt: null,
+        task: { project: { organizationId } },
+      },
       select: { id: true, startedAt: true },
     });
     if (!running) return false;
@@ -1552,20 +1836,33 @@ export async function stopTaskTimeEntry(taskId: string, userId: string) {
       Math.floor((endedAt.getTime() - running.startedAt.getTime()) / 1000),
     );
     const result = await tx.projectTaskTimeEntry.updateMany({
-      where: { id: running.id, endedAt: null },
+      where: {
+        id: running.id,
+        endedAt: null,
+        task: { project: { organizationId } },
+      },
       data: { endedAt, durationSeconds },
     });
     if (result.count === 0) return false;
-    await tx.projectTask.update({
-      where: { id: taskId },
+    await tx.projectTask.updateMany({
+      where: {
+        id: taskId,
+        project: { organizationId },
+      },
       data: { timeTrackedSeconds: { increment: durationSeconds } },
     });
     return true;
   });
 }
 
-export async function getTaskStatusTemplates() {
+export async function getTaskStatusTemplates(organizationId: string) {
   const templates = await prisma.projectTaskStatusTemplate.findMany({
+    where: {
+      OR: [
+        { organizationId },
+        { organizationId: null, isSystem: true },
+      ],
+    },
     select: { id: true, name: true, statuses: true, isSystem: true },
     orderBy: [{ isSystem: "desc" }, { name: "asc" }],
   });
@@ -1576,18 +1873,23 @@ export async function getTaskStatusTemplates() {
 }
 
 export async function createTaskStatusTemplateRecord(input: {
+  organizationId: string;
   name: string;
   statuses: Prisma.InputJsonValue;
   createdById: string;
 }) {
   return prisma.$transaction(async (tx) => {
     const existing = await tx.projectTaskStatusTemplate.findFirst({
-      where: { name: { equals: input.name, mode: "insensitive" } },
+      where: {
+        organizationId: input.organizationId,
+        name: { equals: input.name, mode: "insensitive" },
+      },
       select: { id: true },
     });
     if (existing) return false;
     await tx.projectTaskStatusTemplate.create({
       data: {
+        organizationId: input.organizationId,
         name: input.name,
         statuses: input.statuses,
         createdById: input.createdById,
@@ -1599,6 +1901,7 @@ export async function createTaskStatusTemplateRecord(input: {
 }
 
 export async function updateProjectTaskWorkflowRecord(input: {
+  organizationId: string;
   projectId: string;
   templateId: string | null;
   statuses: TaskWorkflowStatus[];
@@ -1606,14 +1909,24 @@ export async function updateProjectTaskWorkflowRecord(input: {
 }) {
   return prisma.$transaction(async (tx) => {
     const project = await tx.project.findFirst({
-      where: { id: input.projectId, deletedAt: null },
+      where: {
+        id: input.projectId,
+        organizationId: input.organizationId,
+        deletedAt: null,
+      },
       select: { taskStatuses: true },
     });
     if (!project) return { kind: "not-found" as const };
 
     if (input.templateId) {
-      const template = await tx.projectTaskStatusTemplate.findUnique({
-        where: { id: input.templateId },
+      const template = await tx.projectTaskStatusTemplate.findFirst({
+        where: {
+          id: input.templateId,
+          OR: [
+            { organizationId: input.organizationId },
+            { organizationId: null, isSystem: true },
+          ],
+        },
         select: { id: true },
       });
       if (!template) return { kind: "template-not-found" as const };
@@ -1627,6 +1940,7 @@ export async function updateProjectTaskWorkflowRecord(input: {
         by: ["status"],
         where: {
           projectId: input.projectId,
+          project: { organizationId: input.organizationId },
           status: { in: removedStatuses.map(({ id }) => id) },
         },
         _count: { _all: true },
@@ -1641,19 +1955,28 @@ export async function updateProjectTaskWorkflowRecord(input: {
       }
     }
 
-    await tx.project.update({
-      where: { id: input.projectId },
+    const projectUpdate = await tx.project.updateMany({
+      where: {
+        id: input.projectId,
+        organizationId: input.organizationId,
+        deletedAt: null,
+      },
       data: {
         taskStatuses: input.statuses,
         workflowTemplateId: input.templateId,
       },
     });
+    if (projectUpdate.count !== 1) return { kind: "not-found" as const };
 
     const currentGroups = new Map(currentStatuses.map(({ id, group }) => [id, group]));
     for (const status of input.statuses) {
       if (currentGroups.get(status.id) === status.group) continue;
       await tx.projectTask.updateMany({
-        where: { projectId: input.projectId, status: status.id },
+        where: {
+          projectId: input.projectId,
+          project: { organizationId: input.organizationId },
+          status: status.id,
+        },
         data: {
           statusGroup: status.group,
           ...(status.group === "DONE" ? { completedAt: new Date() } : { completedAt: null }),
@@ -1674,10 +1997,15 @@ export async function updateProjectTaskWorkflowRecord(input: {
   });
 }
 
-export async function getProjectAssignment(projectId: string, userId: string) {
+export async function getProjectAssignment(
+  projectId: string,
+  userId: string,
+  organizationId: string,
+) {
   const activeUser = await prisma.user.findFirst({
     where: {
       id: userId,
+      organizationMemberships: { some: { organizationId } },
       banned: { not: true },
       employmentStatus: EmploymentStatus.ACTIVE,
     },
@@ -1688,6 +2016,7 @@ export async function getProjectAssignment(projectId: string, userId: string) {
   return prisma.project.findFirst({
     where: {
       id: projectId,
+      organizationId,
       deletedAt: null,
       OR: [
         { projectManagerId: userId },
@@ -1698,31 +2027,55 @@ export async function getProjectAssignment(projectId: string, userId: string) {
   });
 }
 
-export async function getTaskProjectAssignment(taskId: string, userId: string) {
+export async function getTaskProjectAssignment(
+  taskId: string,
+  userId: string,
+  organizationId: string,
+) {
   return prisma.projectTask.findFirst({
-    where: { id: taskId, assigneeId: userId, project: { deletedAt: null } },
+    where: {
+      id: taskId,
+      assigneeId: userId,
+      project: { organizationId, deletedAt: null },
+    },
     select: { id: true, projectId: true },
   });
 }
 
-export async function getTaskOwnerAssignment(taskId: string, userId: string) {
+export async function getTaskOwnerAssignment(
+  taskId: string,
+  userId: string,
+  organizationId: string,
+) {
   return prisma.projectTask.findFirst({
     where: {
       id: taskId,
-      project: { deletedAt: null },
+      project: { organizationId, deletedAt: null },
       OR: [{ createdById: userId }, { assigneeId: userId }],
     },
     select: { id: true, projectId: true },
   });
 }
 
-export async function archiveTaskRecord(taskId: string, actorId: string) {
+export async function archiveTaskRecord(
+  taskId: string,
+  actorId: string,
+  organizationId: string,
+) {
   return prisma.$transaction(async (tx) => {
-    const task = await tx.projectTask.findUniqueOrThrow({
-      where: { id: taskId },
+    const task = await tx.projectTask.findFirst({
+      where: { id: taskId, project: { organizationId } },
       select: { projectId: true, title: true },
     });
-    await tx.projectTask.delete({ where: { id: taskId } });
+    if (!task) return null;
+    const deleted = await tx.projectTask.deleteMany({
+      where: {
+        id: taskId,
+        projectId: task.projectId,
+        project: { organizationId },
+      },
+    });
+    if (deleted.count !== 1) throw new Error("Task not found.");
     await tx.projectActivity.create({
       data: {
         projectId: task.projectId,

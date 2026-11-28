@@ -9,8 +9,8 @@ const notificationSelect = {
   createdAt: true,
 } as const;
 
-export async function listUserNotifications(userId: string) {
-  const where = { userId };
+export async function listUserNotifications(userId: string, organizationId: string) {
+  const where = { userId, organizationId };
   const [notifications, unreadCount] = await Promise.all([
     prisma.notification.findMany({
       where,
@@ -23,16 +23,20 @@ export async function listUserNotifications(userId: string) {
   return { notifications, unreadCount };
 }
 
-export function markUserNotificationRead(userId: string, id: string) {
+export function markUserNotificationRead(
+  userId: string,
+  organizationId: string,
+  id: string,
+) {
   return prisma.notification.updateMany({
-    where: { id, userId, readAt: null },
+    where: { id, userId, organizationId, readAt: null },
     data: { readAt: new Date() },
   });
 }
 
-export function markAllUserNotificationsRead(userId: string) {
+export function markAllUserNotificationsRead(userId: string, organizationId: string) {
   return prisma.notification.updateMany({
-    where: { userId, readAt: null },
+    where: { userId, organizationId, readAt: null },
     data: { readAt: new Date() },
   });
 }

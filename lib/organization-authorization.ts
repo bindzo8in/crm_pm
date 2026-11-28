@@ -1,5 +1,6 @@
 import { EmploymentStatus } from "@/app/generated/prisma/enums";
 import { auth } from "@/lib/auth";
+import { isPlatformSuperAdmin } from "@/lib/global-role";
 import { organizationStatement } from "@/lib/organization-permissions";
 import prisma from "@/lib/prisma";
 import { headers } from "next/headers";
@@ -18,7 +19,13 @@ export async function getActiveOrganizationId(
   const resolvedHeaders = requestHeaders ?? (await headers());
   const session = await auth.api.getSession({ headers: resolvedHeaders });
   const organizationId = session?.session.activeOrganizationId;
-  if (!session?.user || !organizationId) return null;
+  if (
+    !session?.user ||
+    isPlatformSuperAdmin(session.user.role) ||
+    !organizationId
+  ) {
+    return null;
+  }
 
   const [user, member] = await Promise.all([
     prisma.user.findUnique({
@@ -50,7 +57,13 @@ export async function checkOrganizationPermission({
   const requestHeaders = providedHeaders ?? (await headers());
   const session = await auth.api.getSession({ headers: requestHeaders });
   const organizationId = session?.session.activeOrganizationId;
-  if (!session?.user || !organizationId) return { success: false };
+  if (
+    !session?.user ||
+    isPlatformSuperAdmin(session.user.role) ||
+    !organizationId
+  ) {
+    return { success: false };
+  }
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },

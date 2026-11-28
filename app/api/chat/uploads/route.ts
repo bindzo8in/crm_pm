@@ -2,6 +2,7 @@ import { v2 as cloudinary } from "cloudinary";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
+import { canAccessProjectChat } from "@/lib/project-chat-access";
 import prisma from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -54,9 +55,22 @@ export async function POST(request: Request) {
     const conversationId = z.string().min(1).parse(formData.get("conversationId"));
     const membership = await prisma.conversationMember.findUnique({
       where: { conversationId_userId: { conversationId, userId: session.user.id } },
-      select: { conversationId: true },
+      select: {
+        conversationId: true,
+        conversation: { select: { projectId: true } },
+      },
     });
     if (!membership) return Response.json({ message: "You are not a participant in this conversation." }, { status: 403 });
+    if (
+      membership.conversation.projectId &&
+      !(await canAccessProjectChat(
+        membership.conversation.projectId,
+        session.user.id,
+        request.headers,
+      ))
+    ) {
+      return Response.json({ message: "You are not allowed to upload to this project conversation." }, { status: 403 });
+    }
 
     const file = formData.get("file");
     if (!(file instanceof File)) return Response.json({ message: "Choose a file to upload." }, { status: 400 });

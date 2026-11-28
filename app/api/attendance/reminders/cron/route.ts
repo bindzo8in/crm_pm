@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { sendAttendanceReminders } from "@/services/attendance-reminder-service";
 import { sendAttendanceScheduleReminders } from "@/services/attendance-schedule-reminder-service";
+import prisma from "@/lib/prisma";
 
 export const runtime = "nodejs";
 
@@ -29,15 +30,44 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const morningReminders = await sendAttendanceReminders();
-    const scheduleReminders = await sendAttendanceScheduleReminders();
+    const organizations = await prisma.organization.findMany({
+      select: { id: true },
+    });
+    const organizationResults = await Promise.all(
+      organizations.map(async ({ id }) => {
+        const [morning, schedule] = await Promise.all([
+          sendAttendanceReminders(id),
+          sendAttendanceScheduleReminders(id),
+        ]);
+        return { morning, schedule };
+      }),
+    );
     const result = {
-      notified: morningReminders.notified + scheduleReminders.notified,
-      pushSent: morningReminders.pushSent + scheduleReminders.pushSent,
-      pushSkipped: morningReminders.pushSkipped + scheduleReminders.pushSkipped,
-      pushFailures: morningReminders.pushFailures + scheduleReminders.pushFailures,
-      ...(morningReminders.skipped && scheduleReminders.skipped
-        ? { skipped: morningReminders.skipped }
+      notified: organizationResults.reduce(
+        (total, { morning, schedule }) =>
+          total + morning.notified + schedule.notified,
+        0,
+      ),
+      pushSent: organizationResults.reduce(
+        (total, { morning, schedule }) =>
+          total + morning.pushSent + schedule.pushSent,
+        0,
+      ),
+      pushSkipped: organizationResults.reduce(
+        (total, { morning, schedule }) =>
+          total + morning.pushSkipped + schedule.pushSkipped,
+        0,
+      ),
+      pushFailures: organizationResults.reduce(
+        (total, { morning, schedule }) =>
+          total + morning.pushFailures + schedule.pushFailures,
+        0,
+      ),
+      ...(organizationResults.length > 0 &&
+      organizationResults.every(({ morning, schedule }) =>
+        Boolean(morning.skipped && schedule.skipped)
+      )
+        ? { skipped: "Outside the configured reminder windows for every organization." }
         : {}),
     };
     return NextResponse.json({ success: true, ...result }, {

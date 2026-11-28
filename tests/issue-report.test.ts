@@ -18,7 +18,7 @@ test("issue reporting is available to every staff member, including those withou
 });
 
 test("only administrators and HR staff can review team reports", () => {
-  assert.equal(canManageIssueReports({ role: UserRole.SUPER_ADMIN, department: null }), true);
+  assert.equal(canManageIssueReports({ role: UserRole.SUPER_ADMIN, department: null }), false);
   assert.equal(canManageIssueReports({ role: UserRole.ADMIN, department: null }), true);
   assert.equal(canManageIssueReports({ role: UserRole.STAFF, department: Department.HR }), true);
   assert.equal(canManageIssueReports({ role: UserRole.STAFF, department: Department.SALES }), false);

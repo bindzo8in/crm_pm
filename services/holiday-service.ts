@@ -114,19 +114,24 @@ async function sendHolidayPushNotifications(
 }
 
 export async function getHolidaysForYear(
+  organizationId: string,
   year: number,
   departments?: readonly Department[],
 ) {
   return listHolidays(
+    organizationId,
     new Date(Date.UTC(year, 0, 1)),
     new Date(Date.UTC(year + 1, 0, 1) - 1),
     departments,
   );
 }
 
-export async function getUpcomingHolidays(departments?: readonly Department[]) {
+export async function getUpcomingHolidays(
+  organizationId: string,
+  departments?: readonly Department[],
+) {
   const today = parseDateOnly(getAttendanceDate());
-  return listUpcomingHolidays(today, departments);
+  return listUpcomingHolidays(organizationId, today, departments);
 }
 
 export async function addHoliday(data: HolidayWriteData) {
@@ -156,7 +161,10 @@ export async function addHoliday(data: HolidayWriteData) {
   }
 }
 
-export async function editHoliday(id: string, data: HolidayWriteData) {
+export async function editHoliday(
+  id: string,
+  data: HolidayWriteData,
+) {
   try {
     const result = await updateHolidayEvent(id, data);
     await broadcastNotificationUpdates(
@@ -186,9 +194,9 @@ export async function editHoliday(id: string, data: HolidayWriteData) {
   }
 }
 
-export async function removeHoliday(id: string) {
+export async function removeHoliday(id: string, organizationId: string) {
   try {
-    await deleteHolidayEvent(id);
+    await deleteHolidayEvent(id, organizationId);
   } catch (error) {
     if (error instanceof Error && error.message === "Holiday not found.") {
       throw new ActionError("Holiday not found.", 404);

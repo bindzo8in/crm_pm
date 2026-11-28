@@ -1,6 +1,9 @@
 "use server";
 
-import { checkOrganizationPermission } from "@/lib/organization-authorization";
+import {
+  checkOrganizationPermission,
+  getActiveOrganizationId,
+} from "@/lib/organization-authorization";
 import { errorResponse, successResponse } from "@/lib/action-response";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
@@ -15,15 +18,18 @@ const tariffGridQuerySchema = z.object({
 });
 
 async function checkPermission(permission: "read" | "create" | "update" | "delete") {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const requestHeaders = await headers();
+  const session = await auth.api.getSession({ headers: requestHeaders });
   if (!session?.user) {
     return { success: false, error: "You are not authenticated" };
   }
+  const organizationId = await getActiveOrganizationId(requestHeaders);
+  if (!organizationId) {
+    return { success: false, error: "Choose an organization first" };
+  }
   
   const hasPermission = await checkOrganizationPermission({
-    headers: await headers(),
+    headers: requestHeaders,
     body: {
       permissions: {
         tariffs: [permission],
@@ -35,7 +41,7 @@ async function checkPermission(permission: "read" | "create" | "update" | "delet
     return { success: false, error: `You don't have permission to ${permission} tariffs` };
   }
 
-  return { success: true, session };
+  return { success: true, session, organizationId };
 }
 
 export async function getTariffGrids(input: unknown = {}) {
@@ -49,14 +55,17 @@ export async function getTariffGrids(input: unknown = {}) {
     }
 
     const { page, pageSize, search } = parsed.data;
-    const where = search
+    const where = {
+      organizationId: perm.organizationId,
+      ...(search
       ? {
           OR: [
             { name: { contains: search, mode: "insensitive" as const } },
             { description: { contains: search, mode: "insensitive" as const } },
           ],
         }
-      : {};
+      : {}),
+    };
     const [items, totalCount] = await Promise.all([
       prisma.tariffGrid.findMany({
         where,
@@ -88,8 +97,8 @@ export async function getTariffGridById(id: string) {
     const perm = await checkPermission("read");
     if (!perm.success) return errorResponse(perm.error!);
 
-    const grid = await prisma.tariffGrid.findUnique({
-      where: { id },
+    const grid = await prisma.tariffGrid.findFirst({
+      where: { id, organizationId: perm.organizationId },
       include: {
         packages: {
           orderBy: { sortOrder: 'asc' },
@@ -163,7 +172,11 @@ export async function createTariffGrid(data: z.infer<typeof createTariffGridSche
           where: {
             id: { in: validated.packageIds },
             isActive: true,
-            service: { isActive: true, deletedAt: null },
+            service: {
+              organizationId: perm.organizationId,
+              isActive: true,
+              deletedAt: null,
+            },
           },
           select: { id: true },
         });
@@ -175,6 +188,7 @@ export async function createTariffGrid(data: z.infer<typeof createTariffGridSche
 
       const createdGrid = await tx.tariffGrid.create({
         data: {
+          organizationId: perm.organizationId,
           name: validated.name,
           description: validated.description,
         },
@@ -206,15 +220,16 @@ export async function updateTariffGrid(id: string, data: z.infer<typeof tariffGr
 
     const validated = tariffGridDetailsSchema.parse(data);
 
-    const grid = await prisma.tariffGrid.update({
-      where: { id },
+    const grid = await prisma.tariffGrid.updateMany({
+      where: { id, organizationId: perm.organizationId },
       data: {
         name: validated.name,
         description: validated.description,
       },
     });
+    if (grid.count === 0) return errorResponse("Tariff Grid not found");
 
-    return successResponse("Tariff grid updated successfully", grid);
+    return successResponse("Tariff grid updated successfully");
   } catch (error) {
     return errorResponse("Failed to update tariff grid", getErrorMessage(error));
   }
@@ -225,9 +240,10 @@ export async function deleteTariffGrid(id: string) {
     const perm = await checkPermission("delete");
     if (!perm.success) return errorResponse(perm.error!);
 
-    await prisma.tariffGrid.delete({
-      where: { id },
+    const deleted = await prisma.tariffGrid.deleteMany({
+      where: { id, organizationId: perm.organizationId },
     });
+    if (deleted.count === 0) return errorResponse("Tariff Grid not found");
 
     return successResponse("Tariff grid deleted successfully");
   } catch (error) {
@@ -242,6 +258,23 @@ export async function updateTariffGridPackages(tariffGridId: string, packages: {
 
     // Run in transaction: delete old mappings, insert new ones
     await prisma.$transaction(async (tx) => {
+      const grid = await tx.tariffGrid.findFirst({
+        where: { id: tariffGridId, organizationId: perm.organizationId },
+        select: { id: true },
+      });
+      if (!grid) throw new Error("Tariff Grid not found");
+      if (packages.length > 0) {
+        const availablePackages = await tx.servicePackage.findMany({
+          where: {
+            id: { in: packages.map((pkg) => pkg.id) },
+            service: { organizationId: perm.organizationId },
+          },
+          select: { id: true },
+        });
+        if (availablePackages.length !== packages.length) {
+          throw new Error("One or more selected packages are unavailable in this organization");
+        }
+      }
       await tx.tariffGridPackage.deleteMany({
         where: { tariffGridId },
       });
@@ -272,7 +305,11 @@ export async function getAvailableServicePackages() {
     const packages = await prisma.servicePackage.findMany({
       where: {
         isActive: true,
-        service: { isActive: true, deletedAt: null }
+        service: {
+          organizationId: perm.organizationId,
+          isActive: true,
+          deletedAt: null,
+        }
       },
       include: {
         service: { select: { name: true } },
@@ -304,8 +341,10 @@ export async function getAvailableServicePackages() {
 
 export async function getPublicTariffGrids() {
   try {
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return errorResponse("Choose an organization first");
     const grids = await prisma.tariffGrid.findMany({
-      where: { isActive: true },
+      where: { organizationId, isActive: true },
       orderBy: { createdAt: "desc" },
       include: {
         _count: {
@@ -321,8 +360,10 @@ export async function getPublicTariffGrids() {
 
 export async function getPublicTariffGridById(id: string) {
   try {
-    const grid = await prisma.tariffGrid.findUnique({
-      where: { id, isActive: true },
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return errorResponse("Choose an organization first");
+    const grid = await prisma.tariffGrid.findFirst({
+      where: { id, organizationId, isActive: true },
       include: {
         packages: {
           orderBy: { sortOrder: 'asc' },

@@ -10,10 +10,12 @@ export const metadata: Metadata = {
 };
 
 export default async function WorkSchedulePage() {
-  const { isAuthorized } = await requireAttendanceAccess("manage");
+  const { isAuthorized, session } = await requireAttendanceAccess("manage");
   if (!isAuthorized) redirect("/attendance");
+  const organizationId = session.session.activeOrganizationId;
+  if (!organizationId) redirect("/organization");
 
-  const weekendDays = await getWeekendDays();
+  const weekendDays = await getWeekendDays(organizationId);
   return (
     <DashboardContainer title="Work schedule">
       <div className="mx-auto w-full max-w-5xl space-y-6">

@@ -208,47 +208,6 @@ export const userRole = ac.newRole({});
 
 export const superAdminRole = ac.newRole({
     ...adminAc.statements,
-    dashboard: ["read"],
-
-    users: ["create", "read", "update", "delete", "assign-role", "assign-department"],
-
-    customers: ["create", "read", "update", "delete"],
-
-    proposals: ["create", "read", "update", "delete", "send", "accept"],
-
-    invoices: ["create", "read", "update", "delete", "send", "record-payment", "mark-paid"],
-
-    services: ["create", "read", "update", "delete"],
-    products: ["create", "read", "update", "delete"],
-
-    terms: ["create", "read", "update", "delete"],
-
-    projects: ["create", "read-all", "read-assigned", "update", "update-status", "manage-team", "view-budget", "archive"],
-    tasks: ["create", "read-all", "read-assigned", "update", "delete", "assign", "update-own"],
-
-    reports: ["read"],
-
-    finance: ["read", "create", "update", "delete"],
-
-    settings: ["read", "update"],
-
-    account: ["read", "update"],
-
-    attendance: ["clock-in", "clock-out", "read-own", "read-all", "manage", "view-analytics", "regularize", "approve-regularization", "view-audit-logs"],
-
-    leave: ["create", "read-own", "cancel-own", "read-all", "review"],
-    issueReports: ["create", "read-own", "read-all", "update"],
-    holidays: ["read", "create", "update", "delete"],
-
-    salary: ["read-own", "read-all", "create", "update", "mark-paid"],
-
-    tariffs: ["create", "read", "update", "delete"],
-
-    company: ["read", "update"],
-
-    bankAccounts: ["read", "create", "update", "delete"],
-
-    referenceData: ["read"],
 });
 
 export const adminRole = ac.newRole({
@@ -323,6 +282,8 @@ export const prismaModelPermissions = {
     Verification: "user",
     Organization: "settings",
     Member: "users",
+    OrganizationEmployeeProfile: "users",
+    ImportedSourceRecord: "company",
     Invitation: "users",
     OrganizationRole: "users",
     Team: "users",
@@ -398,10 +359,10 @@ export function canReadFinance(role: string): boolean {
     switch (role) {
         case "owner":
         case "admin":
-        case UserRole.SUPER_ADMIN:
-            return superAdminRole.statements.finance?.includes("read") ?? false;
+            return true;
         case UserRole.ADMIN:
             return adminRole.statements.finance?.includes("read") ?? false;
+        case UserRole.SUPER_ADMIN:
         case UserRole.STAFF:
             return false;
         default:
@@ -413,10 +374,10 @@ export function canReadDashboard(role: string): boolean {
     switch (role) {
         case "owner":
         case "admin":
-        case UserRole.SUPER_ADMIN:
-            return superAdminRole.statements.dashboard?.includes("read") ?? false;
+            return true;
         case UserRole.ADMIN:
             return adminRole.statements.dashboard?.includes("read") ?? false;
+        case UserRole.SUPER_ADMIN:
         case UserRole.STAFF:
             return false;
         default:
@@ -430,7 +391,6 @@ export function canManageIssueReports(
     return (
         user.role === "owner" ||
         user.role === "admin" ||
-        user.role === UserRole.SUPER_ADMIN ||
         user.role === UserRole.ADMIN ||
         ((user.role === UserRole.STAFF || user.role === "member") &&
             user.department === Department.HR)
@@ -455,7 +415,6 @@ export function canManageUserDirectory(
     return (
         actorRole === "owner" ||
         actorRole === "admin" ||
-        actorRole === UserRole.SUPER_ADMIN ||
         actorRole === UserRole.ADMIN ||
         ((actorRole === UserRole.STAFF || actorRole === "member") &&
             actorDepartment === Department.HR)
@@ -467,6 +426,9 @@ export function canAssignUserDepartment(
     actorDepartment: string | null | undefined,
     targetRole: string,
 ): boolean {
+    if (actorRole === UserRole.SUPER_ADMIN) {
+        return false;
+    }
     if (!canManageUserDirectory(actorRole, actorDepartment)) {
         return false;
     }
@@ -481,6 +443,9 @@ export function canManageEmploymentStatus(
     actorDepartment: string | null | undefined,
     targetRole: string,
 ): boolean {
+    if (actorRole === UserRole.SUPER_ADMIN) {
+        return false;
+    }
     if (!canManageUserDirectory(actorRole, actorDepartment)) {
         return false;
     }
@@ -495,12 +460,14 @@ export function canManageAttendanceReportInclusion(
     actorDepartment: string | null | undefined,
     targetRole: string,
 ): boolean {
+      if (actorRole === UserRole.SUPER_ADMIN) {
+          return false;
+      }
     if (!canManageUserDirectory(actorRole, actorDepartment)) {
         return false;
     }
 
     return (
-        actorRole === UserRole.SUPER_ADMIN ||
         actorRole === "owner" ||
         canManageEmploymentStatus(actorRole, actorDepartment, targetRole)
     );

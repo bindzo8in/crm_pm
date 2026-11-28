@@ -24,7 +24,25 @@ export type LeaveRequestRow = Pick<
 >;
 
 export type ManagerLeaveRequestRow = Prisma.LeaveRequestGetPayload<{
-  include: {
+  select: {
+    id: true;
+    userId: true;
+    type: true;
+    startDate: true;
+    endDate: true;
+    reason: true;
+    status: true;
+    managerComment: true;
+    isHalfDay: true;
+    halfDayPeriod: true;
+    totalDays: true;
+    netLeaveDays: true;
+    sundayCount: true;
+    weekendCount: true;
+    holidayCount: true;
+    monthlyDayBreakdown: true;
+    createdAt: true;
+    updatedAt: true;
     user: {
       select: {
         id: true;

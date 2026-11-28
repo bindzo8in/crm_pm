@@ -25,7 +25,11 @@ export async function getProposalPermissionScope(
   permission: ProposalPermission,
   ownPermission: ProposalOwnPermission,
   proposalId?: string,
-): Promise<{ userId: string; where: ProposalWhereInput } | null> {
+): Promise<{
+  userId: string;
+  organizationId: string;
+  where: ProposalWhereInput;
+} | null> {
   const requestHeaders = await headers();
   const session = await auth.api.getSession({ headers: requestHeaders });
   if (!session?.user) return null;
@@ -46,6 +50,7 @@ export async function getProposalPermissionScope(
   if (allAccess.success) {
     return {
       userId: session.user.id,
+      organizationId,
       where: {
         organizationId,
         ...(proposalId ? { id: proposalId } : {}),
@@ -71,6 +76,7 @@ export async function getProposalPermissionScope(
 
   return {
     userId: session.user.id,
+    organizationId,
     where: proposalId ? { id: proposalId, ...ownerFilter } : ownerFilter,
   };
 }

@@ -129,10 +129,10 @@ test("Malformed saved month allocations do not consume entitlement", () => {
   );
 });
 
-test("HR staff, Admin, and Super Admin can review any staff request", () => {
+test("HR staff and organization Admin can review any staff request", () => {
   assert.equal(isLeaveManager({ role: UserRole.STAFF, department: Department.HR }), true);
   assert.equal(isLeaveManager({ role: UserRole.ADMIN, department: null }), true);
-  assert.equal(isLeaveManager({ role: UserRole.SUPER_ADMIN, department: null }), true);
+  assert.equal(isLeaveManager({ role: UserRole.SUPER_ADMIN, department: null }), false);
   assert.equal(isLeaveManager({ role: UserRole.STAFF, department: Department.SALES }), false);
 });
 
@@ -141,5 +141,6 @@ test("Staff require an assigned department before accessing workspace modules", 
   assert.equal(hasWorkspaceAccess({ role: UserRole.STAFF, department: "unknown" }), false);
   assert.equal(hasWorkspaceAccess({ role: UserRole.STAFF, department: Department.HR }), true);
   assert.equal(hasWorkspaceAccess({ role: UserRole.ADMIN, department: null }), true);
+  assert.equal(hasWorkspaceAccess({ role: UserRole.SUPER_ADMIN, department: null }), false);
   assert.equal(hasWorkspaceAccess({ role: "UNKNOWN", department: Department.HR }), false);
 });

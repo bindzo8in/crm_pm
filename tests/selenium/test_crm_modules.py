@@ -50,7 +50,6 @@ MODULE_ROUTES = [
 ROLE_ROUTE_EXCLUSIONS = {
     "SUPER_ADMIN": set(),
     "ADMIN": {
-        "/dashboard/settings/business/company",
         "/dashboard/settings/business/banks",
     },
     "STAFF": {
@@ -197,6 +196,7 @@ class CRMModuleSmokeTests(unittest.TestCase):
                 "Salary",
                 "Invoice",
                 "Finance",
+                "Company Profile",
             },
             "STAFF": {
                 "Dashboard",
@@ -211,7 +211,7 @@ class CRMModuleSmokeTests(unittest.TestCase):
         }
         hidden_items = {
             "SUPER_ADMIN": set(),
-            "ADMIN": {"Company Profile", "Bank Accounts"},
+            "ADMIN": {"Bank Accounts"},
             "STAFF": {
                 "Holidays",
                 "Users",
@@ -267,17 +267,22 @@ class CRMModuleSmokeTests(unittest.TestCase):
                     with self.subTest(path=path):
                         self.load_module(path, marker)
 
-    def test_admin_routes_restrict_settings(self):
-        for account in ACCOUNTS[1:]:
-            for path in (
-                "/dashboard/settings/business/company",
-                "/dashboard/settings/business/banks",
-            ):
-                with self.subTest(role=account.role, path=path):
-                    self.sign_in(account)
-                    self.driver.get(urljoin(BASE_URL, path))
-                    self.wait.until(lambda driver: driver.current_url.rstrip("/").endswith("/dashboard"))
-                    self.assertTrue(self.driver.current_url.rstrip("/").endswith("/dashboard"))
+    def test_staff_cannot_access_settings(self):
+        account = ACCOUNTS[2]
+        for path in (
+            "/dashboard/settings/business/company",
+            "/dashboard/settings/business/banks",
+        ):
+            with self.subTest(path=path):
+                self.sign_in(account)
+                self.driver.get(urljoin(BASE_URL, path))
+                self.wait.until(lambda driver: path not in driver.current_url)
+                self.assertNotIn(path, self.driver.current_url)
+
+    def test_admin_can_access_company_profile_settings(self):
+        account = ACCOUNTS[1]
+        self.sign_in(account)
+        self.load_module("/dashboard/settings/business/company", "company profile")
 
     def test_expense_form_has_consumer_and_attachment_controls(self):
         self.sign_in(ACCOUNTS[0])

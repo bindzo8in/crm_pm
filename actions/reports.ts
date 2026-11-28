@@ -1,6 +1,9 @@
 "use server";
 
-import { checkOrganizationPermission } from "@/lib/organization-authorization";
+import {
+  checkOrganizationPermission,
+  getActiveOrganizationId,
+} from "@/lib/organization-authorization";
 import { Prisma } from "@/app/generated/prisma/client";
 import { ExpenseStatus, InvoiceStatus, ProposalStatus } from "@/app/generated/prisma/enums";
 import { auth } from "@/lib/auth";
@@ -119,6 +122,9 @@ export async function getBusinessReport(input: unknown) {
       return errorResponse("You do not have permission to view this report");
     }
 
+    const organizationId = await getActiveOrganizationId();
+    if (!organizationId) return errorResponse("Select an organization to view reports");
+
     const now = new Date();
     const today = getAttendanceDate(now);
     const tomorrow = shiftDateOnly(today, 1);
@@ -137,6 +143,7 @@ export async function getBusinessReport(input: unknown) {
 
     const invoiceStatuses = Object.values(InvoiceStatus) as string[];
     const issuedInvoiceWhere: Prisma.InvoiceWhereInput = {
+      organizationId,
       issueDate: { gte: startDate, lt: endExclusive },
       deletedAt: null,
       status: { notIn: ["DRAFT", "VOID"] },
@@ -202,7 +209,10 @@ export async function getBusinessReport(input: unknown) {
         });
         if (lineItems.length > maxReportRows) return errorResponse("This report has more than 5,000 invoice items. Narrow the date range and try again.");
         const invoices = await prisma.invoice.findMany({
-          where: { id: { in: [...new Set(lineItems.map((item) => item.invoiceId))] } },
+          where: {
+            organizationId,
+            id: { in: [...new Set(lineItems.map((item) => item.invoiceId))] },
+          },
           select: { id: true, currency: true, exchangeRate: true },
         });
         const invoiceCurrency = new Map(invoices.map((invoice) => [
@@ -299,6 +309,7 @@ export async function getBusinessReport(input: unknown) {
         }
         const invoices = await prisma.invoice.findMany({
           where: {
+            organizationId,
             ...(filters.age === "ALL"
               ? { dueDate: { gte: startDate, lt: endExclusive } }
               : { AND: ageDateConditions }),
@@ -371,6 +382,7 @@ export async function getBusinessReport(input: unknown) {
       case "invoice-details": {
         const invoices = await prisma.invoice.findMany({
           where: {
+            organizationId,
             issueDate: { gte: startDate, lt: endExclusive },
             deletedAt: null,
             ...(invoiceStatuses.includes(filters.status)
@@ -451,7 +463,11 @@ export async function getBusinessReport(input: unknown) {
         const payments = await prisma.invoicePayment.findMany({
           where: {
             paymentDate: { gte: startDate, lt: endExclusive },
-            invoice: { deletedAt: null, status: { not: "VOID" } },
+            invoice: {
+              organizationId,
+              deletedAt: null,
+              status: { not: "VOID" },
+            },
           },
           take: maxReportRows + 1,
           orderBy: { paymentDate: "desc" },
@@ -524,6 +540,7 @@ export async function getBusinessReport(input: unknown) {
       case "expenses-by-vendor": {
         const expenses = await prisma.expense.findMany({
           where: {
+            organizationId,
             expenseDate: { gte: startDate, lt: endExclusive },
             deletedAt: null,
             ...(Object.values(ExpenseStatus).includes(filters.status as ExpenseStatus)
@@ -562,6 +579,7 @@ export async function getBusinessReport(input: unknown) {
       case "customer-activity": {
         const customers = await prisma.customer.findMany({
           where: {
+            organizationId,
             deletedAt: null,
             createdAt: { gte: startDate, lt: endExclusive },
           },
@@ -570,7 +588,12 @@ export async function getBusinessReport(input: unknown) {
           select: {
             id: true, displayName: true, companyName: true, createdAt: true,
             assignedTo: { select: { name: true } },
-            _count: { select: { invoices: true, proposals: true } },
+            _count: {
+              select: {
+                invoices: { where: { organizationId } },
+                proposals: { where: { organizationId } },
+              },
+            },
           },
         });
         if (customers.length > maxReportRows) return errorResponse("This report has more than 5,000 customers. Narrow the date range and try again.");
@@ -590,6 +613,7 @@ export async function getBusinessReport(input: unknown) {
       case "proposal-items": {
         const proposals = await prisma.proposal.findMany({
           where: {
+            organizationId,
             createdAt: { gte: startDate, lt: endExclusive },
             ...(Object.values(ProposalStatus).includes(filters.status as ProposalStatus)
               ? { status: filters.status as ProposalStatus }
@@ -644,27 +668,41 @@ export async function getBusinessReport(input: unknown) {
       }
       case "customer-retention": {
         const customers = await prisma.customer.findMany({
-          where: { deletedAt: null, createdAt: { gte: startDate, lt: endExclusive } },
+          where: {
+            organizationId,
+            deletedAt: null,
+            createdAt: { gte: startDate, lt: endExclusive },
+          },
           take: maxReportRows + 1,
           orderBy: { displayName: "asc" },
           select: {
             id: true, displayName: true, companyName: true, createdAt: true,
             invoices: {
-              where: { issueDate: { lt: endExclusive }, deletedAt: null },
+              where: {
+                organizationId,
+                issueDate: { lt: endExclusive },
+                deletedAt: null,
+              },
               orderBy: { issueDate: "desc" },
               take: 1,
               select: { issueDate: true },
             },
             proposals: {
-              where: { createdAt: { lt: endExclusive } },
+              where: { organizationId, createdAt: { lt: endExclusive } },
               orderBy: { createdAt: "desc" },
               take: 1,
               select: { createdAt: true },
             },
             _count: {
               select: {
-                invoices: { where: { issueDate: { lt: endExclusive }, deletedAt: null } },
-                proposals: { where: { createdAt: { lt: endExclusive } } },
+                invoices: {
+                  where: {
+                    organizationId,
+                    issueDate: { lt: endExclusive },
+                    deletedAt: null,
+                  },
+                },
+                proposals: { where: { organizationId, createdAt: { lt: endExclusive } } },
               },
             },
           },

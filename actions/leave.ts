@@ -111,7 +111,11 @@ const balanceSchema = z.object({
 export async function submitLeaveRequestAction(input: unknown) {
   const user = await requireLeaveUser("create");
   const parsed = leaveRequestSchema.parse(input);
-  const leave = await createLeaveRequest({ userId: user.id, ...parsed });
+  const leave = await createLeaveRequest({
+    organizationId: user.organizationId,
+    userId: user.id,
+    ...parsed,
+  });
 
   revalidatePath("/dashboard/leaves");
   revalidatePath("/dashboard");
@@ -121,37 +125,49 @@ export async function submitLeaveRequestAction(input: unknown) {
 export async function getMyLeaveRequestsAction(input: unknown = {}) {
   const user = await requireLeaveUser();
   const parsed = ownLeaveFilterSchema.parse(input);
-  const result = await getOwnLeaveRequests(user.id, parsed.page, parsed.pageSize, {
-    search: parsed.search,
-    type: parsed.type,
-    status: parsed.status,
-  });
+  const result = await getOwnLeaveRequests(
+    user.organizationId,
+    user.id,
+    parsed.page,
+    parsed.pageSize,
+    {
+      search: parsed.search,
+      type: parsed.type,
+      status: parsed.status,
+    },
+  );
   return { success: true, ...result, page: parsed.page, pageSize: parsed.pageSize };
 }
 
 export async function getAllLeaveRequestsAction(input: unknown = {}) {
-  await requireLeaveManager("read-all");
+  const user = await requireLeaveManager("read-all");
   const parsed = managerFilterSchema.parse(input);
   if (parsed.fromDate && parsed.throughDate && parsed.fromDate > parsed.throughDate) {
     throw new ActionError("The start of the filter range must be before its end.", 400);
   }
 
-  const result = await getManagerLeaveRequests(parsed);
+  const result = await getManagerLeaveRequests({
+    ...parsed,
+    organizationId: user.organizationId,
+  });
   return { success: true, ...result, page: parsed.page, pageSize: parsed.pageSize };
 }
 
 export async function getLeaveManagementSummaryAction() {
-  await requireLeaveManager("read-all");
+  const user = await requireLeaveManager("read-all");
   return {
     success: true,
-    ...(await getLeaveManagementSummary(parseDateOnly(getAttendanceDate()))),
+    ...(await getLeaveManagementSummary(
+      parseDateOnly(getAttendanceDate()),
+      user.organizationId,
+    )),
   };
 }
 
 export async function cancelLeaveRequestAction(input: unknown) {
   const user = await requireLeaveUser("cancel-own");
   const { id } = requestIdSchema.parse(input);
-  await cancelPendingLeaveRequest(user.id, id);
+  await cancelPendingLeaveRequest(user.organizationId, user.id, id);
 
   revalidatePath("/dashboard/leaves");
   revalidatePath("/dashboard");
@@ -162,6 +178,7 @@ export async function updateLeaveStatusAction(input: unknown) {
   const user = await requireLeaveManager("review");
   const parsed = updateLeaveStatusSchema.parse(input);
   const leave = await reviewLeaveRequest({
+    organizationId: user.organizationId,
     approverId: user.id,
     id: parsed.id,
     status: parsed.status,
@@ -177,5 +194,8 @@ export async function getAnnualLeaveBalanceAction(input: unknown = {}) {
   const user = await requireLeaveUser();
   const parsed = balanceSchema.parse(input);
   const month = parsed.month ?? formatInIST(new Date(), "yyyy-MM");
-  return { success: true, ...(await getAnnualLeaveBalance(user.id, month)) };
+  return {
+    success: true,
+    ...(await getAnnualLeaveBalance(user.organizationId, user.id, month)),
+  };
 }

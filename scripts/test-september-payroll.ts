@@ -8,24 +8,35 @@ import {
 const year = 2026;
 const month = 9;
 const allowedPaidLeaves = 1;
+const organizationId = process.env.ORGANIZATION_ID?.trim();
 
 async function main() {
+  if (!organizationId) {
+    throw new Error("Set ORGANIZATION_ID to the organization being reconciled.");
+  }
+
   const start = new Date(Date.UTC(year, month - 1, 1));
   const end = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
   const totalDays = new Date(Date.UTC(year, month, 0)).getUTCDate();
 
   const [holidays, users] = await Promise.all([
     prisma.holiday.findMany({
-      where: { date: { gte: start, lte: end } },
+      where: { organizationId, date: { gte: start, lte: end } },
       select: { date: true, name: true },
     }),
     prisma.user.findMany({
-      where: { salaryStructure: { isNot: null } },
+      where: {
+        organizationMemberships: { some: { organizationId } },
+        salaryStructures: { some: { organizationId } },
+      },
       select: {
         id: true,
         name: true,
         email: true,
-        salaryStructure: true,
+        salaryStructures: {
+          where: { organizationId },
+          take: 1,
+        },
       },
       orderBy: { employeeId: "asc" },
     }),
@@ -43,15 +54,20 @@ async function main() {
   const rows: Array<Record<string, string | number>> = [];
 
   for (const user of users) {
-    const structure = user.salaryStructure;
+    const structure = user.salaryStructures[0];
     if (!structure) continue;
 
     const [attendance, leaves] = await Promise.all([
       prisma.attendanceRecord.findMany({
-        where: { userId: user.id, date: { gte: start, lte: end } },
+        where: {
+          organizationId,
+          userId: user.id,
+          date: { gte: start, lte: end },
+        },
       }),
       prisma.leaveRequest.findMany({
         where: {
+          organizationId,
           userId: user.id,
           status: "APPROVED",
           startDate: { lte: end },
@@ -99,7 +115,14 @@ async function main() {
     totalNet += calculation.netSalary;
 
     await prisma.salarySlip.upsert({
-      where: { userId_month_year: { userId: user.id, month, year } },
+      where: {
+        organizationId_userId_month_year: {
+          organizationId,
+          userId: user.id,
+          month,
+          year,
+        },
+      },
       update: {
         status: "GENERATED",
         totalDays,
@@ -122,6 +145,7 @@ async function main() {
         netSalary: calculation.netSalary,
       },
       create: {
+        organizationId,
         userId: user.id,
         month,
         year,
@@ -166,7 +190,7 @@ async function main() {
   console.log(`Combined net payroll: INR ${totalNet.toFixed(2)}\n`);
 
   const storedSlips = await prisma.salarySlip.findMany({
-    where: { month, year },
+    where: { organizationId, month, year },
     select: {
       userId: true,
       totalDays: true,

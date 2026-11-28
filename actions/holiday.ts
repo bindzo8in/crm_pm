@@ -107,21 +107,21 @@ const updateHolidaySchema = holidayFieldsSchema
   });
 
 export async function getHolidaysAction(input: unknown = {}) {
-  await requireHolidayUser();
+  const user = await requireHolidayUser();
   const parsed = yearSchema.parse(input);
   const year = parsed.year ?? Number(formatInIST(new Date(), "yyyy"));
   return {
     success: true,
-    holidays: await getHolidaysForYear(year),
-    weekendDays: await getWeekendDays(),
+    holidays: await getHolidaysForYear(user.organizationId, year),
+    weekendDays: await getWeekendDays(user.organizationId),
     year,
   };
 }
 
 export async function updateWeekendDaysAction(input: unknown) {
-  await requireHolidayManager("update");
+  const user = await requireHolidayManager("update");
   const parsed = weekendDaysSchema.parse(input);
-  const settings = await updateWeekendDays(parsed);
+  const settings = await updateWeekendDays(user.organizationId, parsed);
 
   revalidatePath("/dashboard/holidays");
   revalidatePath("/dashboard/leaves");
@@ -131,17 +131,18 @@ export async function updateWeekendDaysAction(input: unknown) {
 }
 
 export async function getUpcomingHolidaysAction() {
-  await requireHolidayUser();
+  const user = await requireHolidayUser();
   return {
     success: true,
-    holidays: await getUpcomingHolidays(),
+    holidays: await getUpcomingHolidays(user.organizationId),
   };
 }
 
 export async function createHolidayAction(input: unknown) {
-  await requireHolidayManager("create");
+  const user = await requireHolidayManager("create");
   const parsed = holidaySchema.parse(input);
   const result = await addHoliday({
+    organizationId: user.organizationId,
     name: parsed.name,
     startDate: parsed.startDate,
     endDate: parsed.endDate,
@@ -159,9 +160,10 @@ export async function createHolidayAction(input: unknown) {
 }
 
 export async function updateHolidayAction(input: unknown) {
-  await requireHolidayManager("update");
+  const user = await requireHolidayManager("update");
   const parsed = updateHolidaySchema.parse(input);
   const result = await editHoliday(parsed.id, {
+    organizationId: user.organizationId,
     name: parsed.name,
     startDate: parsed.startDate,
     endDate: parsed.endDate,
@@ -179,9 +181,9 @@ export async function updateHolidayAction(input: unknown) {
 }
 
 export async function deleteHolidayAction(input: unknown) {
-  await requireHolidayManager("delete");
+  const user = await requireHolidayManager("delete");
   const { id } = holidayIdSchema.parse(input);
-  await removeHoliday(id);
+  await removeHoliday(id, user.organizationId);
 
   revalidatePath("/dashboard/holidays");
   revalidatePath("/dashboard/leaves");
